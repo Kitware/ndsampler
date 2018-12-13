@@ -1,0 +1,27 @@
+Built with detection related tasks in mind, but also useful for classification
+tasks.
+
+The basic idea is to ensure your data is in MS-coco format, and then the
+CocoSampler class will let you sample positive and negative regions.
+
+For classification tasks the MS-COCO data could just be that every image has an
+annotation that takes up the entire image.
+
+# Features
+
+* CocoDataset for managing and manipulating annotated image datasets
+* Amortized O(1) sampling of N-dimension space-time data (e.g. images and video).
+* Hierarchical or mutually exclusive category management.
+* Random negative window sampling.
+* Coverage-based positive sampling.
+* Dynamic toydata generator.
+
+
+# TODO:
+
+- [ ] Currently only supports image-based detection tasks, but not much work is
+  needed to extend to video. The code was originally based on sampling code for
+  video, so ndimensions is builtin to most places in the code. However, there are
+  currently no test cases that demonstrate that this library does work with video.
+  So we should (a) port the video toydata code from irharn to test ndcases and (b)
+  fix the code to work for both still images and video where things break. 

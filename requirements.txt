@@ -1,0 +1,26 @@
+pytest >= 3.3.1
+coverage >= 4.3.4
+xdoctest >= 0.3.0
+pytest-cov
+
+networkx >= 2.2.0
+ubelt
+
+numpy 
+scipy
+
+kwil
+
+fasteners
+
+# opencv?
+# scikit-image?
+
+Pillow
+pyqtree
+
+# functools python2
+
+# There are likely several more undocumented deps, see what fails and submit a PR please!
+# TODO : fill me in!
+
