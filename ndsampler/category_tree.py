@@ -504,6 +504,17 @@ class CategoryTree(ub.NiceRepr):
         class_probs = torch.exp(class_logits)
         return class_probs
 
+    def graph_log_softmax(self, class_energy, dim):
+        """ Convinience method which converts class-energy to logits """
+        class_logits = self.heirarchical_log_softmax(class_energy, dim)
+        return class_logits
+
+    def graph_softmax(self, class_energy, dim):
+        """ Convinience method which converts class-energy to final probs """
+        class_logits = self.heirarchical_log_softmax(class_energy, dim)
+        class_probs = torch.exp(class_logits)
+        return class_probs
+
     def heirarchical_nll_loss(self, class_logits, targets):
         """
         Given predicted heirarchical class log-probabilities and target vectors
