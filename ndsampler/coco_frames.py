@@ -13,11 +13,11 @@ class CocoFrames(abstract_frames.Frames, util.HashIdentifiable):
         xdoctest -m ndsampler.coco_frames CocoFrames
 
     Example:
-        >>> import netharn as nh
         >>> from ndsampler.coco_frames import *
+        >>> import ndsampler
         >>> import ubelt as ub
         >>> workdir = ub.ensure_app_cache_dir('ndsampler')
-        >>> dset = nh.data.CocoDataset.demo()
+        >>> dset = ndsampler.CocoDataset.demo()
         >>> self = CocoFrames(dset, workdir=workdir)
         >>> assert self.load_image(1).shape == (512, 512, 3)
         >>> assert self.load_image(1)[:-20, :-10].shape == (492, 502, 3)
