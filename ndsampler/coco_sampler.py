@@ -121,7 +121,6 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         return self.regions.preselect(**kwargs)
 
     def load_image_with_annots(self, image_id):
-        # full_image = self.frames.load_region(image_id)
         full_image = self.frames.load_image(image_id)
         gid = image_id
         coco_dset = self.dset
@@ -132,7 +131,6 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         return img, anns
 
     def load_image(self, image_id):
-        # full_image = self.frames.load_region(image_id)
         full_image = self.frames.load_image(image_id)
         return full_image
 
@@ -292,7 +290,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> assert len(annots['rel_cxywh']) == len(annots['aids'])
             >>> # xdoc: +REQUIRES(--show)
             >>> kwil.autompl()
-            >>> abs_frame = self.frames.load_region(tr_['gid'])
+            >>> abs_frame = self.frames.load_image(tr_['gid'])
             >>> abs_box = kwil.Boxes(annots['abs_cxywh'], 'cxywh')
             >>> rel_box = kwil.Boxes(annots['rel_cxywh'], 'cxywh')
             >>> # Draw box in original image context
@@ -350,8 +348,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             im = np.pad(im, extra_padding, **padkw)
 
         ndim = 2  # number of space-time dimensions (ignore channel)
-        slice_dims = data_slice[0:ndim]
-        st_dims = [(sl.start, sl.stop) for sl in slice_dims]
+        st_dims = [(sl.start, sl.stop) for sl in data_slice[0:ndim]]
 
         # Translations for real sub-pixel center positions
         if extra_padding:
