@@ -506,7 +506,7 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
         'imdata': imdata,
     }
     anns = []
-    for catname, bbox in zip(catnames, boxes.to_tlwh().data):
+    for catname, bbox in zip(catnames, boxes.to_xywh().data):
         anns.append({
             'category_name': catname,
             'bbox': bbox.tolist(),
