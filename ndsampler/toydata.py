@@ -430,7 +430,7 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
 
     while True:
         boxes = kwil.Boxes.random(
-            num=num, scale=1.0, format='tlwh', rng=rng, anchors=anchors)
+            num=num, scale=1.0, format='xywh', rng=rng, anchors=anchors)
         boxes = boxes.scale(gsize)
         bw, bh = boxes.components[2:4]
         ar = np.maximum(bw, bh) / np.minimum(bw, bh)
