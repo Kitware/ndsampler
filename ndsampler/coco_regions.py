@@ -214,6 +214,8 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
         This design needs a bit more thought.
         """
         if self._targets is None:
+            if self.verbose:
+                print('Building targets from coco dataset')
             cacher = self._cacher('targets', enabled=True)
             _targets = cacher.tryload()
             if _targets is None:
