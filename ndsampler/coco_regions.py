@@ -583,7 +583,7 @@ def tabular_coco_targets(dset):
         xywh = np.array(xywh, dtype=np.float32)
 
     boxes = kwil.Boxes(xywh, 'xywh')
-    cxywhs = boxes.to_cxywh().data
+    cxywhs = boxes.to_cxywh().data.reshape(-1, 4)
 
     aids = [ann['id'] for ann in anns]
     gids = [ann['image_id'] for ann in anns]
