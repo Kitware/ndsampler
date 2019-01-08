@@ -7,4 +7,4 @@ pip install -e .
 # Compile C extensions to improve runtime
 #python setup.py build_ext --inplace
 
-cat README.md
+# cat README.md
