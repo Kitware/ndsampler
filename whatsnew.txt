@@ -1,0 +1,16 @@
+Version 0.0.3
+-------------
+* Add ignore_class_idxs
+
+
+Version 0.0.2
+-------------
+* Minor test fixes
+
+
+Version 0.0.1
+-------------
+* Initial code for 2D O(1) chip sampling
+* Initial code for CategoryTree
+* Initial code for CocoDataset
+* Initial code for dummy detection toydata

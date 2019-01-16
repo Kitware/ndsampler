@@ -679,13 +679,18 @@ class CategoryTree(ub.NiceRepr):
         return pred_idxs, pred_conf
 
     @kwil.profile
-    def decision(self, class_probs, dim, thresh=0.5, criterion='gini'):
+    def decision(self, class_probs, dim, thresh=0.5, criterion='gini',
+                 ignore_class_idxs=None):
         """
         Chooses the finest-grained category based on information gain
 
         Args:
             thresh (float): threshold on simplicity ratio (higher is less permissive)
             criterion (str): how to compute information. Either entropy or gini.
+            ignore_class_idxs (List[int], optional): if specified this is a list
+                of class indices which we are not allowed to predict. We
+                will procede as if the graph did not contain these nodes.
+                (Useful for getting low-probability detections).
 
         Example:
             >>> from ndsampler.category_tree import *
@@ -758,6 +763,11 @@ class CategoryTree(ub.NiceRepr):
             """
             # Look at the probabilities of each node at this level
             idxs = sorted(self.node_to_idx[node] for node in nodes)
+            if ignore_class_idxs:
+                idxs = sorted(set(idxs) - set(ignore_class_idxs))
+                if len(idxs) == 0:
+                    raise AssertionError(
+                        'cannot predict left us with no alternatives')
             probs = flat_class_probs[jdxs][:, idxs]
             # jdxs = jdxs[probs.T[0].argsort()]
             # probs = flat_class_probs[jdxs][:, idxs]
