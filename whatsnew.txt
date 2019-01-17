@@ -1,6 +1,8 @@
 Version 0.0.3
 -------------
 * Add ignore_class_idxs to CategoryTree.decision
+* Add always_refine_idxs to CategoryTree.decision
+* Fix torch incompatibility in CategoryTree.decision
 
 
 Version 0.0.2

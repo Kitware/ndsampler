@@ -254,7 +254,8 @@ class CategoryTree(ub.NiceRepr):
             h = kwargs.pop('h', 3)
             graph = nx.generators.balanced_tree(r=r, h=h, create_using=nx.DiGraph())
             graph = nx.relabel_nodes(graph, {n: n + 1 for n in graph})
-            graph.add_node(0)
+            if kwargs.pop('add_zero', True):
+                graph.add_node(0)
             assert not kwargs
         else:
             raise KeyError(key)
@@ -626,7 +627,8 @@ class CategoryTree(ub.NiceRepr):
         other_dims = sorted(set(range(len(class_probs.shape))) - {dim})
 
         # Rearange probs so the class dimension is at the end
-        flat_class_probs = class_probs.transpose(*other_dims + [dim]).reshape(-1, class_probs.shape[dim])
+        # flat_class_probs = class_probs.transpose(*other_dims + [dim]).reshape(-1, class_probs.shape[dim])
+        flat_class_probs = impl.transpose(class_probs, other_dims + [dim]).reshape(-1, class_probs.shape[dim])
         flat_jdxs = np.arange(flat_class_probs.shape[0])
 
         def _descend(depth, nodes, jdxs):
@@ -683,7 +685,7 @@ class CategoryTree(ub.NiceRepr):
 
     @kwil.profile
     def decision(self, class_probs, dim, thresh=0.5, criterion='gini',
-                 ignore_class_idxs=None):
+                 ignore_class_idxs=None, always_refine_idxs=None):
         """
         Chooses the finest-grained category based on information gain
 
@@ -694,6 +696,15 @@ class CategoryTree(ub.NiceRepr):
                 of class indices which we are not allowed to predict. We
                 will procede as if the graph did not contain these nodes.
                 (Useful for getting low-probability detections).
+            always_refine_idxs  (List[int], optional):
+                if specified this is a list of class indices that we will
+                always refine into a more fine-grained class.
+                (Useful if you have a dummy root)
+
+        Returns:
+            Tuple[Tensor, Tensor]: pred_idxs, pred_conf:
+                pred_idxs: predicted class indices
+                pred_conf: associated confidence
 
         Example:
             >>> from ndsampler.category_tree import *
@@ -734,18 +745,30 @@ class CategoryTree(ub.NiceRepr):
             >>>     self.decision(class_probs, dim=1, ignore_class_idxs=self.idx_groups[0])
             >>> # But it is OK to ignore all child nodes at a particular level
             >>> self.decision(class_probs, dim=1, ignore_class_idxs=self.idx_groups[1])
+
+        Example:
+            >>> from ndsampler.category_tree import *
+            >>> self = CategoryTree.demo('btree', r=3, h=3, add_zero=False)
+            >>> rng = kwil.ensure_rng(0)
+            >>> class_energy = torch.FloatTensor(rng.rand(5, len(self)))
+            >>> class_probs = self.heirarchical_softmax(class_energy, dim=1)
+            >>> pred_idxs1, pref_conf1 = self.decision(class_probs, dim=1, always_refine_idxs=[0])
+            >>> pred_idxs2, pref_conf2 = self.decision(class_probs.numpy(), dim=1, always_refine_idxs=[0])
+            >>> assert np.all(pred_idxs1 == pred_idxs2)
+            >>> assert 0 not in pred_idxs1
         """
         if criterion == 'prob':
             return self._prob_decision(class_probs, dim, thresh=thresh)
 
-        import kwil
+        DEBUG = False
+
         impl = kwil.ArrayAPI.impl(class_probs)
 
         sources = list(source_nodes(self.graph))
         other_dims = sorted(set(range(len(class_probs.shape))) - {dim})
 
         # Rearange probs so the class dimension is at the end
-        flat_class_probs = class_probs.transpose(*other_dims + [dim]).reshape(-1, class_probs.shape[dim])
+        flat_class_probs = impl.transpose(class_probs, other_dims + [dim]).reshape(-1, class_probs.shape[dim])
         flat_jdxs = np.arange(flat_class_probs.shape[0])
 
         if criterion == 'gini':
@@ -786,6 +809,8 @@ class CategoryTree(ub.NiceRepr):
                 if len(idxs) == 0:
                     raise ValueError('Cannot ignore all top-level classes')
             probs = flat_class_probs[jdxs][:, idxs]
+            # print('idxs = {!r}'.format(idxs))
+            # print('probs = {!r}'.format(probs))
 
             # Choose a category to predict at this level
             pred_conf, pred_cx = impl.max_argmax(probs, axis=1)
@@ -828,8 +853,10 @@ class CategoryTree(ub.NiceRepr):
                     c = len(children)
 
                     reps = [1] * len(p_parent.shape)
-                    reps[1] = c
+                    reps[dim] = c
                     child_probs_worst = impl.tile(p_parent / c, reps)
+                    # print('p_parent = {!r}'.format(p_parent))
+                    # print('child_probs_worst = {!r}'.format(child_probs_worst))
                     expanded_probs_worst = impl.hstack([ommer_probs, child_probs_worst])
                     # Compute the worst-case entropy after expanding the node
                     h_worst_expanded = _criterion(expanded_probs_worst)
@@ -840,7 +867,13 @@ class CategoryTree(ub.NiceRepr):
 
                     # If simplicity ratio is over a threshold refine the parent
                     refine_flags = simplicity_ratio > thresh
-                    DEBUG = False
+
+                    if always_refine_idxs is not None:
+                        if idx in always_refine_idxs:
+                            refine_flags[:] = 1
+
+                    refine_flags = kwil.ArrayAPI.numpy(refine_flags).astype(np.bool)
+
                     if DEBUG:
                         print('-----------')
                         print('idx = {!r}'.format(idx))
@@ -857,7 +890,7 @@ class CategoryTree(ub.NiceRepr):
                         print(df)
                         print('-----------')
 
-                    if impl.any(refine_flags):
+                    if np.any(refine_flags):
                         refine_jdxs = group_jdxs[refine_flags]
                         refine_idxs, refine_conf = _descend2(depth + 1, children, refine_jdxs)
                         # Overwrite course decisions with refined decisions.
