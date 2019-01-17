@@ -133,8 +133,11 @@ class Frames(object):
         try:
             file = np.load(mem_gpath, mmap_mode='r')
         except ValueError:
+            print('\n\n')
+            print('ERROR')
             print('mem_gpath = {!r}'.format(mem_gpath))
             print('exists(mem_gpath) = {!r}'.format(exists(mem_gpath)))
+            print('\n\n')
             raise
         return file
 
