@@ -9,7 +9,7 @@ ubelt
 numpy 
 scipy
 
-kwil
+kwil >= 0.2.1
 
 fasteners
 
