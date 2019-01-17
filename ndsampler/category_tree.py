@@ -25,11 +25,12 @@ Ignore:
 from __future__ import absolute_import, division, print_function, unicode_literals
 import torch
 import kwil
+import functools
 import itertools as it
 import networkx as nx
 import ubelt as ub
 import torch.nn.functional as F
-import numpy as np  # NOQA
+import numpy as np
 
 
 class CategoryTree(ub.NiceRepr):
@@ -42,6 +43,8 @@ class CategoryTree(ub.NiceRepr):
               compute the heirarchical softmax
 
         - [ ] I think its ok to keep the decision function here.
+
+        - [ ] Should we not use an implicit root by default?
 
     Example:
         >>> from ndsampler.category_tree import *
@@ -649,7 +652,7 @@ class CategoryTree(ub.NiceRepr):
             # TODO: is there a more intelligent way to do this?
             check_children = pred_conf > thresh
 
-            if np.any(check_children):
+            if impl.any(check_children):
                 # Check the children of these nodes
                 check_jdxs = jdxs[check_children]
                 check_idxs = pred_idxs[check_children]
@@ -694,10 +697,7 @@ class CategoryTree(ub.NiceRepr):
 
         Example:
             >>> from ndsampler.category_tree import *
-            >>> import torch
-            >>> import kwil
-            >>> from ndsampler import category_tree
-            >>> self = category_tree.CategoryTree.demo('btree', r=3, h=3)
+            >>> self = CategoryTree.demo('btree', r=3, h=3)
             >>> rng = kwil.ensure_rng(0)
             >>> class_energy = torch.FloatTensor(rng.rand(33, len(self)))
             >>> # Setup the first few examples to prefer being classified
@@ -719,6 +719,21 @@ class CategoryTree(ub.NiceRepr):
             >>> print('pred_conf = {!r}'.format(pred_conf))
             >>> print('pred_idxs = {!r}'.format(pred_idxs))
             >>> pred_cnames = list(ub.take(self.idx_to_node, pred_idxs))
+
+        Example:
+            >>> from ndsampler.category_tree import *
+            >>> self = CategoryTree.demo('btree', r=3, h=3)
+            >>> rng = kwil.ensure_rng(0)
+            >>> class_energy = torch.FloatTensor(rng.rand(33, len(self)))
+            >>> class_probs = self.heirarchical_softmax(class_energy, dim=-1)
+            >>> # Test ignore_class_idxs
+            >>> self.decision(class_probs, dim=1, ignore_class_idxs=[0])
+            >>> # Should not be able to ignore all top level nodes
+            >>> import pytest
+            >>> with pytest.raises(ValueError):
+            >>>     self.decision(class_probs, dim=1, ignore_class_idxs=self.idx_groups[0])
+            >>> # But it is OK to ignore all child nodes at a particular level
+            >>> self.decision(class_probs, dim=1, ignore_class_idxs=self.idx_groups[1])
         """
         if criterion == 'prob':
             return self._prob_decision(class_probs, dim, thresh=thresh)
@@ -734,9 +749,11 @@ class CategoryTree(ub.NiceRepr):
         flat_jdxs = np.arange(flat_class_probs.shape[0])
 
         if criterion == 'gini':
-            _criterion = gini
+            _criterion = functools.partial(gini, axis=dim, impl=impl)
+            # _criterion = functools.partial(gini, axis=dim)
         elif criterion == 'entropy':
-            _criterion = entropy
+            _criterion = functools.partial(entropy, axis=dim, impl=impl)
+            # _criterion = functools.partial(entropy, axis=dim)
         else:
             raise KeyError(criterion)
 
@@ -764,20 +781,15 @@ class CategoryTree(ub.NiceRepr):
             # Look at the probabilities of each node at this level
             idxs = sorted(self.node_to_idx[node] for node in nodes)
             if ignore_class_idxs:
+                ignore_nodes = set(ub.take(self.idx_to_node, ignore_class_idxs))
                 idxs = sorted(set(idxs) - set(ignore_class_idxs))
                 if len(idxs) == 0:
-                    raise AssertionError(
-                        'cannot predict left us with no alternatives')
+                    raise ValueError('Cannot ignore all top-level classes')
             probs = flat_class_probs[jdxs][:, idxs]
-            # jdxs = jdxs[probs.T[0].argsort()]
-            # probs = flat_class_probs[jdxs][:, idxs]
 
             # Choose a category to predict at this level
             pred_conf, pred_cx = impl.max_argmax(probs, axis=1)
             pred_idxs = np.array(idxs)[pred_cx]
-
-            # Compute amount of information (entropy/gini) on the parent level
-            # h_level = _criterion(probs)
 
             # Group each example which predicted the same class at this level
             group_idxs, groupxs = kwil.group_indices(pred_idxs)
@@ -785,6 +797,9 @@ class CategoryTree(ub.NiceRepr):
                 # Get the children of this node (idx)
                 node = self.idx_to_node[idx]
                 children = list(self.graph.successors(node))
+                if ignore_class_idxs:
+                    children = sorted(set(children) - ignore_nodes)
+
                 if children:
                     # Expand this node into all of its children
                     child_idxs = set(self.node_to_idx[child] for child in children)
@@ -811,8 +826,11 @@ class CategoryTree(ub.NiceRepr):
                     # In the worst case the parent probability is distributed
                     # uniformly among all of its children
                     c = len(children)
-                    child_probs_worst = np.repeat(p_parent / c, c, axis=1)
-                    expanded_probs_worst = np.hstack([ommer_probs, child_probs_worst])
+
+                    reps = [1] * len(p_parent.shape)
+                    reps[1] = c
+                    child_probs_worst = impl.tile(p_parent / c, reps)
+                    expanded_probs_worst = impl.hstack([ommer_probs, child_probs_worst])
                     # Compute the worst-case entropy after expanding the node
                     h_worst_expanded = _criterion(expanded_probs_worst)
 
@@ -837,40 +855,9 @@ class CategoryTree(ub.NiceRepr):
                             'flags': refine_flags.astype(np.uint8)
                         })
                         print(df)
-                        # print('h_expanded / h_worst_expanded =\n{}'.format(
-                        #     ub.repr2(
-                        #         np.vstack([h_expanded[None, :], h_worst_expanded[None, :]]),
-                        #         precision=2, supress_small=True)
-                        # ))
-                        # print('complexity_ratio = {!r}'.format(complexity_ratio))
-                        # print('refine_flags = {!r}'.format(refine_flags.astype(np.uint8)))
                         print('-----------')
 
-                    # if False:
-                    # group_h_level = h_level[groupx]
-                    #     # Difference in entropy is how much information you've
-                    #     # gained by moving to the next level
-                    #     information_loss = h_expanded - group_h_level
-                    #     m = expanded_probs.shape[1]
-                    #     n = probs.shape[1]
-                    #     ommer_h = _criterion(ommer_probs)
-                    #     (c / m) * np.log2(m) - ommer_h
-                    #     _criterion(np.ones(m) / m, axis=0)
-                    #     _criterion(np.ones(n) / n, axis=0)
-                    #     maximal_uncertain_entropy = -(n * (1/n * np.log2(1/n))) - -(m * (1/m * np.log2(1/m)))
-                    #     loss_norm = information_loss / maximal_uncertain_entropy
-                    #     # else:
-                    #     child_probs = flat_class_probs[group_jdxs][:, sorted(child_idxs)]
-                    #     child_condprob = child_probs / p_parent
-                    #     h_child_cond = _criterion(child_condprob)
-                    #     np.log2(c / p_parent)
-                    #     group_h_level - h_child_cond
-                    #     h_child = _criterion(child_probs)
-                    #     # Move to the next level if the information loss is under
-                    #     # the threshold
-                    #     refine_flags = information_loss < thresh
-
-                    if np.any(refine_flags):
+                    if impl.any(refine_flags):
                         refine_jdxs = group_jdxs[refine_flags]
                         refine_idxs, refine_conf = _descend2(depth + 1, children, refine_jdxs)
                         # Overwrite course decisions with refined decisions.
@@ -979,33 +966,31 @@ def from_directed_nested_tuples(encoding):
 
 def gini(probs, axis=1, impl=np):
     """
-    Approximates entropy, but faster to compute
+    Approximates Shannon Entropy, but faster to compute
 
-    probs = np.array([
-        [1, 0, 0, 0, 0],
-        [.2, .2, .2, .2, .2],
-    ])
-    probs = np.array([
-        [0, 1],
-        [.1, .9],
-        [.5, .5],
-    ])
-    gini(probs)
-    entropy(probs)
-
-    probs = np.array([[0, 1], [.1, .9], [.5, .5],])
-    entropy(probs)
-
-    probs = np.array([[0, 0, 1], [.05, .05, .9], [1/3, 1/3, 1/3],])
-    entropy(probs)
-
-    for i in range(1, 10):
-        print(entropy(np.ones(i) / i, axis=0))
+    Example:
+        >>> rng = kwil.ensure_rng(0)
+        >>> probs = torch.softmax(torch.Tensor(rng.rand(3, 10)), 1)
+        >>> gini(probs.numpy(), impl=kwil.ArrayAPI.coerce('numpy'))
+        array([0.896..., 0.890..., 0.892...
+        >>> gini(probs, impl=kwil.ArrayAPI.coerce('torch'))
+        tensor([0.896..., 0.890..., 0.892...
     """
     return 1 - impl.sum(probs ** 2, axis=axis)
 
 
 def entropy(probs, axis=1, impl=np):
+    """
+    Standard Shannon (Information Theory) Entropy
+
+    Example:
+        >>> rng = kwil.ensure_rng(0)
+        >>> probs = torch.softmax(torch.Tensor(rng.rand(3, 10)), 1)
+        >>> entropy(probs.numpy(), impl=kwil.ArrayAPI.coerce('numpy'))
+        array([3.295..., 3.251..., 3.265...
+        >>> entropy(probs, impl=kwil.ArrayAPI.coerce('torch'))
+        tensor([3.295..., 3.251..., 3.265...
+    """
     with np.errstate(divide='ignore'):
         logprobs = impl.log2(probs)
         logprobs = impl.nan_to_num(logprobs, copy=False)
