@@ -1,5 +1,7 @@
 Version 0.0.3
 -------------
+* added `index` to CategoryTree
+* Fixed CategoryTree.decision when the tree is rooted
 * Add ignore_class_idxs to CategoryTree.decision
 * Add always_refine_idxs to CategoryTree.decision
 * Fix torch incompatibility in CategoryTree.decision

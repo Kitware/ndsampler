@@ -326,6 +326,10 @@ class CategoryTree(ub.NiceRepr):
     def class_names(self):
         return self.idx_to_node
 
+    def index(self, node):
+        """ Return the index that corresponds to the category name """
+        return self.node_to_idx[node]
+
     def _build_index(self):
         """ construct lookup tables """
         # Most of the categories should have been given integer ids
