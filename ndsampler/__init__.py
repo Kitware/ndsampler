@@ -1,4 +1,4 @@
-__version__ = '0.0.3'
+__version__ = '0.0.4.dev0'
 from ndsampler import abstract_frames
 from ndsampler import abstract_sampler
 from ndsampler import category_tree
