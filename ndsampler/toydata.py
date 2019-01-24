@@ -16,7 +16,7 @@ from kwil.misc import fast_rand
 
 class DynamicToySampler(abstract_sampler.AbstractSampler):
     """
-    TODO: Generate new positive samples on the fly.
+    Generates positive and negative samples on the fly.
 
     Ignore:
         >>> from ndsampler.toydata import *
@@ -50,15 +50,17 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
         >>> kwil.show_if_requested()
     """
 
-    def __init__(self, n_positives=1e5, seed=None, gsize=(416, 416)):
-        self.categories = [
-            # 'box',
-            'circle',
-            'star',
-            'superstar',
-            # 'octagon',
-            # 'diamond'
-        ]
+    def __init__(self, n_positives=1e5, seed=None, gsize=(416, 416), categories=None):
+
+        if categories is None:
+            self.categories = [
+                # 'box',
+                'circle',
+                'star',
+                'superstar',
+                # 'octagon',
+                # 'diamond'
+            ]
         self.cname_to_cid = {
             cname: cid for cid, cname in enumerate(self.categories, start=1)
         }
@@ -78,6 +80,8 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
         self._n_positives = int(n_positives)
         self._n_images = 50
         self.seed = seed
+        # catpats = CategoryPatterns(self.categories, fg_scale=fg_scale,
+        #                            fg_intensity=fg_intensity, rng=rng)
 
     def load_item(self, index, pad=None, window_dims=None):
         """
@@ -285,7 +289,13 @@ class Rasters:
         return patch
 
 
-class CategoryPatterns:
+class CategoryPatterns(object):
+    """
+    Example:
+        >>> self = CategoryPatterns()
+        >>> chip = np.zeros((100, 100))
+        >>> self.random_category(self)
+    """
     def __init__(self, categories=None, fg_scale=0.5, fg_intensity=0.9,
                  rng=None):
         self.rng = kwil.ensure_rng(rng)
@@ -413,8 +423,11 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
     anchors = np.asarray(anchors)
 
     rng = kwil.ensure_rng(rng)
-    catpats = CategoryPatterns(categories, fg_scale=fg_scale,
-                               fg_intensity=fg_intensity, rng=rng)
+    if isinstance(categories, CategoryPatterns):
+        catpats = categories
+    else:
+        catpats = CategoryPatterns(categories, fg_scale=fg_scale,
+                                   fg_intensity=fg_intensity, rng=rng)
 
     if n_annots is None:
         n_annots = (0, 50)

@@ -97,19 +97,27 @@ class Frames(object):
             bands (str): NotImplemented
             scale (float): NotImplemented
         """
+        region = self._rectify_region(region)
+        if all(r.start is None and r.stop is None for r in region):
+            im = self.load_image(image_id, bands=bands, scale=scale,
+                                 cache=False)
+        else:
+            file = self.load_image(image_id, bands=bands, scale=scale,
+                                   cache=True)
+            im = file[region]
+        return im
+
+    def _rectify_region(self, region):
         if region is None:
             region = tuple([])
         if len(region) < 2:
             # Add empty dimensions
             tail = tuple([slice(None)] * (2 - len(region)))
             region = tuple(region) + tail
-
-        file = self.load_image(image_id, bands=bands, scale=scale)
-        im = file[region]
-        return im
+        return region
 
     @lru_cache(4)  # Keeps frequently accessed memmaps open
-    def load_image(self, image_id, bands=None, scale=0):
+    def load_image(self, image_id, bands=None, scale=0, cache=True):
         """
         Returns a memmapped reference to the entire image
         """
@@ -120,6 +128,11 @@ class Frames(object):
             raise NotImplementedError('can only handle scale=0')
 
         gpath = self._lookup_gpath(image_id)
+
+        if not cache:
+            raw_data = np.asarray(Image.open(gpath))
+            return raw_data
+
         hashid = self._lookup_hashid(image_id)
 
         mem_gname = '{}_{}.npy'.format(image_id, hashid)
