@@ -293,8 +293,13 @@ class CategoryPatterns(object):
     """
     Example:
         >>> self = CategoryPatterns()
-        >>> chip = np.zeros((100, 100))
-        >>> self.random_category(self)
+        >>> chip = np.zeros((100, 100, 3))
+        >>> name, fgdata = self.random_category(chip)
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> kwil.autompl()
+        >>> kwil.imshow(fgdata)
+        >>> kwil.show_if_requested()
+
     """
     def __init__(self, categories=None, fg_scale=0.5, fg_intensity=0.9,
                  rng=None):
@@ -303,7 +308,8 @@ class CategoryPatterns(object):
         self.fg_intensity = fg_intensity
         self.category_to_elemfunc = {
             'box': skimage.morphology.square,
-            'star': skimage.morphology.star,
+            # 'star': skimage.morphology.star,
+            'star': star,
             'circle': skimage.morphology.disk,
             'superstar': lambda x: Rasters.superstar(),
             'octagon': lambda x: skimage.morphology.octagon(x // 2, int(x / (2 * np.sqrt(2)))),
@@ -346,12 +352,56 @@ class CategoryPatterns(object):
         return data
 
 
+def star(a, dtype=np.uint8):
+    """Generates a star shaped structuring element.
+
+    Much faster than skimage.morphology version
+    """
+
+    if a == 1:
+        bfilter = np.zeros((3, 3), dtype)
+        bfilter[:] = 1
+        return bfilter
+
+    m = 2 * a + 1
+    n = a // 2
+    selem_square = np.zeros((m + 2 * n, m + 2 * n), dtype=np.uint8)
+    selem_square[n: m + n, n: m + n] = 1
+
+    c = (m + 2 * n - 1) // 2
+    if 1:
+        # We can do this much faster with opencv
+        b = (m + 2 * n) - 1
+        vertices = np.array([
+            [0, c],
+            [c, 0],
+            [b, c],
+            [c, b],
+            [0, c],
+        ])
+        import cv2
+        pts = vertices.astype(np.int)[:, None, :]
+        mask = np.zeros_like(selem_square)
+        mask = cv2.fillConvexPoly(mask, pts, color=1)
+        selem_rotated = mask
+    else:
+        from skimage.morphology.convex_hull import convex_hull_image
+        selem_rotated = np.zeros((m + 2 * n, m + 2 * n), dtype=np.float32)
+        selem_rotated[0, c] = selem_rotated[-1, c] = 1
+        selem_rotated[c, 0] = selem_rotated[c, -1] = 1
+        selem_rotated = convex_hull_image(selem_rotated).astype(int)
+
+    selem = np.add(selem_square, selem_rotated, out=selem_square)
+    selem[selem > 0] = 1
+
+    return selem.astype(dtype)
+
+
 @kwil.profile
 def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
                      n_annots=(0, 50), fg_scale=0.5, bg_scale=0.8,
-                     bg_intensity=0.1,
-                     fg_intensity=0.9,
-                     centerobj=None, exact=False, rng=None):
+                     bg_intensity=0.1, fg_intensity=0.9,
+                     gray=True, centerobj=None, exact=False, rng=None):
     """
     Generate a single image with non-overlapping toy objects of available
     categories.
@@ -423,7 +473,7 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
     anchors = np.asarray(anchors)
 
     rng = kwil.ensure_rng(rng)
-    if isinstance(categories, CategoryPatterns):
+    if isinstance(categories, CategoryPatterns) or hasattr(categories, '_catlist'):
         catpats = categories
     else:
         catpats = CategoryPatterns(categories, fg_scale=fg_scale,
@@ -469,18 +519,17 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
     box_priority = np.arange(boxes.shape[0])[::-1].astype(np.float32)
     boxes.ious(boxes)
 
-    tlbr_data = boxes.to_tlbr().data
-
-    try:
-        keep = kwil.non_max_supression(
-            tlbr_data, scores=box_priority, thresh=0.0, impl='cpu')
-    except KeyError:
-        import warnings
-        warnings.warn('missing cpu impl, trying numpy')
-        keep = kwil.non_max_supression(
-            tlbr_data, scores=box_priority, thresh=0.0, impl='py')
-
-    boxes = boxes[keep]
+    if len(boxes) > 1:
+        tlbr_data = boxes.to_tlbr().data
+        try:
+            keep = kwil.non_max_supression(
+                tlbr_data, scores=box_priority, thresh=0.0, impl='cpu')
+        except KeyError:
+            import warnings
+            warnings.warn('missing cpu impl, trying numpy')
+            keep = kwil.non_max_supression(
+                tlbr_data, scores=box_priority, thresh=0.0, impl='py')
+        boxes = boxes[keep]
 
     if centerobj == 'neg':
         # The center of the image should be negative so remove the center box
@@ -492,9 +541,17 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
     gw, gh = gsize
 
     # This is 2x as fast for gsize=(300,300)
-    gshape = (gh, gw, 1)
-    imdata = fast_rand.standard_normal(gshape, mean=bg_intensity, std=bg_scale,
-                                       rng=rng, dtype=np.float32)
+    if gray:
+        gshape = (gh, gw, 1)
+        imdata = fast_rand.standard_normal(gshape, mean=bg_intensity, std=bg_scale,
+                                           rng=rng, dtype=np.float32)
+    else:
+        gshape = (gh, gw, 3)
+        # imdata = fast_rand.standard_normal(gshape, mean=bg_intensity, std=bg_scale,
+        #                                    rng=rng, dtype=np.float32)
+        # hack because 3 channels is slower
+        imdata = fast_rand.uniform(0, 1, gshape, rng=rng, dtype=np.float32)
+
     np.clip(imdata, 0, 1, out=imdata)
 
     catnames = []
@@ -502,8 +559,11 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
         chip_index = tuple([slice(tl_y, br_y), slice(tl_x, br_x)])
         chip = imdata[chip_index]
         catname, fgdata = catpats.random_category(chip)
+        if gray:
+            fgdata = fgdata.mean(axis=2, keepdims=True)
+
         catnames.append(catname)
-        imdata[tl_y:br_y, tl_x:br_x, :] = fgdata.mean(axis=2, keepdims=True)
+        imdata[tl_y:br_y, tl_x:br_x, :] = fgdata
 
     if 0:
         imdata.mean(axis=2, out=imdata[:, :, 0])

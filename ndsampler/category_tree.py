@@ -717,7 +717,6 @@ class CategoryTree(ub.NiceRepr):
         pred_idxs, pred_conf = _descend(0, nodes, jdxs)
         return pred_idxs, pred_conf
 
-    @kwil.profile
     def decision(self, class_probs, dim, thresh=0.5, criterion='gini',
                  ignore_class_idxs=None, always_refine_idxs=None):
         """
