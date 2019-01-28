@@ -304,6 +304,9 @@ class CategoryTree(ub.NiceRepr):
             >>> assert recon.__json__() == self.__json__()
         """
         state = self.__dict__.copy()
+        for key in list(state.keys()):
+            if key.startswith('_cache'):
+                state.pop(key)
         state['graph'] = to_directed_nested_tuples(self.graph)
         return state
 
