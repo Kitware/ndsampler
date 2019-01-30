@@ -119,6 +119,10 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
         self.BACKGROUND_CLASS_ID = self.catgraph.node_to_id.get('background', 0)
 
     @property
+    def classes(self):
+        return self.catgraph
+
+    @property
     def n_negatives(self):
         return len(self._negative_pool) if self._negative_pool is not None else 0
 
@@ -181,8 +185,8 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
         _hashid = getattr(self.dset, 'hashid', None)
         if _hashid is None:
             if self.verbose > 1:
-                print('Constructing regions hashid')
-            self.dset._build_hashid()
+                print('Constructing regions hashid (ignoring pixel data)')
+            self.dset._build_hashid(hash_pixels=False)
             _hashid = getattr(self.dset, 'hashid', None)
         return _hashid, None
 

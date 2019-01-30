@@ -74,6 +74,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         self.catgraph = self.regions.catgraph
         self.BACKGROUND_CLASS_ID = self.regions.BACKGROUND_CLASS_ID  # currently hacked in
 
+    @property
+    def classes(self):
+        return self.catgraph
+
     def _depends(self):
         hashid_parts = ub.odict()
         hashid_parts['regions_hashid'] = self.regions.hashid
