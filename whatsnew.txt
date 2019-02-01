@@ -1,5 +1,6 @@
 Version 0.0.3
 -------------
+* CategoryTree now prefers coerce over cast
 * added `index` to CategoryTree
 * Fixed CategoryTree.decision when the tree is rooted
 * Add ignore_class_idxs to CategoryTree.decision

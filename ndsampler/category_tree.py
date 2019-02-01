@@ -112,9 +112,9 @@ class CategoryTree(ub.NiceRepr):
         return self
 
     @classmethod
-    def cast(cls, data):
+    def coerce(cls, data):
         """
-        Attempt to cast data as a CategoryTree object.
+        Attempt to coerce data as a CategoryTree object.
 
         This is primarilly useful for when the software stack depends on
         categories being represnet
@@ -151,6 +151,10 @@ class CategoryTree(ub.NiceRepr):
         else:
             raise TypeError('Unknown type {}: {!r}'.format(type(data), data))
         return self
+
+    @classmethod
+    def cast(cls, data):
+        return cls.coerce(data)
 
     @ub.memoize_method
     def id_to_idx(self):
