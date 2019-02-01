@@ -99,10 +99,18 @@ class CategoryTree(ub.NiceRepr):
             >>> print(CategoryTree.from_mutex(['a', 'b', 'c']))
             <CategoryTree(nNodes=3, maxDepth=1, maxBreadth=3)>
         """
+        nodes = list(nodes)
         graph = nx.DiGraph()
         graph.add_nodes_from(nodes)
+        start = 0
         if 'background' in graph.nodes:
+            # hack
             graph.node['background']['id'] = 0
+            start = 1
+
+        for i, node in enumerate(nodes, start=start):
+            graph.node[node]['id'] = graph.node[node].get('id', i)
+
         return cls(graph)
 
     @classmethod
