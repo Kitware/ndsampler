@@ -333,6 +333,19 @@ class CategoryTree(ub.NiceRepr):
             max(it.chain([0], map(len, self.idx_groups))),
         )
 
+    def is_mutex(self):
+        """
+        Returns True if all categories are mutually exclusive (i.e. flat)
+
+        If true, then the classes may be represented as a simple list of class
+        names without any loss of information, otherwise the underlying
+        category graph is necessary to preserve all knowledge.
+
+        TODO:
+            - [ ] what happens when we have a dummy root?
+        """
+        return len(self.graph.edges) == 0
+
     @property
     def num_classes(self):
         return self.graph.number_of_nodes()
