@@ -34,19 +34,14 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
     CommandLine:
         xdoctest -m ndsampler.toydata DynamicToySampler --show
 
-    Ignore:
+    Example:
         >>> # Test that this sampler works with the dataset
         >>> from ndsampler.toydata import *
-        >>> from ovharn import mc_dataset
         >>> self = DynamicToySampler(1e3)
-        >>> #dset = ov_dataset.OV_Dataset(self, window_dims=(96, 96), neg_to_pos_ratio=1, augment=True, training=True)
-        >>> dset = mc_dataset.MC_Dataset(self, window_dims=(172, 172),
-        >>>                              augment='complex', training=True)
-        >>> dset.preselect()
-        >>> dset[0]
-        >>> dset[self.n_positives + 1]
+        >>> imgs = [self.load_positive()['im'] for _ in range(9)]
         >>> # xdoctest: +REQUIRES(--show)
-        >>> dset.display_datas(n=9, _raw_sseg=True)
+        >>> stacked = kwil.stack_images_grid(imgs, overlap=-10)
+        >>> kwil.imshow(stacked)
         >>> kwil.show_if_requested()
     """
 
