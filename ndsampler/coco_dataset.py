@@ -448,6 +448,7 @@ class MixinCocoExtras(object):
         Example:
             >>> self = CocoDataset.demo()
             >>> self._build_hashid(hash_pixels=True, verbose=3)
+            ...
             >>> print('self.hashid_parts = ' + ub.repr2(self.hashid_parts))
             >>> print('self.hashid = {!r}'.format(self.hashid))
             self.hashid_parts = {
@@ -457,7 +458,7 @@ class MixinCocoExtras(object):
                 },
                 'images': {
                     'pixels': '67d741fefc8...',
-                    'json': '5585267fbca48...',
+                    'json': 'd52eeb0c4...',
                     'num': 3,
                 },
                 'categories': {
@@ -465,7 +466,7 @@ class MixinCocoExtras(object):
                     'num': 7,
                 },
             }
-            self.hashid = 049a189...
+            self.hashid = 'b45256273...
 
         Doctest:
             >>> self = CocoDataset.demo()
@@ -500,7 +501,7 @@ class MixinCocoExtras(object):
 
         gids = None
         if hash_pixels:
-            if hashid_parts['images'].get('pixels', None):
+            if not hashid_parts['images'].get('pixels', None):
                 gids = sorted(self.imgs.keys())
                 gpaths = [join(self.img_root, gname)
                           for gname in self.images(gids)._lookup('file_name')]
@@ -649,8 +650,6 @@ class MixinCocoExtras(object):
             >>> graph = self.category_graph()
 
             import graphid
-            import kwil
-            kwil.autompl()
             graphid.util.show_nx(graph)
         """
         import networkx as nx
@@ -964,10 +963,6 @@ class MixinCocoDraw(object):
             aids (list): aids to highlight within the image
             aid (int): a specific aid to focus on. If gid is not give,
                 look up gid based on this aid.
-
-        Ignore:
-            >>> import kwil
-            >>> kwil.autompl()
         """
         import matplotlib as mpl
         from matplotlib import pyplot as plt
@@ -1093,7 +1088,6 @@ class MixinCocoAddRemove(object):
         self._invalidate_hashid()
         return gid
 
-    @kwil.profile
     def add_annotation(self, gid, cid, bbox=None, aid=None, **kw):
         """
         Add an annotation to the dataset (dynamically updates the index)
@@ -1132,7 +1126,6 @@ class MixinCocoAddRemove(object):
         self._invalidate_hashid(['annotations'])
         return aid
 
-    @kwil.profile
     def add_annotations(self, anns):
         """
         Faster less-safe multi-item alternative
@@ -1152,7 +1145,6 @@ class MixinCocoAddRemove(object):
         self.index._add_annotations(anns)
         self._invalidate_hashid(['annotations'])
 
-    @kwil.profile
     def add_images(self, imgs):
         """
         Faster less-safe multi-item alternative
@@ -1657,14 +1649,18 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
             data = json.load(open(fpath, 'r'))
             if tag is None:
                 tag = key
-            if img_root is None:
-                img_root = join('.', key)
+            # if img_root is None:
+            #     img_root = join('.', key)
         else:
             if not isinstance(data, dict):
                 raise TypeError('data must be a dict or path to json file')
 
         if img_root is None:
-            img_root = '.'
+            if 'img_root' in data:
+                # allow image root to be specified in the dataset
+                img_root = data['img_root']
+            else:
+                img_root = '.'
 
         self.index = CocoIndex()
 
@@ -2049,7 +2045,17 @@ def demo_coco_data():
     # gpath2 = ub.grabdata('https://i.imgur.com/flTHWFD.png')
     # gpath3 = ub.grabdata('https://i.imgur.com/kCi7C1r.png')
 
+    from os.path import commonprefix, relpath
+    img_root = commonprefix([gpath1, gpath2, gpath3])
+
+    # Make file names relative for consistent testing purpose
+    gname1 = relpath(gpath1, img_root)
+    gname2 = relpath(gpath2, img_root)
+    gname3 = relpath(gpath3, img_root)
+
     dataset = {
+        'img_root': img_root,
+
         'categories': [
             {'id': 1, 'name': 'astronaut', 'supercategory': 'human'},
             {'id': 2, 'name': 'rocket', 'supercategory': 'object'},
@@ -2060,9 +2066,9 @@ def demo_coco_data():
             {'id': 7, 'name': 'astroturf', 'supercategory': 'object'},
         ],
         'images': [
-            {'id': 1, 'file_name': gpath1},
-            {'id': 2, 'file_name': gpath2},
-            {'id': 3, 'file_name': gpath3},
+            {'id': 1, 'file_name': gname1},
+            {'id': 2, 'file_name': gname2},
+            {'id': 3, 'file_name': gname3},
         ],
         'annotations': [
             {'id': 1, 'image_id': 1, 'category_id': 1,
