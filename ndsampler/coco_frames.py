@@ -60,7 +60,7 @@ class CocoFrames(abstract_frames.Frames, util.HashIdentifiable):
         elif all(r.start in [0, None] for r in region):
             img = self.dset.imgs[image_id]
             flag = region[0].stop in [None, img['height']]
-            flag |= region[1].stop in [None, img['width']]
+            flag &= region[1].stop in [None, img['width']]
             if flag:
                 region = None  # setting region to None disables memmap caching
         return super(CocoFrames, self).load_region(image_id, region)
