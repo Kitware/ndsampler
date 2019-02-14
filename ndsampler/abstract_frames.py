@@ -8,7 +8,7 @@ import tempfile
 import ubelt as ub
 # import lockfile
 # https://stackoverflow.com/questions/489861/locking-a-file-in-python
-import fasteners  # supercedes lockfile?
+import fasteners  # supercedes lockfile / oslo_concurrency?
 import six
 
 import warnings
@@ -57,7 +57,7 @@ class Frames(object):
         Returns the path where cached frame representations will be stored
         """
         if self._cache_dpath is None:
-            self._cache_dpath = ub.ensuredir(join(self.workdir, 'frames_cache'))
+            self._cache_dpath = ub.ensuredir(join(self.workdir, '_cache/frames'))
         return self._cache_dpath
 
     def _lookup_gpath(self, image_id):
@@ -179,36 +179,81 @@ class Frames(object):
                 print('exists(mem_gpath) = {!r}'.format(exists(mem_gpath)))
                 print('\n\n')
                 raise
-            return file
+        return file
 
     @staticmethod
     def ensure_npy_representation(gpath, mem_gpath):
         """
         Ensures that mem_gpath exists in a multiprocessing-safe way
         """
+        import multiprocessing
+
+        lock_fpath = mem_gpath + '.lock'
+
+        DEBUG = 0
+
+        if DEBUG:
+            procid = multiprocessing.current_process()
+            def _debug(msg):
+                with open(lock_fpath + '.debug', 'a') as f:
+                    f.write(msg + '\n')
+            _debug(lock_fpath)
+            _debug('{} attempts aquire'.format(procid))
+
         # Ensure that another process doesn't write to the same image
         # FIXME: lockfiles may not be cleaned up gracefully
-        # with lockfile.LockFile(mem_gpath):
-        # with oslo_concurrency.lock(mem_gpath, external=True):
-
         # See: https://github.com/harlowja/fasteners/issues/26
         lock_fpath = mem_gpath + '.lock'
         with fasteners.InterProcessLock(lock_fpath):
+
+            if DEBUG:
+                _debug('{} aquires'.format(procid))
+
             if not exists(mem_gpath):
                 # Load all the image data and dump it to npy format
                 raw_data = np.asarray(Image.open(gpath))
-                tmp = tempfile.NamedTemporaryFile(delete=False)
-                try:
-                    # Use temporary files to avoid partially written data
-                    np.save(tmp, raw_data)
-                    tmp.close()
-                    shutil.move(tmp.name, mem_gpath)
-                finally:
-                    tmp.close()
-                    if exists(tmp.name):
-                        os.remove(tmp.name)
+
+                # Even with the file-lock and atomic save there is still a race
+                # condition somewhere. Not esure what it is.
+                _semi_atomic_numpy_save(mem_gpath, raw_data)
+
+                if DEBUG:
+                    _debug('{} wrote'.format(procid))
+            else:
+                if DEBUG:
+                    _debug('{} does not need to write'.format(procid))
+
+            if DEBUG:
+                _debug('{} releasing'.format(procid))
+
+        if DEBUG:
+            _debug('{} released'.format(procid))
 
     _load_subregion = load_region
+
+
+def _semi_atomic_numpy_save(fpath, data):
+    """
+    Save to a temporary file. Then move to `fpath` using an atomic operation.
+
+    If the file that is being saved to is on the same file system the move
+    operation is atomic, otherwise it may not be [1].
+
+    References:
+        ..[1] https://stackoverflow.com/questions/3716325/is-shutil-move-atomic
+    """
+    tmp = tempfile.NamedTemporaryFile(delete=False)
+    try:
+        # Use temporary files to avoid partially written data
+        np.save(tmp, data)
+        tmp.close()
+        # Use an atomic operation (if possible) to move the temporary saved
+        # file to the target location.
+        shutil.move(tmp.name, fpath)
+    finally:
+        tmp.close()
+        if exists(tmp.name):
+            os.remove(tmp.name)
 
 
 class SimpleFrames(Frames):
