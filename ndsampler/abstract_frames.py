@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
+import itertools as it
 import numpy as np
 import os
 import shutil
@@ -140,30 +141,35 @@ class Frames(object):
         if not exists(mem_gpath):
             self.ensure_npy_representation(gpath, mem_gpath)
 
-        # FIXME;
-        # There seems to be a race condition that triggers the error:
-        # ValueError: mmap length is greater than file size
-
+        # I can't figure out why a race condition exists here.  I can't
+        # reproduce it with a small example. In the meantime, this hack should
+        # mitigate the problem by simply trying again until it works.
         HACKY_RACE_CONDITION_FIX = True
         if HACKY_RACE_CONDITION_FIX:
-            while True:
+            for try_num in it.count():
                 try:
                     file = np.load(mem_gpath, mmap_mode='r')
                 except ValueError:
                     print('\n\n')
-                    print('ERROR')
+                    print('ERROR: FAILED TO LOAD CACHED FILE')
                     print('mem_gpath = {!r}'.format(mem_gpath))
                     print('exists(mem_gpath) = {!r}'.format(exists(mem_gpath)))
-                    print('HACKY Retrying')
+                    print('Recompute cache: Try number {}'.format(try_num))
                     print('\n\n')
+                    if try_num > 9000:
+                        # Something really bad must be happening, stop trying
+                        raise
                     try:
                         os.remove(mem_gpath)
                     except Exception:
-                        print('CANT REMOVE AGGHH!!')
+                        print('WARNING: CANNOT REMOVE CACHED FRAME.')
                     self.ensure_npy_representation(gpath, mem_gpath)
                 else:
                     break
         else:
+            # FIXME;
+            # There seems to be a race condition that triggers the error:
+            # ValueError: mmap length is greater than file size
             try:
                 file = np.load(mem_gpath, mmap_mode='r')
             except ValueError:
