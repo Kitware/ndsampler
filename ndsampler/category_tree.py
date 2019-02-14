@@ -648,6 +648,8 @@ class CategoryTree(ub.NiceRepr):
             >>> from ndsampler import category_tree
             >>> self = category_tree.CategoryTree.demo()
             >>> self.show()
+
+            python -c "import kwil, ndsampler, graphid; kwil.autompl(); graphid.util.show_nx(ndsampler.category_tree.CategoryTree.demo().graph); kwil.show_if_requested()" --show
         """
         try:
             pos = nx.drawing.nx_agraph.graphviz_layout(self.graph, prog='dot')

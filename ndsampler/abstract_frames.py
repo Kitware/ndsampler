@@ -143,16 +143,37 @@ class Frames(object):
         # FIXME;
         # There seems to be a race condition that triggers the error:
         # ValueError: mmap length is greater than file size
-        try:
-            file = np.load(mem_gpath, mmap_mode='r')
-        except ValueError:
-            print('\n\n')
-            print('ERROR')
-            print('mem_gpath = {!r}'.format(mem_gpath))
-            print('exists(mem_gpath) = {!r}'.format(exists(mem_gpath)))
-            print('\n\n')
-            raise
-        return file
+
+        HACKY_RACE_CONDITION_FIX = True
+        if HACKY_RACE_CONDITION_FIX:
+            while True:
+                try:
+                    file = np.load(mem_gpath, mmap_mode='r')
+                except ValueError:
+                    print('\n\n')
+                    print('ERROR')
+                    print('mem_gpath = {!r}'.format(mem_gpath))
+                    print('exists(mem_gpath) = {!r}'.format(exists(mem_gpath)))
+                    print('HACKY Retrying')
+                    print('\n\n')
+                    try:
+                        os.remove(mem_gpath)
+                    except Exception:
+                        print('CANT REMOVE AGGHH!!')
+                    self.ensure_npy_representation(gpath, mem_gpath)
+                else:
+                    break
+        else:
+            try:
+                file = np.load(mem_gpath, mmap_mode='r')
+            except ValueError:
+                print('\n\n')
+                print('ERROR')
+                print('mem_gpath = {!r}'.format(mem_gpath))
+                print('exists(mem_gpath) = {!r}'.format(exists(mem_gpath)))
+                print('\n\n')
+                raise
+            return file
 
     @staticmethod
     def ensure_npy_representation(gpath, mem_gpath):
@@ -163,7 +184,10 @@ class Frames(object):
         # FIXME: lockfiles may not be cleaned up gracefully
         # with lockfile.LockFile(mem_gpath):
         # with oslo_concurrency.lock(mem_gpath, external=True):
-        with fasteners.InterProcessLock(mem_gpath + '.lock'):
+
+        # See: https://github.com/harlowja/fasteners/issues/26
+        lock_fpath = mem_gpath + '.lock'
+        with fasteners.InterProcessLock(lock_fpath):
             if not exists(mem_gpath):
                 # Load all the image data and dump it to npy format
                 raw_data = np.asarray(Image.open(gpath))
