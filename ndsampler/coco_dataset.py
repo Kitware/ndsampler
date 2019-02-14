@@ -1010,16 +1010,16 @@ class MixinCocoDraw(object):
             texts.append((x1, y1, catname, textkw))
 
             color = 'orange' if aid in highlight_aids else 'blue'
-            if 'bbox' in ann:
-                [x, y, w, h] = ann['bbox']
-                rect = mpl.patches.Rectangle((x, y), w, h, facecolor='none',
-                                             edgecolor=color)
-                rects.append(rect)
             if 'obox' in ann:
                 # Oriented bounding box
                 segs = np.array(ann['obox']).reshape(-1, 3)[:, 0:2]
                 for pt1, pt2 in ub.iter_window(segs, wrap=True):
                     colored_segments[color].append([pt1, pt2])
+            elif 'bbox' in ann:
+                [x, y, w, h] = ann['bbox']
+                rect = mpl.patches.Rectangle((x, y), w, h, facecolor='none',
+                                             edgecolor=color)
+                rects.append(rect)
             if 'line' in ann:
                 x1, y1, x2, y2 = ann['line']
                 pt1, pt2 = (x1, y1), (x2, y2)
