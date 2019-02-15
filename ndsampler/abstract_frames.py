@@ -149,7 +149,7 @@ class Frames(object):
             for try_num in it.count():
                 try:
                     file = np.load(mem_gpath, mmap_mode='r')
-                except ValueError:
+                except Exception:
                     print('\n\n')
                     print('ERROR: FAILED TO LOAD CACHED FILE')
                     print('mem_gpath = {!r}'.format(mem_gpath))
