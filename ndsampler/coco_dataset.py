@@ -1690,7 +1690,7 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
 
         self.tag = tag
         self.dataset = data
-        self.img_root = img_root
+        self.img_root = ub.expandpath(img_root)
 
         # Keep track of an unused id we may use
         self._next_ids = _NextId(self)
