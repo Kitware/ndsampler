@@ -23,12 +23,33 @@ Dataset Spec:
                 'image_id': int,
                 'category_id': int,
                 'bbox': [tl_x, tl_y, w, h],  # optional (xywh format)
+                'segmentation': <RunLengthEncoding>
             },
             ...
         ],
         'licenses': [],
         'info': [],
     }
+
+    RunLengthEncoding:
+        This is not yet fully supported. The official CocoAPI has some
+        efficient C functions for dealing with these that we should
+        port over and clean up.
+
+        See: https://github.com/nightrome/cocostuffapi/blob/master/PythonAPI/pycocotools/mask.py
+
+        For pure python implementations see kwil:
+            Converting from an image to RLE can be done via kwil.run_length_encoding
+            Converting from RLE back to an image can be done via:
+                kwil.decode_run_length
+
+            For compatibility with the COCO specs ensure the binary flags
+            for these functions are set to true.
+
+
+References:
+    http://cocodataset.org/#format-data
+
 
 Extras:
     We allow each annotation to specify a fine_category_id which specifies the
