@@ -57,6 +57,7 @@ Extras:
     categories are tree-structures.
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
+from os.path import dirname
 import warnings
 from os.path import splitext
 from os.path import basename
@@ -1664,24 +1665,31 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
                 'licenses': [],
                 'info': [],
             }
+
         if isinstance(data, six.string_types):
             fpath = data
             key = basename(fpath).split('.')[0]
             data = json.load(open(fpath, 'r'))
+
+            # If data is a path it gives us the absolute location of the root
+            root = dirname(fpath)
             if tag is None:
                 tag = key
             # if img_root is None:
             #     img_root = join('.', key)
         else:
+            # If data is a dict, we dont know where the root is, so assume its
+            # relative to the cwd.
+            root = '.'
             if not isinstance(data, dict):
                 raise TypeError('data must be a dict or path to json file')
 
         if img_root is None:
             if 'img_root' in data:
                 # allow image root to be specified in the dataset
-                img_root = data['img_root']
+                img_root = join(root, data['img_root'])
             else:
-                img_root = '.'
+                img_root = root
 
         self.index = CocoIndex()
 

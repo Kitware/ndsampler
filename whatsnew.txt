@@ -1,15 +1,15 @@
-Version 0.0.3
+Version 0.0.4
 -------------
 * Add a hacky fix for a race condition in AbstractFrames. We should try to fix this more robustly.
+* Rework construction of CocoDataset.hashid
+* Invalidate the CocoDataset.hashid on modification
+* Fix issue with modifying CocoDataset subsets
 * CategoryTree now prefers coerce over cast
 * added `index` to CategoryTree
 * Fixed CategoryTree.decision when the tree is rooted
 * Add ignore_class_idxs to CategoryTree.decision
 * Add always_refine_idxs to CategoryTree.decision
 * Fix torch incompatibility in CategoryTree.decision
-* Rework construction of CocoDataset.hashid
-* Invalidate the CocoDataset.hashid on modification
-* Fix issue with modifying subsets
 
 
 Version 0.0.2
