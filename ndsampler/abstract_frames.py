@@ -215,7 +215,7 @@ class Frames(object):
                 raw_data = np.asarray(Image.open(gpath))
 
                 # Even with the file-lock and atomic save there is still a race
-                # condition somewhere. Not esure what it is.
+                # condition somewhere. Not sure what it is.
                 # _semi_atomic_numpy_save(mem_gpath, raw_data)
 
                 with atomicwrites.atomic_write(mem_gpath, mode='wb', overwrite=True) as file:
