@@ -12,6 +12,8 @@ scipy
 kwil >= 0.2.1
 
 fasteners
+atomicwrites
+
 
 # opencv?
 # scikit-image?

@@ -3,12 +3,13 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import itertools as it
 import numpy as np
 import os
-import shutil
-import tempfile
+# import shutil
+# import tempfile
 import ubelt as ub
 # import lockfile
 # https://stackoverflow.com/questions/489861/locking-a-file-in-python
 import fasteners  # supercedes lockfile / oslo_concurrency?
+import atomicwrites
 import six
 
 import warnings
@@ -215,7 +216,10 @@ class Frames(object):
 
                 # Even with the file-lock and atomic save there is still a race
                 # condition somewhere. Not esure what it is.
-                _semi_atomic_numpy_save(mem_gpath, raw_data)
+                # _semi_atomic_numpy_save(mem_gpath, raw_data)
+
+                with atomicwrites.atomic_write(mem_gpath, mode='wb', overwrite=True) as file:
+                    np.save(file, raw_data)
 
                 if DEBUG:
                     _debug('{} wrote'.format(procid))
@@ -232,28 +236,30 @@ class Frames(object):
     _load_subregion = load_region
 
 
-def _semi_atomic_numpy_save(fpath, data):
-    """
-    Save to a temporary file. Then move to `fpath` using an atomic operation.
+# def _semi_atomic_numpy_save(fpath, data):
+#     """
+#     Save to a temporary file. Then move to `fpath` using an atomic operation.
 
-    If the file that is being saved to is on the same file system the move
-    operation is atomic, otherwise it may not be [1].
+#     If the file that is being saved to is on the same file system the move
+#     operation is atomic, otherwise it may not be [1].
 
-    References:
-        ..[1] https://stackoverflow.com/questions/3716325/is-shutil-move-atomic
-    """
-    tmp = tempfile.NamedTemporaryFile(delete=False)
-    try:
-        # Use temporary files to avoid partially written data
-        np.save(tmp, data)
-        tmp.close()
-        # Use an atomic operation (if possible) to move the temporary saved
-        # file to the target location.
-        shutil.move(tmp.name, fpath)
-    finally:
-        tmp.close()
-        if exists(tmp.name):
-            os.remove(tmp.name)
+#     References:
+#         ..[1] https://stackoverflow.com/questions/3716325/is-shutil-move-atomic
+#     """
+
+#     # TODO: use atomicwrites instead
+#     tmp = tempfile.NamedTemporaryFile(delete=False)
+#     try:
+#         # Use temporary files to avoid partially written data
+#         np.save(tmp, data)
+#         tmp.close()
+#         # Use an atomic operation (if possible) to move the temporary saved
+#         # file to the target location.
+#         shutil.move(tmp.name, fpath)
+#     finally:
+#         tmp.close()
+#         if exists(tmp.name):
+#             os.remove(tmp.name)
 
 
 class SimpleFrames(Frames):
