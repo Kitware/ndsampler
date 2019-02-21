@@ -1,3 +1,8 @@
+Version 0.1.0
+-------------
+* Renamed arguments to add_image, add_annotation, and add_category to be consistent with data internals
+
+
 Version 0.0.4
 -------------
 * Add a hacky fix for a race condition in AbstractFrames. We should try to fix this more robustly.

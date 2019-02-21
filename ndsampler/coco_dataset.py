@@ -609,7 +609,8 @@ class MixinCocoExtras(object):
             >>> assert self.imgs[2]['width'] == 300
             >>> assert self.imgs[3]['width'] == 256
         """
-        if any('width' not in img for img in self.dataset['images']):
+        if any('width' not in img or 'height' not in img
+               for img in self.dataset['images']):
             from PIL import Image
             if self.tag:
                 desc = 'populate imgsize for ' + self.tag
@@ -826,7 +827,7 @@ class MixinCocoAttrs(object):
             <Annots(num=11)>
         """
         if aids is None and gid is not None:
-            aids = self.gid_to_aids[gid]
+            aids = sorted(self.gid_to_aids[gid])
         if aids is None:
             aids = sorted(self.anns.keys())
         return Annots(aids, self)
@@ -1082,13 +1083,13 @@ class MixinCocoAddRemove(object):
     categories while maintaining lookup indexes.
     """
 
-    def add_image(self, gname, gid=None, **kw):
+    def add_image(self, file_name, id=None, **kw):
         """
         Add an image to the dataset (dynamically updates the index)
 
         Args:
-            gname (str): image name
-            gid (None or int): ADVANCED. Force using this image id.
+            file_name (str): image name
+            id (None or int): ADVANCED. Force using this image id.
 
         Example:
             >>> self = CocoDataset.demo()
@@ -1096,57 +1097,57 @@ class MixinCocoAddRemove(object):
             >>> gid = self.add_image(gname)
             >>> assert self.imgs[gid]['file_name'] == gname
         """
-        if gid is None:
-            gid = self._next_ids.get('gid')
-        elif self.imgs and gid in self.imgs:
-            raise IndexError('Image id={} already exists'.format(gid))
+        if id is None:
+            id = self._next_ids.get('gid')
+        elif self.imgs and id in self.imgs:
+            raise IndexError('Image id={} already exists'.format(id))
 
         img = _dict()
-        img['id'] = int(gid)
-        img['file_name'] = str(gname)
+        img['id'] = int(id)
+        img['file_name'] = str(file_name)
         img.update(**kw)
         self.dataset['images'].append(img)
-        self.index._add_image(gid, img)
+        self.index._add_image(id, img)
         self._invalidate_hashid()
-        return gid
+        return id
 
-    def add_annotation(self, gid, cid, bbox=None, aid=None, **kw):
+    def add_annotation(self, image_id, category_id, bbox=None, id=None, **kw):
         """
         Add an annotation to the dataset (dynamically updates the index)
 
         Args:
-            gid (int): image_id to add to
-            cid (int): category_id to add to
+            image_id (int): image_id to add to
+            category_id (int): category_id to add to
             bbox (list or kwil.Boxes): bounding box in xywh format
-            aid (None or int): ADVANCED. Force using this annotation id.
+            id (None or int): ADVANCED. Force using this annotation id.
 
         Example:
             >>> self = CocoDataset.demo()
-            >>> gid = 1
+            >>> image_id = 1
             >>> cid = 1
             >>> bbox = [10, 10, 20, 20]
-            >>> aid = self.add_annotation(gid, cid, bbox)
+            >>> aid = self.add_annotation(image_id, cid, bbox)
             >>> assert self.anns[aid]['bbox'] == bbox
         """
-        if aid is None:
-            aid = self._next_ids.get('aid')
-        elif self.anns and aid in self.anns:
-            raise IndexError('Annot id={} already exists'.format(aid))
+        if id is None:
+            id = self._next_ids.get('aid')
+        elif self.anns and id in self.anns:
+            raise IndexError('Annot id={} already exists'.format(id))
 
         ann = _dict()
-        ann['id'] = int(aid)
-        ann['image_id'] = int(gid)
-        ann['category_id'] = int(cid)
-        if bbox:
+        ann['id'] = int(id)
+        ann['image_id'] = int(image_id)
+        ann['category_id'] = int(category_id)
+        if bbox is not None:
             if isinstance(bbox, kwil.Boxes):
                 bbox = bbox.to_xywh().data.tolist()
             ann['bbox'] = bbox
         # assert not set(kw).intersection(set(ann))
         ann.update(**kw)
         self.dataset['annotations'].append(ann)
-        self.index._add_annotation(aid, gid, cid, ann)
+        self.index._add_annotation(id, image_id, category_id, ann)
         self._invalidate_hashid(['annotations'])
-        return aid
+        return id
 
     def add_annotations(self, anns):
         """
@@ -1184,14 +1185,14 @@ class MixinCocoAddRemove(object):
         self.index._add_images(imgs)
         self._invalidate_hashid(['images'])
 
-    def add_category(self, name, supercategory=None, cid=None):
+    def add_category(self, name, supercategory=None, id=None):
         """
         Adds a category
 
         Args:
             name (str): name of the new category
             supercategory (str, optional): parent of this category
-            cid (int, optional): use this category id, if it was not taken
+            id (int, optional): use this category id, if it was not taken
 
         CommandLine:
             xdoctest -m ndsampler.coco_dataset MixinCocoAddRemove.add_category
@@ -1199,7 +1200,7 @@ class MixinCocoAddRemove(object):
         Example:
             >>> self = CocoDataset.demo()
             >>> cid = self.add_category('dog', supercategory='object')
-            >>> assert self.cats[cid]['name'] == 'dog'
+            >>> assert self.cats[id]['name'] == 'dog'
             >>> assert self.n_cats == 8
             >>> import pytest
             >>> with pytest.raises(ValueError):
@@ -1209,13 +1210,13 @@ class MixinCocoAddRemove(object):
         if index.cats and name in index.name_to_cat:
             raise ValueError('Category name={!r} already exists'.format(name))
 
-        if cid is None:
-            cid = self._next_ids.get('cid')
-        elif index.cats and cid in index.cats:
-            raise IndexError('Category id={} already exists'.format(cid))
+        if id is None:
+            id = self._next_ids.get('cid')
+        elif index.cats and id in index.cats:
+            raise IndexError('Category id={} already exists'.format(id))
 
         cat = _dict()
-        cat['id'] = int(cid)
+        cat['id'] = int(id)
         cat['name'] = str(name)
         if supercategory:
             cat['supercategory'] = supercategory
@@ -1224,9 +1225,9 @@ class MixinCocoAddRemove(object):
         self.dataset['categories'].append(cat)
 
         # And add to the indexes
-        index._add_category(cid, name, cat)
+        index._add_category(id, name, cat)
         self._invalidate_hashid(['categories'])
-        return cid
+        return id
 
     def clear_images(self):
         """
@@ -1614,7 +1615,8 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
                 "keypoints" : [x1,y1,v1,...,xk,yk,vk],
                 "score" : float,
             }
-            Note that `vi` is a visibility flag.
+            Note that `v[i]` is a visibility flag, where v=0: not labeled,
+                v=1: labeled but not visible, and v=2: labeled and visible.
 
         A bounding box annotation
             {
