@@ -1,5 +1,7 @@
 Version 0.1.0
 -------------
+* Working on better support for keypoints and segmentations, and possible extensions
+* Removed support for "fine-ids"
 * Renamed arguments to add_image, add_annotation, and add_category to be consistent with data internals
 
 

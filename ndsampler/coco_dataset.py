@@ -80,11 +80,6 @@ References:
     ..[1] http://cocodataset.org/#format-data
     ..[2] https://github.com/nightrome/cocostuffapi/blob/master/PythonAPI/pycocotools/mask.py
 
-
-Extras:
-    We allow each annotation to specify a fine_category_id which specifies the
-    most specific category that the annotation can be labeled as. Assumes
-    categories are tree-structures.
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 from os.path import dirname
@@ -821,12 +816,6 @@ class MixinCocoExtras(object):
 
                 if old_id != new_id:
                     ann['category_id'] = new_id
-                    # See if the annotation already has a fine-grained category If
-                    # not, then use the old id as its current fine-grained
-                    # granularity
-                    fine_id = ann.get('fine_category_id', None)
-                    if fine_id is None:
-                        ann['fine_category_id'] = old_id
         if rebuild:
             self._build_index()
         else:
