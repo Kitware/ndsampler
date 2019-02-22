@@ -12,15 +12,10 @@ Dataset Spec:
                 'id': <int:category_id>,
                 'name': <str:>,
                 'supercategory': str  # optional
-                'keypoint_categories': [
-                    # each object level category may define what type of
-                    # keypoints it can have.
-                    {
-                        'id': int,
-                        'name': str,  # name of the keypoint category
-                    },
-                    ...
-                ]
+
+                # TODO: need more support for these
+                "keypoints": [kpname_1, ..., kpname_K], # length <k> array of keypoint names
+                "skeleton": [(kx_a1, kx_b1), ..., (kx_aE, kx_bE)], # list of edge pairs (of keypoint indices), defining connectivity of keypoints.
             },
             ...
         ],
@@ -35,7 +30,8 @@ Dataset Spec:
                 'category_id': int,
                 'bbox': [tl_x, tl_y, w, h],  # optional (xywh format)
                 "score" : float,
-                "iscrowd" : bool,  # denotes if the annotation covers a single object (false) or multiple objects (true)
+                "caption": str,  # an optional text caption for this annotation
+                "iscrowd" : <0 or 1>,  # denotes if the annotation covers a single object (0) or multiple objects (1)
                 # original coco keypoint format
                 "keypoints" : [x1,y1,v1,...,xk,yk,vk],
                 # Original coco segmentation format
@@ -1037,7 +1033,8 @@ class MixinCocoDraw(object):
                 x1, y1 = ann['line'][0:2]
             elif 'keypoints' in ann:
                 kpts = np.array(ann['keypoints']).reshape(-1, 3)
-                xys = kpts.T[0:2].T
+                isvisible = kpts.T[2] > 0
+                xys = kpts.T[0:2].T[isvisible]
                 x1, y1 = xys.min(axis=0)
 
             catname = self.cats[ann['category_id']]['name']
@@ -1068,7 +1065,8 @@ class MixinCocoDraw(object):
                 colored_segments[color].append([pt1, pt2])
             if 'keypoints' in ann:
                 kpts = np.array(ann['keypoints']).reshape(-1, 3)
-                xys = kpts.T[0:2].T
+                isvisible = kpts.T[2] > 0
+                xys = kpts.T[0:2].T[isvisible]
                 keypoints.append(xys)
 
         # Show image
