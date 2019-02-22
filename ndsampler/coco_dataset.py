@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Extended MS-COCO API. Currently only supports keypoints and bounding boxes.
+An implementation and extension of the original MS-COCO API [1].
 
 Extends the format to also include line annotations.
 
@@ -34,9 +34,8 @@ Dataset Spec:
     RunLengthEncoding:
         This is not yet fully supported. The official CocoAPI has some
         efficient C functions for dealing with these that we should
-        port over and clean up.
-
-        See: https://github.com/nightrome/cocostuffapi/blob/master/PythonAPI/pycocotools/mask.py
+        port over and clean up. The original C functions are in [2].
+        We will implement these in `kwimage.structs.Mask`.
 
         For pure python implementations see kwil:
             Converting from an image to RLE can be done via kwil.run_length_encoding
@@ -48,7 +47,8 @@ Dataset Spec:
 
 
 References:
-    http://cocodataset.org/#format-data
+    ..[1] http://cocodataset.org/#format-data
+    ..[2] https://github.com/nightrome/cocostuffapi/blob/master/PythonAPI/pycocotools/mask.py
 
 
 Extras:
@@ -83,7 +83,7 @@ _dict = OrderedDict
 INT_TYPES = (int, np.integer)
 
 
-def annot_type(ann):
+def _annot_type(ann):
     """
     Returns what type of annotation `ann` is.
     """
@@ -900,7 +900,7 @@ class MixinCocoStats(object):
         catname_to_nannot_types = {}
         for cid, aids in self.cid_to_aids.items():
             name = self.cats[cid]['name']
-            hist = ub.dict_hist(map(annot_type, ub.take(self.anns, aids)))
+            hist = ub.dict_hist(map(_annot_type, ub.take(self.anns, aids)))
             catname_to_nannot_types[name] = ub.map_keys(
                 lambda k: k[0] if len(k) == 1 else k, hist)
         return catname_to_nannot_types
@@ -1677,8 +1677,6 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
             root = dirname(fpath)
             if tag is None:
                 tag = key
-            # if img_root is None:
-            #     img_root = join('.', key)
         else:
             # If data is a dict, we dont know where the root is, so assume its
             # relative to the cwd.
