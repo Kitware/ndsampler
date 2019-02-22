@@ -6,10 +6,21 @@ Extends the format to also include line annotations.
 
 Dataset Spec:
     dataset = {
+        # these are object level categories
         'categories': [
             {
-                'id': int, 'name': str,
+                'id': <int:category_id>,
+                'name': <str:>,
                 'supercategory': str  # optional
+                'keypoint_categories': [
+                    # each object level category may define what type of
+                    # keypoints it can have.
+                    {
+                        'id': int,
+                        'name': str,  # name of the keypoint category
+                    },
+                    ...
+                ]
             },
             ...
         ],
@@ -23,7 +34,26 @@ Dataset Spec:
                 'image_id': int,
                 'category_id': int,
                 'bbox': [tl_x, tl_y, w, h],  # optional (xywh format)
-                'segmentation': <RunLengthEncoding>
+                "score" : float,
+                "iscrowd" : bool,  # denotes if the annotation covers a single object (false) or multiple objects (true)
+                # original coco keypoint format
+                "keypoints" : [x1,y1,v1,...,xk,yk,vk],
+                # Original coco segmentation format
+                'segmentation': <RunLengthEncoding | Polygon>,  # todo: define formats
+                ####
+                ####
+                "geometries": {
+                    # new custom keypoint / segmentation encoding
+                    "keypoints": {
+                        "type": "MultiPoint",
+                        "coordinates": [[x1, x2], ..., [xn, yn],
+                        "category_ids": [id1, ..., idn],
+                        "visible": [v1, ..., vn],
+                    }
+                    "segmentation": {
+                        "type": "Raster",
+                    }
+                }
             },
             ...
         ],
