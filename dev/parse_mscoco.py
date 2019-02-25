@@ -28,7 +28,7 @@ def parse_mscoco():
 
     for gid in ub.ProgIter(gid_iter):
         img = dset.imgs[gid]
-        ub.grabdata(img['coco_url'], dpath=img_root)
+        ub.grabdata(img['coco_url'], dpath=img_root, verbose=0)
         anns = [dset.anns[aid] for aid in dset.gid_to_aids[gid]]
         dset.show_image(gid=gid)
 
