@@ -287,12 +287,14 @@ class Rasters:
 class CategoryPatterns(object):
     """
     Example:
+        >>> from ndsampler.toydata import *  # NOQA
         >>> self = CategoryPatterns()
         >>> chip = np.zeros((100, 100, 3))
-        >>> name, fgdata = self.random_category(chip)
+        >>> info = self.random_category(chip)
         >>> # xdoctest: +REQUIRES(--show)
         >>> kwil.autompl()
-        >>> kwil.imshow(fgdata)
+        >>> kwil.imshow(info['data'], pnum=(1, 2, 1), fnum=1)
+        >>> kwil.imshow(info['segmentation'], pnum=(1, 2, 2), fnum=1)
         >>> kwil.show_if_requested()
 
     """
@@ -327,7 +329,17 @@ class CategoryPatterns(object):
     def random_category(self, chip):
         name = self.rng.choice(self._catlist)
         elem_func = self.category_to_elemfunc[name]
-        return name, self._from_elem(elem_func, chip)
+        data, mask = self._from_elem(elem_func, chip)
+
+        from kwimage.structs.masks import Mask
+        segmentation = Mask.from_mask(mask).data
+
+        info = {
+            'name': name,
+            'data': data,
+            'segmentation': segmentation,
+        }
+        return info
 
     def _from_elem(self, elem_func, chip):
         x = max(chip.shape[0:2])
@@ -335,16 +347,17 @@ class CategoryPatterns(object):
 
         size = tuple(map(int, chip.shape[0:2][::-1]))
         elem = elem_func(x)
-        mask = cv2.resize(elem, size).astype(np.float32)
+        template = cv2.resize(elem, size).astype(np.float32)
         fg_intensity = np.float32(self.fg_intensity)
         fg_scale = np.float32(self.fg_scale)
         fgdata = fast_rand.standard_normal(chip.shape, std=fg_scale,
                                            mean=fg_intensity, rng=self.rng,
                                            dtype=np.float32)
         fgdata = np.clip(fgdata , 0, 1, out=fgdata)
-        fga = kwil.ensure_alpha_channel(fgdata, alpha=mask)
+        fga = kwil.ensure_alpha_channel(fgdata, alpha=template)
         data = kwil.overlay_alpha_images(fga, chip, keepalpha=False)
-        return data
+        mask = (template > 0.05).astype(np.uint8)
+        return data, mask
 
 
 def star(a, dtype=np.uint8):
@@ -550,15 +563,29 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
     np.clip(imdata, 0, 1, out=imdata)
 
     catnames = []
-    for tl_x, tl_y, br_x, br_y in boxes.to_tlbr().data:
+
+    tlbr_boxes = boxes.to_tlbr().data
+    xywh_boxes = boxes.to_xywh().data.tolist()
+
+    # Construct coco-style annotation dictionaries
+    anns = []
+    for tlbr, xywh in zip(tlbr_boxes, xywh_boxes):
+        tl_x, tl_y, br_x, br_y = tlbr
         chip_index = tuple([slice(tl_y, br_y), slice(tl_x, br_x)])
         chip = imdata[chip_index]
-        catname, fgdata = catpats.random_category(chip)
+        info = catpats.random_category(chip)
+        fgdata = info['data']
         if gray:
             fgdata = fgdata.mean(axis=2, keepdims=True)
 
-        catnames.append(catname)
+        catnames.append(info['name'])
         imdata[tl_y:br_y, tl_x:br_x, :] = fgdata
+        ann = {
+            'category_name': info['name'],
+            'segmentation': info['segmentation'],
+            'bbox': xywh,
+        }
+        anns.append(ann)
 
     if 0:
         imdata.mean(axis=2, out=imdata[:, :, 0])
@@ -573,12 +600,6 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
         'height': gh,
         'imdata': imdata,
     }
-    anns = []
-    for catname, bbox in zip(catnames, boxes.to_xywh().data):
-        anns.append({
-            'category_name': catname,
-            'bbox': bbox.tolist(),
-        })
     return img, anns
 
 

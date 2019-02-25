@@ -1024,6 +1024,10 @@ class MixinCocoDraw(object):
         keypoints = []
         rects = []
         texts = []
+
+        sseg_masks = []
+        sseg_polys = []
+
         for aid in aids:
             ann = self.anns[aid]
             # Note standard coco bbox is [x,y,width,height]
@@ -1069,6 +1073,21 @@ class MixinCocoDraw(object):
                 xys = kpts.T[0:2].T[isvisible]
                 keypoints.append(xys)
 
+            if 'segmentation' in ann:
+                sseg = ann['segmentation']
+                if isinstance(sseg, dict):
+                    from kwimage.structs.masks import Mask
+                    mask = Mask.from_coco_segmentation(sseg).mask
+                    sseg_masks.append(mask)
+                elif isinstance(sseg, list):
+                    # If the segmentation is a list of polygons
+                    if not (len(sseg) and isinstance(sseg[0], list)):
+                        sseg = [sseg]
+                    for flat in sseg:
+                        poly_xys = np.array(flat).reshape(-1, 2)
+                        poly = mpl.patches.Polygon(poly_xys)
+                        sseg_polys.append(poly)
+
         # Show image
         gpath = join(self.img_root, img['file_name'])
         with Image.open(gpath) as pil_img:
@@ -1077,7 +1096,29 @@ class MixinCocoDraw(object):
         fig = plt.gcf()
         ax = fig.gca()
         ax.cla()
-        plt.imshow(np_img)
+
+        if sseg_masks:
+            np_img01 = np_img / 255.0
+
+            layers = []
+            layers.append(np_img01)
+
+            distinct_colors = kwil.Color.distinct(len(sseg_masks))
+
+            for mask, col in zip(sseg_masks, distinct_colors):
+                col = np.array(col + [1])[None, None, :]
+                alpha_mask = col * mask[:, :, None]
+                alpha_mask[..., 3] = mask * 0.5
+                layers.append(alpha_mask)
+
+            masked_img = kwil.overlay_alpha_layers(layers[::-1])
+            ax.imshow(masked_img)
+        else:
+            plt.imshow(np_img)
+
+        if sseg_polys:
+            poly_col = mpl.collections.PatchCollection(sseg_polys, 2, alpha=0.4)
+            ax.add_collection(poly_col)
 
         # Show all annotations inside it
         for (x1, y1, catname, textkw) in texts:
