@@ -1076,10 +1076,15 @@ class MixinCocoDraw(object):
             if 'segmentation' in ann:
                 sseg = ann['segmentation']
                 if isinstance(sseg, dict):
+                    # Handle COCO-RLE-segmentations; convert to raw binary masks
                     from kwimage.structs.masks import Mask
-                    mask = Mask.from_coco_segmentation(sseg).mask
+                    if isinstance(sseg, six.string_types):
+                        mask = Mask(sseg, 'compressed_rle').to_mask().data
+                    else:
+                        mask = Mask(sseg, 'uncompressed_rle').to_mask().data
                     sseg_masks.append(mask)
                 elif isinstance(sseg, list):
+                    # Handle COCO-polygon-segmentation
                     # If the segmentation is a list of polygons
                     if not (len(sseg) and isinstance(sseg[0], list)):
                         sseg = [sseg]
