@@ -1077,11 +1077,16 @@ class MixinCocoDraw(object):
                 sseg = ann['segmentation']
                 if isinstance(sseg, dict):
                     # Handle COCO-RLE-segmentations; convert to raw binary masks
-                    from kwimage.structs.masks import Mask
-                    if isinstance(sseg, six.string_types):
-                        mask = Mask(sseg, 'compressed_rle').to_mask().data
+                    import kwimage
+                    sseg = dict(sseg)
+                    if 'shape' not in sseg and 'size' in sseg:
+                        # NOTE: size here is actually h/w unlike almost
+                        # everywhere else
+                        sseg['shape'] = sseg['size']
+                    if isinstance(sseg['counts'], (six.binary_type, six.text_type)):
+                        mask = kwimage.Mask(sseg, 'bytes_rle').to_c_mask().data
                     else:
-                        mask = Mask(sseg, 'uncompressed_rle').to_mask().data
+                        mask = kwimage.Mask(sseg, 'array_rle').to_c_mask().data
                     sseg_masks.append(mask)
                 elif isinstance(sseg, list):
                     # Handle COCO-polygon-segmentation
@@ -1097,6 +1102,7 @@ class MixinCocoDraw(object):
         gpath = join(self.img_root, img['file_name'])
         with Image.open(gpath) as pil_img:
             np_img = np.array(pil_img)
+        np_img = kwil.atleast_3channels(np_img)
 
         fig = plt.gcf()
         ax = fig.gca()

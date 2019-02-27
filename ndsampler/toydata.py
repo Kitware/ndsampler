@@ -290,7 +290,9 @@ class CategoryPatterns(object):
         >>> from ndsampler.toydata import *  # NOQA
         >>> self = CategoryPatterns()
         >>> chip = np.zeros((100, 100, 3))
-        >>> info = self.random_category(chip)
+        >>> offset = (10, 10)
+        >>> dims = (200, 200)
+        >>> info = self.random_category(chip, offset, dims)
         >>> # xdoctest: +REQUIRES(--show)
         >>> kwil.autompl()
         >>> kwil.imshow(info['data'], pnum=(1, 2, 1), fnum=1)
@@ -326,13 +328,15 @@ class CategoryPatterns(object):
 
         self._catlist = sorted(self.categories)
 
-    def random_category(self, chip):
+    def random_category(self, chip, xy_offset=None, dims=None):
         name = self.rng.choice(self._catlist)
         elem_func = self.category_to_elemfunc[name]
         data, mask = self._from_elem(elem_func, chip)
 
-        from kwimage.structs.masks import Mask
-        segmentation = Mask.from_mask(mask).data
+        import kwimage
+        mask = kwimage.Mask(mask, 'c_mask').to_array_rle()
+        segmentation = mask.translate(xy_offset, dims).to_bytes_rle().data
+        segmentation['counts'] = segmentation['counts'].decode('utf8')
 
         info = {
             'name': name,
@@ -446,21 +450,28 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
         xdoctest -m ndsampler.toydata demodata_toy_img:1 --show
 
     Example:
+        >>> from ndsampler.toydata import *  # NOQA
         >>> img, anns = demodata_toy_img(gsize=(32, 32), anchors=[[.3, .3]], rng=0)
         >>> img['imdata'] = '<ndarray shape={}>'.format(img['imdata'].shape)
         >>> print('img = {}'.format(ub.repr2(img)))
-        >>> print('anns = {}'.format(ub.repr2(anns)))
+        >>> print('anns = {}'.format(ub.repr2(anns, nl=2, cbr=True)))
         img = {
             'height': 32,
             'imdata': '<ndarray shape=(32, 32, 3)>',
             'width': 32,
         }
-        anns = [
-            {'bbox': [15, 10, 9, 8], 'category_name': 'superstar'},
-            {'bbox': [11, 20, 7, 7], 'category_name': 'octagon'},
-            {'bbox': [4, 4, 8, 6], 'category_name': 'superstar'},
-            {'bbox': [3, 20, 6, 7], 'category_name': 'superstar'},
-        ]
+        anns = [{'bbox': [15, 10, 9, 8],
+          'category_name': 'superstar',
+          'segmentation': {'counts': b'\\?220h0400N110002OO00LXO0\\8', 'size': [32, 32]},},
+         {'bbox': [11, 20, 7, 7],
+          'category_name': 'octagon',
+          'segmentation': {'counts': b'f;3l02N2O0001N2N[=', 'size': [32, 32]},},
+         {'bbox': [4, 4, 8, 6],
+          'category_name': 'superstar',
+          'segmentation': {'counts': b'U4210j0300O01010O00MVO0ed0', 'size': [32, 32]},},
+         {'bbox': [3, 20, 6, 7],
+          'category_name': 'superstar',
+          'segmentation': {'counts': b'f3121i03N1102OOLWO1Sg0', 'size': [32, 32]},},]
 
     Example:
         >>> # xdoctest: +REQUIRES(--show)
@@ -546,7 +557,12 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
     boxes = boxes.scale(.8).translate(.1 * min(gsize))
     boxes.data = boxes.data.astype(np.int)
 
+    # Hack away zero width objects
+    boxes = boxes.to_xywh(copy=False)
+    boxes.data[..., 2:4] = np.maximum(boxes.data[..., 2:4], 1)
+
     gw, gh = gsize
+    dims = (gh, gw)
 
     # This is 2x as fast for gsize=(300,300)
     if gray:
@@ -573,7 +589,8 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
         tl_x, tl_y, br_x, br_y = tlbr
         chip_index = tuple([slice(tl_y, br_y), slice(tl_x, br_x)])
         chip = imdata[chip_index]
-        info = catpats.random_category(chip)
+        xy_offset = (tl_x, tl_y)
+        info = catpats.random_category(chip, xy_offset, dims)
         fgdata = info['data']
         if gray:
             fgdata = fgdata.mean(axis=2, keepdims=True)
@@ -612,8 +629,14 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5):
 
     Ignore:
         >>> from ndsampler.toydata import *
-        >>> dataset = demodata_toy_dset(gsize=(10, 10))
+        >>> import ndsampler
+        >>> dataset = demodata_toy_dset(gsize=(300, 300))
         >>> dpath = ub.ensure_app_cache_dir('ndsampler', 'toy_dset')
+        >>> dset = ndsampler.CocoDataset(dataset)
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> import kwplot
+        >>> kwplot.autompl()
+        >>> dset.show_image(gid=1)
         >>> ub.startfile(dpath)
     """
     dpath = ub.ensure_app_cache_dir('ndsampler', 'toy_dset')
@@ -648,7 +671,7 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5):
         'n_imgs': n_imgs,
         'categories': categories,
     }
-    cacher = ub.Cacher('toy_dset', dpath=ub.ensuredir(dpath, 'cache'),
+    cacher = ub.Cacher('toy_dset_v2', dpath=ub.ensuredir(dpath, 'cache'),
                        cfgstr=ub.repr2(cfg), verbose=3)
 
     img_dpath = ub.ensuredir((dpath, 'imgs_{}_{}'.format(
