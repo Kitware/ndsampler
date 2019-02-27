@@ -293,10 +293,11 @@ class CategoryPatterns(object):
         >>> offset = (10, 10)
         >>> dims = (200, 200)
         >>> info = self.random_category(chip, offset, dims)
+        >>> print('info = {}'.format(ub.repr2(info, nl=1)))
         >>> # xdoctest: +REQUIRES(--show)
         >>> kwil.autompl()
         >>> kwil.imshow(info['data'], pnum=(1, 2, 1), fnum=1)
-        >>> kwil.imshow(info['segmentation'], pnum=(1, 2, 2), fnum=1)
+        >>> #kwil.imshow(info['segmentation'], pnum=(1, 2, 2), fnum=1)
         >>> kwil.show_if_requested()
 
     """
@@ -338,10 +339,17 @@ class CategoryPatterns(object):
         segmentation = mask.translate(xy_offset, dims).to_bytes_rle().data
         segmentation['counts'] = segmentation['counts'].decode('utf8')
 
+        center_xy = np.array(chip.shape[0:2][::-1]) / 2.0
+        if xy_offset:
+            center_xy += xy_offset
+
+        cx, cy = center_xy
+
         info = {
             'name': name,
             'data': data,
             'segmentation': segmentation,
+            'keypoints': [cx, cy, 2],
         }
         return info
 
@@ -462,16 +470,20 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
         }
         anns = [{'bbox': [15, 10, 9, 8],
           'category_name': 'superstar',
-          'segmentation': {'counts': b'\\?220h0400N110002OO00LXO0\\8', 'size': [32, 32]},},
+          'keypoints': [19.5, 14.0, 2],
+          'segmentation': {'counts': '\\?220h0400N110002OO00LXO0\\8', 'size': [32, 32]},},
          {'bbox': [11, 20, 7, 7],
           'category_name': 'octagon',
-          'segmentation': {'counts': b'f;3l02N2O0001N2N[=', 'size': [32, 32]},},
+          'keypoints': [14.5, 23.5, 2],
+          'segmentation': {'counts': 'f;3l02N2O0001N2N[=', 'size': [32, 32]},},
          {'bbox': [4, 4, 8, 6],
           'category_name': 'superstar',
-          'segmentation': {'counts': b'U4210j0300O01010O00MVO0ed0', 'size': [32, 32]},},
+          'keypoints': [8.0, 7.0, 2],
+          'segmentation': {'counts': 'U4210j0300O01010O00MVO0ed0', 'size': [32, 32]},},
          {'bbox': [3, 20, 6, 7],
           'category_name': 'superstar',
-          'segmentation': {'counts': b'f3121i03N1102OOLWO1Sg0', 'size': [32, 32]},},]
+          'keypoints': [6.0, 23.5, 2],
+          'segmentation': {'counts': 'f3121i03N1102OOLWO1Sg0', 'size': [32, 32]},},]
 
     Example:
         >>> # xdoctest: +REQUIRES(--show)
@@ -600,6 +612,7 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
         ann = {
             'category_name': info['name'],
             'segmentation': info['segmentation'],
+            'keypoints': info['keypoints'],
             'bbox': xywh,
         }
         anns.append(ann)
@@ -627,7 +640,7 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5):
     Returns:
         dict: dataset in mscoco format
 
-    Ignore:
+    Example:
         >>> from ndsampler.toydata import *
         >>> import ndsampler
         >>> dataset = demodata_toy_dset(gsize=(300, 300))
@@ -672,7 +685,7 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5):
         'categories': categories,
     }
     cacher = ub.Cacher('toy_dset_v2', dpath=ub.ensuredir(dpath, 'cache'),
-                       cfgstr=ub.repr2(cfg), verbose=3)
+                       cfgstr=ub.repr2(cfg), verbose=3, enabled=1)
 
     img_dpath = ub.ensuredir((dpath, 'imgs_{}_{}'.format(
         cfg['n_imgs'], cacher._condense_cfgstr())))
@@ -705,6 +718,9 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5):
             dataset['categories'].append({
                 'id': i,
                 'name': name,
+                # TODO: hack in class-specific keypoints
+                'keypoints': ['center'],
+                'skeleton': [],
             })
             name_to_cid[name] = i
 
