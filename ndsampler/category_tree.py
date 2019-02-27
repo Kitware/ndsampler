@@ -289,7 +289,7 @@ class CategoryTree(ub.NiceRepr):
         if key == 'coco':
             from ndsampler import coco_dataset
             dset = coco_dataset.CocoDataset.demo(**kwargs)
-            dset.add_category('background', cid=0)
+            dset.add_category('background', id=0)
             graph = dset.category_graph()
         elif key == 'btree':
             r = kwargs.pop('r', 3)

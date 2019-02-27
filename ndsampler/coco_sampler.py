@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+#d -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
 import ubelt as ub
 import numpy as np
@@ -43,7 +43,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             dset = coco_dataset.CocoDataset.demo(**kw)
             toremove = [ann for ann in dset.anns.values() if 'bbox' not in ann]
             dset.remove_annotations(toremove)
-            dset.add_category('background', cid=0)
+            dset.add_category('background', id=0)
         else:
             raise KeyError(key)
         if workdir is None:

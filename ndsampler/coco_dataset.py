@@ -1269,7 +1269,7 @@ class MixinCocoAddRemove(object):
         Example:
             >>> self = CocoDataset.demo()
             >>> cid = self.add_category('dog', supercategory='object')
-            >>> assert self.cats[id]['name'] == 'dog'
+            >>> assert self.cats[cid]['name'] == 'dog'
             >>> assert self.n_cats == 8
             >>> import pytest
             >>> with pytest.raises(ValueError):

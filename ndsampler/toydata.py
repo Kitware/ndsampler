@@ -422,7 +422,7 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
                      n_annots=(0, 50), fg_scale=0.5, bg_scale=0.8,
                      bg_intensity=0.1, fg_intensity=0.9,
                      gray=True, centerobj=None, exact=False, rng=None):
-    """
+    r"""
     Generate a single image with non-overlapping toy objects of available
     categories.
 
