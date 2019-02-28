@@ -118,6 +118,7 @@ class ObjectList1D(ub.NiceRepr):
 
     Similar to ibeis._ibeis_object.ObjectList1D
     """
+
     def __init__(self, ids, dset, key):
         self._key = key
         self._ids = ids
@@ -187,6 +188,7 @@ class ObjectGroups(ub.NiceRepr):
 class Images(ObjectList1D):
     """
     """
+
     def __init__(self, ids, dset):
         super(Images, self).__init__(ids, dset, 'images')
 
@@ -267,6 +269,7 @@ class Images(ObjectList1D):
 class Annots(ObjectList1D):
     """
     """
+
     def __init__(self, ids, dset):
         super(Annots, self).__init__(ids, dset, 'annotations')
 
@@ -496,7 +499,7 @@ class MixinCocoExtras(object):
             >>> print('self.hashid = {!r}'.format(self.hashid))
             self.hashid_parts = {
                 'annotations': {
-                    'json': 'c6e2a55613b...',
+                    'json': '07f8a90ab441b...',
                     'num': 11,
                 },
                 'images': {
@@ -509,7 +512,7 @@ class MixinCocoExtras(object):
                     'num': 7,
                 },
             }
-            self.hashid = 'b45256273...
+            self.hashid = 'cab9c0fe98f...
 
         Doctest:
             >>> self = CocoDataset.demo()
@@ -571,7 +574,8 @@ class MixinCocoExtras(object):
                 _anns_ordered = (self.anns[aid] for aid in aids)
                 anns_ordered = [_ditems(ann) for ann in _anns_ordered]
                 anns_text = json.dumps(anns_ordered)
-                hashid_parts['annotations']['json'] = ub.hash_data(anns_text, hasher='sha512')
+                hashid_parts['annotations']['json'] = ub.hash_data(
+                    anns_text, hasher='sha512')
                 hashid_parts['annotations']['num'] = len(aids)
                 rebuild_parts.append('annotations.json')
             else:
@@ -580,8 +584,10 @@ class MixinCocoExtras(object):
             if not hashid_parts['images'].get('json', None):
                 if gids is None:
                     gids = sorted(self.imgs.keys())
-                imgs_text = json.dumps([_ditems(self.imgs[gid]) for gid in gids])
-                hashid_parts['images']['json'] = ub.hash_data(imgs_text, hasher='sha512')
+                imgs_text = json.dumps(
+                    [_ditems(self.imgs[gid]) for gid in gids])
+                hashid_parts['images']['json'] = ub.hash_data(
+                    imgs_text, hasher='sha512')
                 hashid_parts['images']['num'] = len(gids)
                 rebuild_parts.append('images.json')
             else:
@@ -589,8 +595,10 @@ class MixinCocoExtras(object):
 
             if not hashid_parts['categories'].get('json', None):
                 cids = sorted(self.cats.keys())
-                cats_text = json.dumps([_ditems(self.cats[cid]) for cid in cids])
-                hashid_parts['categories']['json'] = ub.hash_data(cats_text, hasher='sha512')
+                cats_text = json.dumps(
+                    [_ditems(self.cats[cid]) for cid in cids])
+                hashid_parts['categories']['json'] = ub.hash_data(
+                    cats_text, hasher='sha512')
                 hashid_parts['categories']['num'] = len(cids)
                 rebuild_parts.append('categories.json')
             else:
@@ -683,7 +691,8 @@ class MixinCocoExtras(object):
                         resolved_ann = ann
                         break
                 if not resolved_ann:
-                    raise IndexError('aid {} not in dataset'.format(aid_or_ann))
+                    raise IndexError(
+                        'aid {} not in dataset'.format(aid_or_ann))
         else:
             resolved_ann = aid_or_ann
         return resolved_ann
@@ -831,6 +840,7 @@ class MixinCocoAttrs(object):
     """
     Expose methods to construct object lists / groups
     """
+
     def annots(self, aids=None, gid=None):
         """
         Return boxes for annotations
@@ -959,6 +969,7 @@ class MixinCocoStats(object):
 
 class _NextId(object):
     """ Helper class to tracks unused ids for new items """
+
     def __init__(self, parent):
         self.parent = parent
         self.unused = {
@@ -992,6 +1003,7 @@ class MixinCocoDraw(object):
     """
     Matplotlib / display functionality
     """
+
     def show_image(self, gid=None, aids=None, aid=None):
         """
         Use matplotlib to show an image with annotations overlaid
@@ -1075,6 +1087,7 @@ class MixinCocoDraw(object):
 
             if 'segmentation' in ann:
                 sseg = ann['segmentation']
+                print('sseg = {!r}'.format(sseg))
                 if isinstance(sseg, dict):
                     # Handle COCO-RLE-segmentations; convert to raw binary masks
                     import kwimage
@@ -1097,6 +1110,8 @@ class MixinCocoDraw(object):
                         poly_xys = np.array(flat).reshape(-1, 2)
                         poly = mpl.patches.Polygon(poly_xys)
                         sseg_polys.append(poly)
+                else:
+                    raise TypeError(type(sseg))
 
         # Show image
         gpath = join(self.img_root, img['file_name'])
@@ -1128,7 +1143,9 @@ class MixinCocoDraw(object):
             plt.imshow(np_img)
 
         if sseg_polys:
-            poly_col = mpl.collections.PatchCollection(sseg_polys, 2, alpha=0.4)
+            print('sseg_polys = {!r}'.format(sseg_polys))
+            poly_col = mpl.collections.PatchCollection(
+                sseg_polys, 2, alpha=0.4)
             ax.add_collection(poly_col)
 
         # Show all annotations inside it
@@ -1640,7 +1657,7 @@ class CocoIndex(object):
         self.gid_to_aids = gid_to_aids
         self.cid_to_aids = cid_to_aids
         self.name_to_cat = {cat['name']: cat for cat in self.cats.values()}
-        self.file_name_to_img = {img['file_name']: img for img in self.imgs.values()}
+        self.file_name_to_img = {img['file_name']                                 : img for img in self.imgs.values()}
 
 
 class MixinCocoIndex(object):
@@ -1727,6 +1744,7 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
         >>> from matplotlib import pyplot as plt
         >>> plt.show()
     """
+
     def __init__(self, data=None, tag=None, img_root=None, autobuild=True):
         if data is None:
             data = {
@@ -2135,6 +2153,22 @@ def delitems(items, remove_idxs, thresh=750):
 def demo_coco_data():
     """
     Simple data for testing
+
+    Ignore:
+        # code for getting a segmentation polygon
+        kwil.grab_test_image_fpath('astro')
+        labelme /home/joncrall/.cache/kwimage/demodata/KXhKM72.png
+        cat /home/joncrall/.cache/kwimage/demodata/KXhKM72.json
+
+    Example:
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> from ndsampler.coco_dataset import demo_coco_data, CocoDataset
+        >>> dataset = demo_coco_data()
+        >>> self = CocoDataset(dataset, tag='demo')
+        >>> import kwplot
+        >>> kwplot.autompl()
+        >>> self.show_image(gid=1)
+        >>> kwplot.show_if_requested()
     """
     gpath1 = kwil.grab_test_image_fpath('astro')
     gpath2 = kwil.grab_test_image_fpath('carl')
@@ -2170,7 +2204,16 @@ def demo_coco_data():
         ],
         'annotations': [
             {'id': 1, 'image_id': 1, 'category_id': 1,
-             'bbox': [10, 10, 360, 490]},
+             'bbox': [10, 10, 360, 490],
+             'segmentation': [[
+                 40, 509, 26, 486, 20, 419, 28, 334, 51, 266, 85, 229, 102,
+                 216, 118, 197, 125, 176, 148, 151, 179, 147, 182, 134, 174,
+                 128, 166, 115, 156, 94, 155, 64, 162, 48, 193, 34, 197, 26,
+                 210, 21, 231, 14, 265, 24, 295, 49, 300, 90, 297, 111, 280,
+                 126, 277, 132, 266, 137, 264, 152, 255, 164, 256, 174, 283,
+                 195, 301, 220, 305, 234, 338, 262, 350, 286, 360, 326, 363,
+                 351, 324, 369, 292, 404, 280, 448, 276, 496, 280, 511]],
+             },
             {'id': 2, 'image_id': 1, 'category_id': 2,
              'bbox': [350, 5, 130, 290]},
             {'id': 3, 'image_id': 1, 'category_id': 3,
