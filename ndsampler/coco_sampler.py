@@ -253,7 +253,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
                 tr (dict): contains the same input items as tr but additionally
                     specifies rel_cx and rel_cy, which gives the center
                     of the target w.r.t the returned **padded** sample.
-                annots (dict): Dict of aids, cids, and rel/abs boxes
+                annots (dict): containing items:
+                    aids (list): annotation ids
+                    cids (list): category ids
+                    rel_cxywh (ndarray): boxes relative to the sample
+                    abs_cxywh (ndarray): boxes relative to the original image
 
         Example:
             >>> from ndsampler.coco_sampler import *
@@ -287,25 +291,24 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> self = CocoSampler.demo()
             >>> tr = self.regions.get_positive(0)
             >>> window_dims = None
-            >>> window_dims = (64, 64)
+            >>> window_dims = (364, 364)
             >>> sample = self.load_sample(tr, window_dims=window_dims)
             >>> annots = sample['annots']
             >>> assert len(annots['aids']) > 0
             >>> assert len(annots['rel_cxywh']) == len(annots['aids'])
             >>> # xdoc: +REQUIRES(--show)
             >>> kwil.autompl()
-            >>> abs_frame = self.frames.load_image(tr_['gid'])
+            >>> abs_frame = self.frames.load_image(sample['tr']['gid'])
             >>> abs_box = kwil.Boxes(annots['abs_cxywh'], 'cxywh')
             >>> rel_box = kwil.Boxes(annots['rel_cxywh'], 'cxywh')
             >>> # Draw box in original image context
-            >>> from matplotlib import pyplot as plt
             >>> kwil.imshow(abs_frame, pnum=(1, 2, 1), fnum=1)
-            >>> kwil.draw_boxes(abs_box.translate([-.5, -.5]))
-            >>> plt.scatter(*(abs_box.xy_center.T - .5))
+            >>> abs_box.translate([-.5, -.5]).draw(centers=True)
+            >>> annots['abs_masks'].draw()
             >>> # Draw box in relative sample context
             >>> kwil.imshow(sample['im'], pnum=(1, 2, 2), fnum=1)
-            >>> kwil.draw_boxes(rel_box.translate([-.5, -.5]))
-            >>> plt.scatter(*(rel_box.xy_center.T - .5))
+            >>> rel_box.translate([-.5, -.5]).draw(centers=True)
+            >>> annots['rel_masks'].draw()
 
         Example:
             >>> from ndsampler.coco_sampler import *
@@ -370,21 +373,45 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
 
         # Get info about all annotations inside this window
         overlap_annots = self.dset.annots(overlap_aids)
-        abs_boxes = overlap_annots.boxes
         overlap_cids = overlap_annots.cids
+
+        abs_boxes = overlap_annots.boxes
+
+        overlap_sseg = [
+            self.dset.anns[aid].get('segmentation', None)
+            for aid in overlap_aids
+        ]
+        overlap_keypoints = [
+            self.dset.anns[aid].get('keypoints', None)
+            for aid in overlap_aids
+        ]
+        # Transform spatial information to be relative to the sample
         rel_boxes = abs_boxes.translate([-x_start, -y_start])
+
+        masks = []
+        for sseg in overlap_sseg:
+            if sseg is not None:
+                sseg = kwil.Mask.coerce(sseg, shape=data_dims)
+            masks.append(sseg)
+        abs_masks = kwil.Masks(masks)
+        rel_masks = abs_masks.translate([-x_start, -y_start],
+                                        output_shape=window_dims)
+
         annots = {
             'aids': np.array(overlap_aids),
             'cids': np.array(overlap_cids),
+
             'rel_cxywh': rel_boxes.to_cxywh().data,
             'abs_cxywh': abs_boxes.to_cxywh().data,
+
+            'rel_masks': rel_masks,
+            'abs_masks': abs_masks,
+
+            # 'rel_kpts': overlap_keypoints,
         }
 
         # Note the center coordinates in the padded sample reference frame
         tr_ = tr.copy()
-        # tr_['rel_cy'] = tr['cy'] - y_start
-        # tr_['rel_cx'] = tr['cx'] - x_start
-
         sample = {'im': im, 'tr': tr_, 'annots': annots}
         return sample
 
