@@ -15,8 +15,8 @@ Ignore:
     cond_probs.sum(dim=1)
     class_probs.sum(dim=1)
 
-    import kwil
-    kwil.autompl()
+    import kwplot
+    kwplot.autompl()
     import graphid
     graphid.util.show_nx(self.graph)
 
@@ -24,7 +24,7 @@ Ignore:
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 import torch
-import kwil
+import kwarray
 import functools
 import itertools as it
 import networkx as nx
@@ -246,7 +246,7 @@ class CategoryTree(ub.NiceRepr):
 
     def _demo_probs(self, num=5, rng=0, nonrandom=3, hackargmax=True):
         """ dummy probabilities for testing """
-        rng = kwil.ensure_rng(rng)
+        rng = kwarray.ensure_rng(rng)
         class_energy = torch.FloatTensor(rng.rand(num, len(self)))
 
         # Setup the first few examples to prefer being classified
@@ -643,13 +643,13 @@ class CategoryTree(ub.NiceRepr):
     def show(self):
         """
         Ignore:
-            >>> import kwil
-            >>> kwil.autompl()
+            >>> import kwplot
+            >>> kwplot.autompl()
             >>> from ndsampler import category_tree
             >>> self = category_tree.CategoryTree.demo()
             >>> self.show()
 
-            python -c "import kwil, ndsampler, graphid; kwil.autompl(); graphid.util.show_nx(ndsampler.category_tree.CategoryTree.demo().graph); kwil.show_if_requested()" --show
+            python -c "import kwplot, ndsampler, graphid; kwplot.autompl(); graphid.util.show_nx(ndsampler.category_tree.CategoryTree.demo().graph); kwplot.show_if_requested()" --show
         """
         try:
             pos = nx.drawing.nx_agraph.graphviz_layout(self.graph, prog='dot')
@@ -684,8 +684,8 @@ class CategoryTree(ub.NiceRepr):
             >>> pred_idxs, pred_conf = self.decision(class_probs, dim, thresh=thresh)
             >>> pred_cnames = list(ub.take(self.idx_to_node, pred_idxs))
         """
-        import kwil
-        impl = kwil.ArrayAPI.impl(class_probs)
+        import kwarray
+        impl = kwarray.ArrayAPI.impl(class_probs)
 
         sources = list(source_nodes(self.graph))
         other_dims = sorted(set(range(len(class_probs.shape))) - {dim})
@@ -722,7 +722,7 @@ class CategoryTree(ub.NiceRepr):
                 # Check the children of these nodes
                 check_jdxs = jdxs[check_children]
                 check_idxs = pred_idxs[check_children]
-                group_idxs, groupxs = kwil.group_indices(check_idxs)
+                group_idxs, groupxs = kwarray.group_indices(check_idxs)
                 for idx, groupx in zip(group_idxs, groupxs):
                     node = self.idx_to_node[idx]
                     children = list(self.graph.successors(node))
@@ -778,7 +778,7 @@ class CategoryTree(ub.NiceRepr):
         Example:
             >>> from ndsampler.category_tree import *
             >>> self = CategoryTree.demo('btree', r=3, h=3)
-            >>> rng = kwil.ensure_rng(0)
+            >>> rng = kwarray.ensure_rng(0)
             >>> class_energy = torch.FloatTensor(rng.rand(33, len(self)))
             >>> # Setup the first few examples to prefer being classified
             >>> # as a fine grained class to a decreasing degree.
@@ -861,7 +861,7 @@ class CategoryTree(ub.NiceRepr):
 
         DEBUG = False
 
-        impl = kwil.ArrayAPI.impl(class_probs)
+        impl = kwarray.ArrayAPI.impl(class_probs)
 
         sources = list(source_nodes(self.graph))
         other_dims = sorted(set(range(len(class_probs.shape))) - {dim})
@@ -907,7 +907,7 @@ class CategoryTree(ub.NiceRepr):
             pred_idxs = np.array(idxs)[impl.numpy(pred_cx)]
 
             # Group each example which predicted the same class at this level
-            group_idxs, groupxs = kwil.group_indices(pred_idxs)
+            group_idxs, groupxs = kwarray.group_indices(pred_idxs)
             if DEBUG:
                 groupxs = list(ub.take(groupxs, group_idxs.argsort()))
                 group_idxs = group_idxs[group_idxs.argsort()]
@@ -973,7 +973,7 @@ class CategoryTree(ub.NiceRepr):
                         if idx in always_refine_idxs:
                             refine_flags[:] = 1
 
-                    refine_flags = kwil.ArrayAPI.numpy(refine_flags).astype(np.bool)
+                    refine_flags = kwarray.ArrayAPI.numpy(refine_flags).astype(np.bool)
 
                     if DEBUG:
                         print('-----------')
@@ -1104,11 +1104,11 @@ def gini(probs, axis=1, impl=np):
     Approximates Shannon Entropy, but faster to compute
 
     Example:
-        >>> rng = kwil.ensure_rng(0)
+        >>> rng = kwarray.ensure_rng(0)
         >>> probs = torch.softmax(torch.Tensor(rng.rand(3, 10)), 1)
-        >>> gini(probs.numpy(), impl=kwil.ArrayAPI.coerce('numpy'))
+        >>> gini(probs.numpy(), impl=kwarray.ArrayAPI.coerce('numpy'))
         array([0.896..., 0.890..., 0.892...
-        >>> gini(probs, impl=kwil.ArrayAPI.coerce('torch'))
+        >>> gini(probs, impl=kwarray.ArrayAPI.coerce('torch'))
         tensor([0.896..., 0.890..., 0.892...
     """
     return 1 - impl.sum(probs ** 2, axis=axis)
@@ -1119,11 +1119,11 @@ def entropy(probs, axis=1, impl=np):
     Standard Shannon (Information Theory) Entropy
 
     Example:
-        >>> rng = kwil.ensure_rng(0)
+        >>> rng = kwarray.ensure_rng(0)
         >>> probs = torch.softmax(torch.Tensor(rng.rand(3, 10)), 1)
-        >>> entropy(probs.numpy(), impl=kwil.ArrayAPI.coerce('numpy'))
+        >>> entropy(probs.numpy(), impl=kwarray.ArrayAPI.coerce('numpy'))
         array([3.295..., 3.251..., 3.265...
-        >>> entropy(probs, impl=kwil.ArrayAPI.coerce('torch'))
+        >>> entropy(probs, impl=kwarray.ArrayAPI.coerce('torch'))
         tensor([3.295..., 3.251..., 3.265...
     """
     with np.errstate(divide='ignore'):

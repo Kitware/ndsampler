@@ -306,8 +306,8 @@ def __notes__():
         # time we see an image, we load the entire thing, and dump it to a
         # cache directory in npy format. Then any subsequent time the image
         # is needed, we efficiently load it from numpy.
-        import kwil
-        gpath = kwil.grab_test_image_fpath()
+        import kwimage
+        gpath = kwimage.grab_test_image_fpath()
         # Directly load a crop region with PIL (this is slow, why?)
         pil_img = Image.open(gpath)
 

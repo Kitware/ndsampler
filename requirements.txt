@@ -9,11 +9,8 @@ ubelt
 numpy 
 scipy
 
-kwil >= 0.2.1
-
 fasteners
 atomicwrites
-
 
 # opencv?
 # scikit-image?
@@ -22,7 +19,8 @@ Pillow
 pyqtree
 
 # functools python2
-
 # There are likely several more undocumented deps, see what fails and submit a PR please!
 # TODO : fill me in!
 
+kwimage
+kwarray

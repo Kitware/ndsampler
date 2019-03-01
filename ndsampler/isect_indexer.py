@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
-import kwil
 import numpy as np
 import pyqtree
 import ubelt as ub
 import itertools as it
 import warnings
+import kwarray
+import kwimage
 
 
 class FrameIntersectionIndex(object):
@@ -25,7 +26,7 @@ class FrameIntersectionIndex(object):
         >>> # Build intersection index aroung coco dataset
         >>> self = FrameIntersectionIndex.from_coco(dset)
         >>> gid = 1
-        >>> box = kwil.Boxes([0, 10, 100, 100], 'xywh')
+        >>> box = kwimage.Boxes([0, 10, 100, 100], 'xywh')
         >>> isect_aids, ious = self.ious(gid, box)
         >>> print(ub.repr2(ious.tolist(), nl=0, precision=4))
         [0.0507]
@@ -57,7 +58,7 @@ class FrameIntersectionIndex(object):
             if 'bbox' in ann:
                 aid = ann['id']
                 qtree = qtrees[ann['image_id']]
-                xywh_box = kwil.Boxes(ann['bbox'], 'xywh')
+                xywh_box = kwimage.Boxes(ann['bbox'], 'xywh')
                 tlbr_box = xywh_box.to_tlbr().data
                 qtree.insert(aid, tlbr_box)
                 qtree.aid_to_tlbr[aid] = tlbr_box
@@ -74,7 +75,7 @@ class FrameIntersectionIndex(object):
         if len(isect_aids):
             boxes1 = box[None, :]
             boxes2 = [self.qtrees[gid].aid_to_tlbr[aid] for aid in isect_aids]
-            boxes2 = kwil.Boxes(np.array(boxes2), 'tlbr')
+            boxes2 = kwimage.Boxes(np.array(boxes2), 'tlbr')
             ious = boxes1.ious(boxes2)[0]
         else:
             ious = np.empty(0)
@@ -92,7 +93,7 @@ class FrameIntersectionIndex(object):
         if len(isect_aids):
             boxes1 = box[None, :]
             boxes2 = [self.qtrees[gid].aid_to_tlbr[aid] for aid in isect_aids]
-            boxes2 = kwil.Boxes(np.array(boxes2), 'tlbr')
+            boxes2 = kwimage.Boxes(np.array(boxes2), 'tlbr')
             isect = boxes1.isect_area(boxes2)
             denom = boxes2.area.T
             eps = 1e-6
@@ -131,18 +132,19 @@ class FrameIntersectionIndex(object):
             >>> anchors = np.array([[.35, .15], [.2, .2], [.1, .1]])
             >>> #num = 25
             >>> num = 5
-            >>> rng = kwil.ensure_rng(None)
+            >>> rng = kwarray.ensure_rng(None)
             >>> neg_gids, neg_boxes = self.random_negatives(
             >>>     num, anchors, gids=[1], rng=rng, thresh=0.01, exact=1)
             >>> # xdoc: +REQUIRES(--show)
             >>> gid = sorted(set(neg_gids))[0]
             >>> boxes = neg_boxes.compress(neg_gids == gid)
-            >>> kwil.autompl()
-            >>> img = kwil.imread(dset.imgs[gid]['file_name'])
-            >>> kwil.imshow(img, doclf=True, fnum=1, colorspace='bgr')
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> img = kwimage.imread(dset.imgs[gid]['file_name'])
+            >>> kwplot.imshow(img, doclf=True, fnum=1, colorspace='bgr')
             >>> support = self._support(gid)
-            >>> kwil.draw_boxes(support, color='blue')
-            >>> kwil.draw_boxes(boxes, color='orange')
+            >>> kwplot.draw_boxes(support, color='blue')
+            >>> kwplot.draw_boxes(boxes, color='orange')
 
         Example:
             >>> from ndsampler.isect_indexer import *
@@ -152,36 +154,37 @@ class FrameIntersectionIndex(object):
             >>> self = FrameIntersectionIndex.from_coco(dset)
             >>> #num = 25
             >>> num = 5
-            >>> rng = kwil.ensure_rng(None)
+            >>> rng = kwarray.ensure_rng(None)
             >>> window_size = (50, 50)
             >>> neg_gids, neg_boxes = self.random_negatives(
             >>>     num, window_size=window_size, gids=[1], rng=rng,
             >>>     thresh=0.01, exact=1)
             >>> # xdoc: +REQUIRES(--show)
+            >>> import kwplot
+            >>> kwplot.autompl()
             >>> gid = sorted(set(neg_gids))[0]
             >>> boxes = neg_boxes.compress(neg_gids == gid)
-            >>> kwil.autompl()
-            >>> img = kwil.imread(dset.imgs[gid]['file_name'])
-            >>> kwil.imshow(img, doclf=True, fnum=1, colorspace='bgr')
+            >>> img = kwimage.imread(dset.imgs[gid]['file_name'])
+            >>> kwplot.imshow(img, doclf=True, fnum=1, colorspace='bgr')
             >>> support = self._support(gid)
-            >>> kwil.draw_boxes(support, color='blue')
-            >>> kwil.draw_boxes(boxes, color='orange')
+            >>> support.draw(color='blue')
+            >>> boxes.draw(color='orange')
         """
 
         if not ((window_size is None) ^ (anchors is None)):
             raise ValueError('window_size and anchors are mutually exclusive')
 
-        rng = kwil.ensure_rng(rng)
+        rng = kwarray.ensure_rng(rng)
         all_gids = self.all_gids if gids is None else gids
 
         def _generate_rel(n):
             # Generate n candidate boxes in the normalized 0-1 domain
-            cand_boxes = kwil.Boxes.random(num=n, scale=1.0, format='tlbr',
+            cand_boxes = kwimage.Boxes.random(num=n, scale=1.0, format='tlbr',
                                               anchors=anchors, anchor_std=0,
                                               rng=rng)
 
             chosen_gids = np.array(sorted(rng.choice(all_gids, size=n)))
-            gid_to_boxes = kwil.group_items(cand_boxes, chosen_gids, axis=0)
+            gid_to_boxes = kwarray.group_items(cand_boxes, chosen_gids, axis=0)
 
             neg_gids = []
             neg_boxes = []
@@ -210,7 +213,7 @@ class FrameIntersectionIndex(object):
                 anchors_ = np.array([window_size]) / np.array(scale)
                 if np.any(anchors_ > 1.0):
                     continue
-                img_boxes = kwil.Boxes.random(
+                img_boxes = kwimage.Boxes.random(
                     num=nboxes, scale=1.0, format='tlbr', anchors=anchors_,
                     anchor_std=0, rng=rng)
                 img_boxes = img_boxes.scale(scale)
@@ -271,16 +274,15 @@ class FrameIntersectionIndex(object):
             neg_gids, neg_boxes = _generate(n=num)
 
         neg_gids = np.array(neg_gids)
-        neg_boxes = kwil.Boxes(np.array(neg_boxes), 'tlbr')
+        neg_boxes = kwimage.Boxes(np.array(neg_boxes), 'tlbr')
         return neg_gids, neg_boxes
 
     def _debug_index(self):
-        import kwil
         from shapely.ops import cascaded_union
 
         def _to_shapely(boxes):
             from shapely.geometry import Polygon
-            from kwil.structs.boxes import _cat
+            from kwimage.structs.boxes import _cat
             x1, y1, x2, y2 = boxes.to_tlbr(copy=False).components
             a = _cat([x1, y1]).tolist()
             b = _cat([x1, y2]).tolist()
@@ -290,10 +292,10 @@ class FrameIntersectionIndex(object):
             return polygons
 
         for gid, qtree in self.qtrees.items():
-            boxes = kwil.Boxes(np.array(list(qtree.aid_to_tlbr.values())), 'tlbr')
+            boxes = kwimage.Boxes(np.array(list(qtree.aid_to_tlbr.values())), 'tlbr')
             polygons = _to_shapely(boxes)
 
-            bounds = kwil.Boxes([[0, 0, qtree.width, qtree.height]], 'tlbr')
+            bounds = kwimage.Boxes([[0, 0, qtree.width, qtree.height]], 'tlbr')
             bounds = _to_shapely(bounds)[0]
             merged_polygon = cascaded_union(polygons)
             uncovered = (bounds - merged_polygon)
@@ -303,7 +305,8 @@ class FrameIntersectionIndex(object):
             if 1:
                 from descartes import PolygonPatch
                 from matplotlib import pyplot as plt
-                kwil.autompl()
+                import kwplot
+                kwplot.autompl()
                 fig = plt.figure(gid)
                 ax = fig.add_subplot(111)
                 ax.cla()
@@ -322,6 +325,6 @@ class FrameIntersectionIndex(object):
 
     def _support(self, gid):
         qtree = self.qtrees[gid]
-        support_boxes = kwil.Boxes(list(qtree.aid_to_tlbr.values()), 'tlbr')
+        support_boxes = kwimage.Boxes(list(qtree.aid_to_tlbr.values()), 'tlbr')
 
         return support_boxes

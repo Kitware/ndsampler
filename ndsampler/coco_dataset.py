@@ -63,10 +63,10 @@ Dataset Spec:
         port over and clean up. The original C functions are in [2].
         We will implement these in `kwimage.structs.Mask`.
 
-        For pure python implementations see kwil:
-            Converting from an image to RLE can be done via kwil.run_length_encoding
+        For pure python implementations see kwimage:
+            Converting from an image to RLE can be done via kwimage.run_length_encoding
             Converting from RLE back to an image can be done via:
-                kwil.decode_run_length
+                kwimage.decode_run_length
 
             For compatibility with the COCO specs ensure the binary flags
             for these functions are set to true.
@@ -84,7 +84,7 @@ from os.path import splitext
 from os.path import basename
 from os.path import join
 from collections import OrderedDict
-import kwil
+import kwimage
 import json
 import numpy as np
 import ubelt as ub
@@ -298,7 +298,7 @@ class Annots(ObjectList1D):
     @property
     def boxes(self):
         """
-        Returns kwil-style boxes
+        Returns kwimage-style boxes
 
         Example:
             >>> self = CocoDataset.demo().annots([1, 2, 11])
@@ -308,9 +308,8 @@ class Annots(ObjectList1D):
                        [350,   5, 130, 290],
                        [124,  96,  45,  18]]))>
         """
-        import kwil
         xywh = self._lookup('bbox')
-        boxes = kwil.Boxes(xywh, 'xywh')
+        boxes = kwimage.Boxes(xywh, 'xywh')
         return boxes
 
     @property
@@ -1117,7 +1116,7 @@ class MixinCocoDraw(object):
         gpath = join(self.img_root, img['file_name'])
         with Image.open(gpath) as pil_img:
             np_img = np.array(pil_img)
-        np_img = kwil.atleast_3channels(np_img)
+        np_img = kwimage.atleast_3channels(np_img)
 
         fig = plt.gcf()
         ax = fig.gca()
@@ -1128,8 +1127,8 @@ class MixinCocoDraw(object):
 
             layers = []
             layers.append(np_img01)
-
-            distinct_colors = kwil.Color.distinct(len(sseg_masks))
+            import kwplot
+            distinct_colors = kwplot.Color.distinct(len(sseg_masks))
 
             for mask, col in zip(sseg_masks, distinct_colors):
                 col = np.array(col + [1])[None, None, :]
@@ -1137,7 +1136,7 @@ class MixinCocoDraw(object):
                 alpha_mask[..., 3] = mask * 0.5
                 layers.append(alpha_mask)
 
-            masked_img = kwil.overlay_alpha_layers(layers[::-1])
+            masked_img = kwimage.overlay_alpha_layers(layers[::-1])
             ax.imshow(masked_img)
         else:
             plt.imshow(np_img)
@@ -1179,7 +1178,7 @@ class MixinCocoAddRemove(object):
 
         Example:
             >>> self = CocoDataset.demo()
-            >>> gname = kwil.grab_test_image_fpath('paraview')
+            >>> gname = kwimage.grab_test_image_fpath('paraview')
             >>> gid = self.add_image(gname)
             >>> assert self.imgs[gid]['file_name'] == gname
         """
@@ -1204,7 +1203,7 @@ class MixinCocoAddRemove(object):
         Args:
             image_id (int): image_id to add to
             category_id (int): category_id to add to
-            bbox (list or kwil.Boxes): bounding box in xywh format
+            bbox (list or kwimage.Boxes): bounding box in xywh format
             id (None or int): ADVANCED. Force using this annotation id.
 
         Example:
@@ -1225,7 +1224,7 @@ class MixinCocoAddRemove(object):
         ann['image_id'] = int(image_id)
         ann['category_id'] = int(category_id)
         if bbox is not None:
-            if isinstance(bbox, kwil.Boxes):
+            if isinstance(bbox, kwimage.Boxes):
                 bbox = bbox.to_xywh().data.tolist()
             ann['bbox'] = bbox
         # assert not set(kw).intersection(set(ann))
@@ -2156,7 +2155,7 @@ def demo_coco_data():
 
     Ignore:
         # code for getting a segmentation polygon
-        kwil.grab_test_image_fpath('astro')
+        kwimage.grab_test_image_fpath('astro')
         labelme /home/joncrall/.cache/kwimage/demodata/KXhKM72.png
         cat /home/joncrall/.cache/kwimage/demodata/KXhKM72.json
 
@@ -2170,9 +2169,9 @@ def demo_coco_data():
         >>> self.show_image(gid=1)
         >>> kwplot.show_if_requested()
     """
-    gpath1 = kwil.grab_test_image_fpath('astro')
-    gpath2 = kwil.grab_test_image_fpath('carl')
-    gpath3 = kwil.grab_test_image_fpath('stars')
+    gpath1 = kwimage.grab_test_image_fpath('astro')
+    gpath2 = kwimage.grab_test_image_fpath('carl')
+    gpath3 = kwimage.grab_test_image_fpath('stars')
     # gpath1 = ub.grabdata('https://i.imgur.com/KXhKM72.png')
     # gpath2 = ub.grabdata('https://i.imgur.com/flTHWFD.png')
     # gpath3 = ub.grabdata('https://i.imgur.com/kCi7C1r.png')

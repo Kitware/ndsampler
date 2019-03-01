@@ -4,14 +4,14 @@ from os.path import join
 import glob
 import numpy as np
 import ubelt as ub
-import kwil
+import kwarray
+import kwimage
 import skimage
 import skimage.morphology  # NOQA
 import cv2
 from ndsampler import abstract_sampler
 from ndsampler import category_tree
 import networkx as nx
-from kwil.misc import fast_rand
 
 
 class DynamicToySampler(abstract_sampler.AbstractSampler):
@@ -24,12 +24,12 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
         >>> window_dims = (96, 96)
 
         img, anns = self.load_positive(window_dims=window_dims)
-        kwil.autompl()
-        kwil.imshow(img['imdata'])
+        kwplot.autompl()
+        kwplot.imshow(img['imdata'])
 
         img, anns = self.load_negative(window_dims=window_dims)
-        kwil.autompl()
-        kwil.imshow(img['imdata'])
+        kwplot.autompl()
+        kwplot.imshow(img['imdata'])
 
     CommandLine:
         xdoctest -m ndsampler.toydata DynamicToySampler --show
@@ -40,9 +40,9 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
         >>> self = DynamicToySampler(1e3)
         >>> imgs = [self.load_positive()['im'] for _ in range(9)]
         >>> # xdoctest: +REQUIRES(--show)
-        >>> stacked = kwil.stack_images_grid(imgs, overlap=-10)
-        >>> kwil.imshow(stacked)
-        >>> kwil.show_if_requested()
+        >>> stacked = kwimage.stack_images_grid(imgs, overlap=-10)
+        >>> kwplot.imshow(stacked)
+        >>> kwplot.show_if_requested()
     """
 
     def __init__(self, n_positives=1e5, seed=None, gsize=(416, 416), categories=None):
@@ -144,8 +144,8 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
     def load_image_with_annots(self, image_id=None, rng=None):
         """ Returns a random image and its annotations """
         if image_id is not None and self.seed is not None:
-            rng = kwil.ensure_rng(self.seed * len(self) + image_id)
-        rng = kwil.ensure_rng(rng)
+            rng = kwarray.ensure_rng(self.seed * len(self) + image_id)
+        rng = kwarray.ensure_rng(rng)
         img, anns = demodata_toy_img(gsize=self._full_imgsize,
                                      categories=self.categories,
                                      rng=rng, n_annots=(0, 10))
@@ -162,7 +162,7 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
         """
         if index is not None and self.seed is not None:
             rng = self.seed * len(self) + index
-        rng = kwil.ensure_rng(rng)
+        rng = kwarray.ensure_rng(rng)
 
         if window_dims is None:
             window_dims = self._full_imgsize[::-1]
@@ -198,7 +198,7 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
         annots = {
             'aids': np.arange(len(anns)),
             'cids': np.array([self.lookup_class_id(a['category_name']) for a in anns]),
-            'rel_cxywh': kwil.Boxes([a['bbox'] for a in anns], 'xywh').to_cxywh().data,
+            'rel_cxywh': kwimage.Boxes([a['bbox'] for a in anns], 'xywh').to_cxywh().data,
         }
 
         # TODO: if window_dims was None, then crop the image to the size of the
@@ -209,8 +209,8 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
     def load_negative(self, index=None, pad=None, window_dims=None, rng=None):
 
         if index is not None and self.seed is not None:
-            rng = kwil.ensure_rng(self.seed * len(self) + index)
-        rng = kwil.ensure_rng(rng)
+            rng = kwarray.ensure_rng(self.seed * len(self) + index)
+        rng = kwarray.ensure_rng(rng)
 
         if window_dims is None:
             window_dims = self._full_imgsize[::-1]
@@ -231,7 +231,7 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
         annots = {
             'aids': np.arange(len(anns)),
             'cids': np.array([self.lookup_class_id(a['category_name']) for a in anns]),
-            'rel_cxywh': kwil.Boxes([a['bbox'] for a in anns], 'xywh').to_cxywh().data,
+            'rel_cxywh': kwimage.Boxes([a['bbox'] for a in anns], 'xywh').to_cxywh().data,
         }
         tr_ = {
             'aid': -1,
@@ -259,9 +259,9 @@ class Rasters:
         test data patch
 
         Ignore:
-            >>> kwil.autompl()
-            >>> data = np.clip(kwil.imscale(Rasters.star(), 2.2)[0], 0, 1)
-            >>> kwil.imshow(data)
+            >>> kwplot.autompl()
+            >>> data = np.clip(kwimage.imscale(Rasters.star(), 2.2)[0], 0, 1)
+            >>> kwplot.imshow(data)
         """
         (_, i, O) = 0, 1.0, .5
         patch = np.array([
@@ -295,15 +295,16 @@ class CategoryPatterns(object):
         >>> info = self.random_category(chip, offset, dims)
         >>> print('info = {}'.format(ub.repr2(info, nl=1)))
         >>> # xdoctest: +REQUIRES(--show)
-        >>> kwil.autompl()
-        >>> kwil.imshow(info['data'], pnum=(1, 2, 1), fnum=1)
-        >>> #kwil.imshow(info['segmentation'], pnum=(1, 2, 2), fnum=1)
-        >>> kwil.show_if_requested()
+        >>> import kwplot
+        >>> kwplot.autompl()
+        >>> kwplot.imshow(info['data'], pnum=(1, 2, 1), fnum=1)
+        >>> #kwplot.imshow(info['segmentation'], pnum=(1, 2, 2), fnum=1)
+        >>> kwplot.show_if_requested()
 
     """
     def __init__(self, categories=None, fg_scale=0.5, fg_intensity=0.9,
                  rng=None):
-        self.rng = kwil.ensure_rng(rng)
+        self.rng = kwarray.ensure_rng(rng)
         self.fg_scale = fg_scale
         self.fg_intensity = fg_intensity
         self.category_to_elemfunc = {
@@ -362,12 +363,12 @@ class CategoryPatterns(object):
         template = cv2.resize(elem, size).astype(np.float32)
         fg_intensity = np.float32(self.fg_intensity)
         fg_scale = np.float32(self.fg_scale)
-        fgdata = fast_rand.standard_normal(chip.shape, std=fg_scale,
-                                           mean=fg_intensity, rng=self.rng,
-                                           dtype=np.float32)
+        fgdata = kwarray.standard_normal(chip.shape, std=fg_scale,
+                                         mean=fg_intensity, rng=self.rng,
+                                         dtype=np.float32)
         fgdata = np.clip(fgdata , 0, 1, out=fgdata)
-        fga = kwil.ensure_alpha_channel(fgdata, alpha=template)
-        data = kwil.overlay_alpha_images(fga, chip, keepalpha=False)
+        fga = kwimage.ensure_alpha_channel(fgdata, alpha=template)
+        data = kwimage.overlay_alpha_images(fga, chip, keepalpha=False)
         mask = (template > 0.05).astype(np.uint8)
         return data, mask
 
@@ -417,7 +418,6 @@ def star(a, dtype=np.uint8):
     return selem.astype(dtype)
 
 
-@kwil.profile
 def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
                      n_annots=(0, 50), fg_scale=0.5, bg_scale=0.8,
                      bg_intensity=0.1, fg_intensity=0.9,
@@ -489,9 +489,9 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
         >>> # xdoctest: +REQUIRES(--show)
         >>> img, anns = demodata_toy_img(gsize=(172, 172), rng=None)
         >>> print('anns = {}'.format(ub.repr2(anns, nl=1)))
-        >>> kwil.autompl()
-        >>> kwil.imshow(img['imdata'])
-        >>> kwil.show_if_requested()
+        >>> kwplot.autompl()
+        >>> kwplot.imshow(img['imdata'])
+        >>> kwplot.show_if_requested()
 
     Ignore:
         from ndsampler.toydata import *
@@ -503,7 +503,7 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
         anchors = [[.20, .20]]
     anchors = np.asarray(anchors)
 
-    rng = kwil.ensure_rng(rng)
+    rng = kwarray.ensure_rng(rng)
     if isinstance(categories, CategoryPatterns) or hasattr(categories, '_catlist'):
         catpats = categories
     else:
@@ -523,7 +523,7 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
         raise NotImplementedError
 
     while True:
-        boxes = kwil.Boxes.random(
+        boxes = kwimage.Boxes.random(
             num=num, scale=1.0, format='xywh', rng=rng, anchors=anchors)
         boxes = boxes.scale(gsize)
         bw, bh = boxes.components[2:4]
@@ -553,12 +553,12 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
     if len(boxes) > 1:
         tlbr_data = boxes.to_tlbr().data
         try:
-            keep = kwil.non_max_supression(
+            keep = kwimage.non_max_supression(
                 tlbr_data, scores=box_priority, thresh=0.0, impl='cpu')
         except KeyError:
             import warnings
             warnings.warn('missing cpu impl, trying numpy')
-            keep = kwil.non_max_supression(
+            keep = kwimage.non_max_supression(
                 tlbr_data, scores=box_priority, thresh=0.0, impl='py')
         boxes = boxes[keep]
 
@@ -579,14 +579,14 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
     # This is 2x as fast for gsize=(300,300)
     if gray:
         gshape = (gh, gw, 1)
-        imdata = fast_rand.standard_normal(gshape, mean=bg_intensity, std=bg_scale,
+        imdata = kwarray.standard_normal(gshape, mean=bg_intensity, std=bg_scale,
                                            rng=rng, dtype=np.float32)
     else:
         gshape = (gh, gw, 3)
-        # imdata = fast_rand.standard_normal(gshape, mean=bg_intensity, std=bg_scale,
+        # imdata = kwarray.standard_normal(gshape, mean=bg_intensity, std=bg_scale,
         #                                    rng=rng, dtype=np.float32)
         # hack because 3 channels is slower
-        imdata = fast_rand.uniform(0, 1, gshape, rng=rng, dtype=np.float32)
+        imdata = kwarray.uniform(0, 1, gshape, rng=rng, dtype=np.float32)
 
     np.clip(imdata, 0, 1, out=imdata)
 
@@ -623,7 +623,7 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
         imdata[:, :, 2] = imdata[:, :, 0]
 
     imdata = (imdata * 255).astype(np.uint8)
-    imdata = kwil.atleast_3channels(imdata)
+    imdata = kwimage.atleast_3channels(imdata)
 
     img = {
         'width': gw,
@@ -748,7 +748,7 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5):
                 })
                 dataset['annotations'].append(ann)
 
-            kwil.imwrite(fpath, imdata)
+            kwimage.imwrite(fpath, imdata)
 
         cacher.enabled = True
         cacher.save(dataset)
