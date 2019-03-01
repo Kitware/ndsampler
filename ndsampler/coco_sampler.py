@@ -399,7 +399,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             if sseg is not None:
                 sseg = kwimage.Mask.coerce(sseg, shape=data_dims)
             masks.append(sseg)
-        abs_masks = kwimage.Masks(masks)
+        abs_masks = kwimage.MaskList(masks)
         rel_masks = abs_masks.translate([-x_start, -y_start],
                                         output_shape=window_dims)
 
