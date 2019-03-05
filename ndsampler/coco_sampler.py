@@ -207,7 +207,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo()
             >>> rng = None
-            >>> sample, tr, annots = self.load_negative(rng=rng, pad=(0, 0))
+            >>> sample = self.load_negative(rng=rng, pad=(0, 0))
             >>> # xdoc: +REQUIRES(--show)
             >>> import kwplot
             >>> kwplot.autompl()
@@ -220,7 +220,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo()
             >>> rng = None
-            >>> sample, tr, annots = self.load_negative(rng=rng, pad=(0, 0), window_dims=(64, 64))
+            >>> sample = self.load_negative(rng=rng, pad=(0, 0), window_dims=(64, 64))
             >>> # xdoc: +REQUIRES(--show)
             >>> import kwplot
             >>> kwplot.autompl()
