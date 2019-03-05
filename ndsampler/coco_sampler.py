@@ -392,7 +392,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         #     for aid in overlap_aids
         # ]
         # Transform spatial information to be relative to the sample
-        rel_boxes = abs_boxes.translate([-x_start, -y_start])
+
+        offset = [-x_start, -y_start]
+        rel_boxes = abs_boxes.translate(offset)
 
         masks = []
         for sseg in overlap_sseg:
@@ -400,8 +402,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
                 sseg = kwimage.Mask.coerce(sseg, shape=data_dims)
             masks.append(sseg)
         abs_masks = kwimage.MaskList(masks)
-        rel_masks = abs_masks.translate([-x_start, -y_start],
-                                        output_shape=window_dims)
+        rel_masks = abs_masks.translate(offset, output_shape=window_dims)
 
         annots = {
             'aids': np.array(overlap_aids),
@@ -418,7 +419,16 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
 
         # Note the center coordinates in the padded sample reference frame
         tr_ = tr.copy()
-        sample = {'im': im, 'tr': tr_, 'annots': annots}
+        sample = {
+            'im': im,
+            'tr': tr_,
+            'params': {
+                'offset': offset,
+                'pad': pad,
+            },
+            'annots': annots
+
+        }
         return sample
 
 
