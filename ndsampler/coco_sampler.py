@@ -207,7 +207,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo()
             >>> rng = None
-            >>> sample, tr, annots = self.load_negative(rng=rng, pad=(0, 0))
+            >>> sample = self.load_negative(rng=rng, pad=(0, 0))
             >>> # xdoc: +REQUIRES(--show)
             >>> import kwplot
             >>> kwplot.autompl()
@@ -220,7 +220,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo()
             >>> rng = None
-            >>> sample, tr, annots = self.load_negative(rng=rng, pad=(0, 0), window_dims=(64, 64))
+            >>> sample = self.load_negative(rng=rng, pad=(0, 0), window_dims=(64, 64))
             >>> # xdoc: +REQUIRES(--show)
             >>> import kwplot
             >>> kwplot.autompl()
@@ -392,16 +392,17 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         #     for aid in overlap_aids
         # ]
         # Transform spatial information to be relative to the sample
-        rel_boxes = abs_boxes.translate([-x_start, -y_start])
+
+        offset = [-x_start, -y_start]
+        rel_boxes = abs_boxes.translate(offset)
 
         masks = []
         for sseg in overlap_sseg:
             if sseg is not None:
                 sseg = kwimage.Mask.coerce(sseg, shape=data_dims)
             masks.append(sseg)
-        abs_masks = kwimage.Masks(masks)
-        rel_masks = abs_masks.translate([-x_start, -y_start],
-                                        output_shape=window_dims)
+        abs_masks = kwimage.MaskList(masks)
+        rel_masks = abs_masks.translate(offset, output_shape=window_dims)
 
         annots = {
             'aids': np.array(overlap_aids),
@@ -418,7 +419,16 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
 
         # Note the center coordinates in the padded sample reference frame
         tr_ = tr.copy()
-        sample = {'im': im, 'tr': tr_, 'annots': annots}
+        sample = {
+            'im': im,
+            'tr': tr_,
+            'params': {
+                'offset': offset,
+                'pad': pad,
+            },
+            'annots': annots
+
+        }
         return sample
 
 
