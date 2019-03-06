@@ -32,24 +32,8 @@ Dataset Spec:
                 "score" : float,
                 "caption": str,  # an optional text caption for this annotation
                 "iscrowd" : <0 or 1>,  # denotes if the annotation covers a single object (0) or multiple objects (1)
-                # original coco keypoint format
                 "keypoints" : [x1,y1,v1,...,xk,yk,vk],
-                # Original coco segmentation format
                 'segmentation': <RunLengthEncoding | Polygon>,  # todo: define formats
-                ####
-                ####
-                "geometries": {
-                    # new custom keypoint / segmentation encoding
-                    "keypoints": {
-                        "type": "MultiPoint",
-                        "coordinates": [[x1, x2], ..., [xn, yn],
-                        "category_ids": [id1, ..., idn],
-                        "visible": [v1, ..., vn],
-                    }
-                    "segmentation": {
-                        "type": "Raster",
-                    }
-                }
             },
             ...
         ],
@@ -57,11 +41,20 @@ Dataset Spec:
         'info': [],
     }
 
+    Polygon:
+        A flattned list of xy coordinates.
+        [x1, y1, x2, y2, ..., xn, yn]
+
+        or a list of flattned list of xy coordinates if the CCs are disjoint
+        [[x1, y1, x2, y2, ..., xn, yn], [x1, y1, ..., xm, ym],]
+
+        Note: the original coco spec does not allow for holes in polygons.
+
     RunLengthEncoding:
-        This is not yet fully supported. The official CocoAPI has some
-        efficient C functions for dealing with these that we should
-        port over and clean up. The original C functions are in [2].
-        We will implement these in `kwimage.structs.Mask`.
+        The RLE can be in a special bytes encoding or in a binary array
+        encoding. We reuse the original C functions are in [2] in
+        `kwimage.structs.Mask` to provide a convinient way to abstract this
+        rather esoteric bytes encoding.
 
         For pure python implementations see kwimage:
             Converting from an image to RLE can be done via kwimage.run_length_encoding
@@ -698,8 +691,18 @@ class MixinCocoExtras(object):
 
     def category_graph(self):
         """
+        Construct a networkx category heirarchy
+
+        Returns:
+            network.DiGraph: graph: a directed graph where category names are
+                the nodes, supercategories define edges, and items in each
+                category dict (e.g. category id) are added as node properties.
+
+        Example:
             >>> self = CocoDataset.demo()
             >>> graph = self.category_graph()
+            >>> assert 'astronaut' in graph.nodes()
+            >>> assert 'keypoints' in graph.node['human']
 
             import graphid
             graphid.util.show_nx(graph)
@@ -711,6 +714,41 @@ class MixinCocoExtras(object):
             if 'supercategory' in cat:
                 graph.add_edge(cat['supercategory'], cat['name'])
         return graph
+
+    def keypoint_categories(self):
+        """
+        Construct keypoint categories
+
+        Returns:
+            List[str]: names: list of keypoint category names
+
+        Example:
+            >>> self = CocoDataset.demo()
+            >>> names = self.keypoint_categories()
+            >>> print(names)
+            ['left-eye', 'right-eye']
+        """
+        names = []
+        cats = sorted(self.dataset['categories'], key=lambda c: c['id'])
+        for cat in cats:
+            if 'keypoints' in cat:
+                names.extend(cat['keypoints'])
+        return names
+
+    def _lookup_kpnames(self, cid):
+        """ Get the keypoint categories for a certain class """
+        kpnames = None
+        while kpnames is None:
+            # Extract keypoint names for each annotation
+            cat = self.cats[cid]
+            parent = cat.get('supercategory', None)
+            if 'keypoints' in cat:
+                kpnames = cat['keypoints']
+            elif parent is not None:
+                cid = self.name_to_cat[cat['supercategory']]['id']
+            else:
+                raise KeyError('could not find keypoint names for cid={}'.format(cid))
+        return kpnames
 
     def missing_images(self):
         import os
@@ -1003,7 +1041,7 @@ class MixinCocoDraw(object):
     Matplotlib / display functionality
     """
 
-    def show_image(self, gid=None, aids=None, aid=None):
+    def show_image(self, gid=None, aids=None, aid=None, **kwargs):
         """
         Use matplotlib to show an image with annotations overlaid
 
@@ -1012,14 +1050,26 @@ class MixinCocoDraw(object):
             aids (list): aids to highlight within the image
             aid (int): a specific aid to focus on. If gid is not give,
                 look up gid based on this aid.
+            **kwargs: show_all, show_aid, show_catname, show_kpname,
+
+        Ignore:
+            # Programatically collect the kwargs for docs generation
+            import xinspect
+            kwargs = xinspect.get_kwargs(ndsampler.CocoDataset.show_image)
+            print(ub.repr2(list(kwargs.keys()), nl=1, si=1))
+
         """
         import matplotlib as mpl
         from matplotlib import pyplot as plt
         from PIL import Image
+        import kwimage
+        import kwplot
 
         if gid is None:
             primary_ann = self.anns[aid]
             gid = primary_ann['image_id']
+
+        show_all = kwargs.get('show_all', False)
 
         highlight_aids = set()
         if aid is not None:
@@ -1041,15 +1091,26 @@ class MixinCocoDraw(object):
 
         for aid in aids:
             ann = self.anns[aid]
+
+            if 'keypoints' in ann:
+                cid = ann['category_id']
+                try:
+                    kpnames = self._lookup_kpnames(cid)
+                except KeyError:
+                    kpnames = None
+                kpts = np.array(ann['keypoints']).reshape(-1, 3)
+                isvisible = kpts.T[2] > 0
+                xys = kpts.T[0:2].T[isvisible]
+            else:
+                kpnames = None
+                xys = None
+
             # Note standard coco bbox is [x,y,width,height]
             if 'bbox' in ann:
                 x1, y1 = ann['bbox'][0:2]
             elif 'line' in ann:
                 x1, y1 = ann['line'][0:2]
             elif 'keypoints' in ann:
-                kpts = np.array(ann['keypoints']).reshape(-1, 3)
-                isvisible = kpts.T[2] > 0
-                xys = kpts.T[0:2].T[isvisible]
                 x1, y1 = xys.min(axis=0)
 
             catname = self.cats[ann['category_id']]['name']
@@ -1061,7 +1122,13 @@ class MixinCocoDraw(object):
                 'fontproperties': mpl.font_manager.FontProperties(
                     size=6, family='monospace'),
             }
-            texts.append((x1, y1, catname, textkw))
+            annot_text_parts = []
+            if kwargs.get('show_aid', show_all):
+                annot_text_parts.append('aid={}'.format(aid))
+            if kwargs.get('show_catname', True):
+                annot_text_parts.append(catname)
+            annot_text = ' '.join(annot_text_parts)
+            texts.append((x1, y1, annot_text, textkw))
 
             color = 'orange' if aid in highlight_aids else 'blue'
             if 'obox' in ann:
@@ -1079,17 +1146,17 @@ class MixinCocoDraw(object):
                 pt1, pt2 = (x1, y1), (x2, y2)
                 colored_segments[color].append([pt1, pt2])
             if 'keypoints' in ann:
-                kpts = np.array(ann['keypoints']).reshape(-1, 3)
-                isvisible = kpts.T[2] > 0
-                xys = kpts.T[0:2].T[isvisible]
                 keypoints.append(xys)
+                if kwargs.get('show_kpname', show_all):
+                    if kpnames is not None:
+                        for (kp_x, kp_y), kpname in zip(xys, kpnames):
+                            texts.append((kp_x, kp_y, kpname, textkw))
 
             if 'segmentation' in ann:
                 sseg = ann['segmentation']
                 print('sseg = {!r}'.format(sseg))
                 if isinstance(sseg, dict):
                     # Handle COCO-RLE-segmentations; convert to raw binary masks
-                    import kwimage
                     sseg = dict(sseg)
                     if 'shape' not in sseg and 'size' in sseg:
                         # NOTE: size here is actually h/w unlike almost
@@ -1127,7 +1194,6 @@ class MixinCocoDraw(object):
 
             layers = []
             layers.append(np_img01)
-            import kwplot
             distinct_colors = kwplot.Color.distinct(len(sseg_masks))
 
             for mask, col in zip(sseg_masks, distinct_colors):
@@ -1136,10 +1202,21 @@ class MixinCocoDraw(object):
                 alpha_mask[..., 3] = mask * 0.5
                 layers.append(alpha_mask)
 
-            masked_img = kwimage.overlay_alpha_layers(layers[::-1])
+            with ub.Timer('overlay'):
+                masked_img = kwimage.overlay_alpha_layers(layers[::-1])
+
             ax.imshow(masked_img)
         else:
-            plt.imshow(np_img)
+            ax.imshow(np_img)
+
+        title_parts = []
+        if kwargs.get('show_gid', True):
+            title_parts.append('gid={}'.format(gid))
+        if kwargs.get('show_filename', True):
+            title_parts.append(img['file_name'])
+        title = ' '.join(title_parts)
+        if title:
+            ax.set_title(title)
 
         if sseg_polys:
             print('sseg_polys = {!r}'.format(sseg_polys))
@@ -1756,7 +1833,8 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
 
         if isinstance(data, six.string_types):
             fpath = data
-            key = basename(fpath).split('.')[0]
+            key = basename(fpath)
+            # .split('.')[0]
             data = json.load(open(fpath, 'r'))
 
             # If data is a path it gives us the absolute location of the root
@@ -2188,13 +2266,36 @@ def demo_coco_data():
         'img_root': img_root,
 
         'categories': [
-            {'id': 1, 'name': 'astronaut', 'supercategory': 'human'},
+            {
+                'id': 1, 'name': 'astronaut',
+                'supercategory': 'human',
+            },
             {'id': 2, 'name': 'rocket', 'supercategory': 'object'},
             {'id': 3, 'name': 'helmet', 'supercategory': 'object'},
-            {'id': 4, 'name': 'mouth', 'supercategory': 'human'},
-            {'id': 5, 'name': 'star', 'supercategory': 'object'},
+            {
+                'id': 4, 'name': 'mouth',
+                'supercategory': 'human',
+                'keypoints': [
+                    'mouth-right-corner',
+                    'mouth-right-bot',
+                    'mouth-left-bot',
+                    'mouth-left-corner',
+                ],
+                'skeleton': [(0, 1)],
+            },
+            {
+                'id': 5, 'name': 'star',
+                'supercategory': 'object',
+                'keypoints': ['star-center'],
+                'skeleton': [],
+            },
             {'id': 6, 'name': 'astronomer', 'supercategory': 'human'},
             {'id': 7, 'name': 'astroturf', 'supercategory': 'object'},
+            {
+                'id': 8, 'name': 'human',
+                'keypoints': ['left-eye', 'right-eye'],
+                'skeleton': [(0, 1)],
+            },
         ],
         'images': [
             {'id': 1, 'file_name': gname1},
@@ -2204,6 +2305,7 @@ def demo_coco_data():
         'annotations': [
             {'id': 1, 'image_id': 1, 'category_id': 1,
              'bbox': [10, 10, 360, 490],
+             'keypoints': [247, 101, 2, 202, 100, 2],
              'segmentation': [[
                  40, 509, 26, 486, 20, 419, 28, 334, 51, 266, 85, 229, 102,
                  216, 118, 197, 125, 176, 148, 151, 179, 147, 182, 134, 174,
@@ -2218,7 +2320,12 @@ def demo_coco_data():
             {'id': 3, 'image_id': 1, 'category_id': 3,
              'line': [326, 369, 500, 500]},
             {'id': 4, 'image_id': 1, 'category_id': 4,
-             'keypoints': [202, 139, 1, 215, 150, 1, 229, 150, 1, 244, 142, 1]},
+             'keypoints': [
+                 202, 139, 2,
+                 215, 150, 2,
+                 229, 150, 2,
+                 244, 142, 2,
+             ]},
             {'id': 5, 'image_id': 1, 'category_id': 5,
              'keypoints': [37, 65, 1]},
             {'id': 6, 'image_id': 1, 'category_id': 5,
