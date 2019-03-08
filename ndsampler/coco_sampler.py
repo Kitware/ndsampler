@@ -402,7 +402,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
                 sseg = kwimage.Mask.coerce(sseg, shape=data_dims)
             masks.append(sseg)
         abs_masks = kwimage.MaskList(masks)
-        rel_masks = abs_masks.translate(offset, output_shape=window_dims)
+        rel_masks = abs_masks.translate(offset, output_dims=window_dims)
 
         annots = {
             'aids': np.array(overlap_aids),
