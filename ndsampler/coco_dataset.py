@@ -738,6 +738,7 @@ class MixinCocoExtras(object):
     def _lookup_kpnames(self, cid):
         """ Get the keypoint categories for a certain class """
         kpnames = None
+        orig_cat = self.cats[cid]
         while kpnames is None:
             # Extract keypoint names for each annotation
             cat = self.cats[cid]
@@ -747,7 +748,7 @@ class MixinCocoExtras(object):
             elif parent is not None:
                 cid = self.name_to_cat[cat['supercategory']]['id']
             else:
-                raise KeyError('could not find keypoint names for cid={}'.format(cid))
+                raise KeyError('could not find keypoint names for cid={}, cat={}, orig_cat={}'.format(cid, cat, orig_cat))
         return kpnames
 
     def missing_images(self):
