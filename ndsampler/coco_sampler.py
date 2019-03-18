@@ -27,11 +27,26 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         >>> self = CocoSampler.demo('photos')
         ...
         >>> print(sorted(self.class_ids))
-        [0, 1, 2, 3, 4, 5, 6, 7]
+        [0, 1, 2, 3, 4, 5, 6, 7, 8]
         >>> print(self.n_positives)
         4
-        >>> sample = self.load_positive()
-        >>> sample = self.load_negative()
+
+    Example:
+        >>> import ndsampler
+        >>> self = ndsampler.CocoSampler.demo('photos')
+        >>> p_sample = self.load_positive()
+        >>> n_sample = self.load_negative()
+        >>> self = ndsampler.CocoSampler.demo('shapes')
+        >>> p_sample2 = self.load_positive()
+        >>> n_sample2 = self.load_negative()
+        >>> for sample in [p_sample, n_sample, p_sample2, n_sample2]:
+        >>>     assert 'annots' in sample
+        >>>     assert 'im' in sample
+        >>>     assert 'rel_boxes' in sample['annots']
+        >>>     assert 'rel_ssegs' in sample['annots']
+        >>>     assert 'rel_kpts' in sample['annots']
+        >>>     assert 'cids' in sample['annots']
+        >>>     assert 'aids' in sample['annots']
     """
 
     @classmethod

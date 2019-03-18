@@ -491,7 +491,7 @@ class MixinCocoExtras(object):
             >>> print('self.hashid = {!r}'.format(self.hashid))
             self.hashid_parts = {
                 'annotations': {
-                    'json': '07f8a90ab441b...',
+                    'json': 'e573f49da7b76e27d0...',
                     'num': 11,
                 },
                 'images': {
@@ -500,11 +500,11 @@ class MixinCocoExtras(object):
                     'num': 3,
                 },
                 'categories': {
-                    'json': '9a92615e2b...',
-                    'num': 7,
+                    'json': '82d22e0079...',
+                    'num': 8,
                 },
             }
-            self.hashid = 'cab9c0fe98f...
+            self.hashid = 'bfe51a12576d1a4d4feeaa...
 
         Doctest:
             >>> self = CocoDataset.demo()
@@ -726,7 +726,6 @@ class MixinCocoExtras(object):
             >>> self = CocoDataset.demo()
             >>> names = self.keypoint_categories()
             >>> print(names)
-            ['left-eye', 'right-eye']
         """
         names = []
         cats = sorted(self.dataset['categories'], key=lambda c: c['id'])
@@ -932,11 +931,13 @@ class MixinCocoStats(object):
         Reports the number of annotations of each category
 
         Example:
+            >>> from ndsampler.coco_dataset import *
             >>> self = CocoDataset.demo()
             >>> hist = self.category_annotation_frequency()
             >>> print(ub.repr2(hist))
             {
                 'astroturf': 0,
+                'human': 0,
                 'astronaut': 1,
                 'astronomer': 1,
                 'helmet': 1,
@@ -978,7 +979,7 @@ class MixinCocoStats(object):
             {
                 'n_anns': 11,
                 'n_imgs': 3,
-                'n_cats': 7,
+                'n_cats': 8,
             }
         """
         return ub.odict([
@@ -1362,9 +1363,10 @@ class MixinCocoAddRemove(object):
 
         Example:
             >>> self = CocoDataset.demo()
+            >>> prev_n_cats = self.n_cats
             >>> cid = self.add_category('dog', supercategory='object')
             >>> assert self.cats[cid]['name'] == 'dog'
-            >>> assert self.n_cats == 8
+            >>> assert self.n_cats == prev_n_cats + 1
             >>> import pytest
             >>> with pytest.raises(ValueError):
             >>>     self.add_category('dog', supercategory='object')
@@ -1400,7 +1402,7 @@ class MixinCocoAddRemove(object):
             >>> self = CocoDataset.demo()
             >>> self.clear_images()
             >>> print(ub.repr2(self.basic_stats(), nobr=1, nl=0, si=1))
-            n_anns: 0, n_imgs: 0, n_cats: 7
+            n_anns: 0, n_imgs: 0, n_cats: 8
         """
         # self.dataset['images'].clear()
         # self.dataset['annotations'].clear()
@@ -1417,7 +1419,7 @@ class MixinCocoAddRemove(object):
             >>> self = CocoDataset.demo()
             >>> self.clear_annotations()
             >>> print(ub.repr2(self.basic_stats(), nobr=1, nl=0, si=1))
-            n_anns: 0, n_imgs: 3, n_cats: 7
+            n_anns: 0, n_imgs: 3, n_cats: 8
         """
         # self.dataset['annotations'].clear()
         del self.dataset['annotations'][:]
@@ -1435,7 +1437,8 @@ class MixinCocoAddRemove(object):
         them in batch with `self.remove_annotations`
 
         Example:
-            >>> self = CocoDataset.demo()
+            >>> import ndsampler
+            >>> self = ndsampler.CocoDataset.demo()
             >>> aids_or_anns = [self.anns[2], 3, 4, self.anns[1]]
             >>> self.remove_annotations(aids_or_anns)
             >>> assert len(self.dataset['annotations']) == 7
@@ -1458,10 +1461,12 @@ class MixinCocoAddRemove(object):
             Dict: num_removed: information on the number of items removed
 
         Example:
-            >>> self = CocoDataset.demo()
+            >>> import ndsampler
+            >>> self = ndsampler.CocoDataset.demo()
+            >>> prev_n_annots = self.n_annots
             >>> aids_or_anns = [self.anns[2], 3, 4, self.anns[1]]
             >>> self.remove_annotations(aids_or_anns)
-            >>> assert len(self.dataset['annotations']) == 7
+            >>> assert len(self.dataset['annotations']) == prev_n_annots - 4
             >>> self._check_index()
         """
         remove_info = {'annotations': None}
@@ -1502,7 +1507,7 @@ class MixinCocoAddRemove(object):
             >>> self = CocoDataset.demo()
             >>> cids_or_cats = [self.cats[1], 'rocket', 3]
             >>> self.remove_categories(cids_or_cats)
-            >>> assert len(self.dataset['categories']) == 4
+            >>> assert len(self.dataset['categories']) == 5
             >>> self._check_index()
         """
         remove_info = {'annotations': None, 'categories': None}
@@ -1911,6 +1916,7 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
 
         Example:
             >>> from ndsampler.coco_dataset import *
+            >>> import json
             >>> self = CocoDataset.demo()
             >>> text = self.dumps()
             >>> print(text)
@@ -1923,6 +1929,16 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
             >>> self2 = CocoDataset(json.loads(text), tag='demo2')
             >>> assert self2.dataset == self.dataset
             >>> assert self2.dataset is not self.dataset
+
+        Ignore:
+            for k in self2.dataset:
+                if self.dataset[k] == self2.dataset[k]:
+                    print('YES: k = {!r}'.format(k))
+                else:
+                    print('NO: k = {!r}'.format(k))
+            self2.dataset['categories']
+            self.dataset['categories']
+
         """
         def _json_dumps(data, indent=None):
             fp = StringIO()
@@ -2282,7 +2298,7 @@ def demo_coco_data():
                     'mouth-left-bot',
                     'mouth-left-corner',
                 ],
-                'skeleton': [(0, 1)],
+                'skeleton': [[0, 1]],
             },
             {
                 'id': 5, 'name': 'star',
@@ -2295,7 +2311,7 @@ def demo_coco_data():
             {
                 'id': 8, 'name': 'human',
                 'keypoints': ['left-eye', 'right-eye'],
-                'skeleton': [(0, 1)],
+                'skeleton': [[0, 1]],
             },
         ],
         'images': [
