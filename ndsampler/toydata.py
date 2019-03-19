@@ -55,6 +55,7 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
                 'circle',
                 'star',
                 'superstar',
+                'eff',
                 # 'octagon',
                 # 'diamond'
             ]
@@ -307,8 +308,10 @@ class Rasters:
 
         Ignore:
             >>> kwplot.autompl()
-            >>> data = np.clip(kwimage.imscale(Rasters.star(), 2.2)[0], 0, 1)
+            >>> patch = Rasters.superstar()
+            >>> data = np.clip(kwimage.imscale(patch, 2.2), 0, 1)
             >>> kwplot.imshow(data)
+
         """
         (_, i, O) = 0, 1.0, .5
         patch = np.array([
@@ -328,7 +331,60 @@ class Rasters:
             [_, O, i, i, i, O, O, _, _, O, O, i, i, i, O, _],
             [O, i, i, O, O, _, _, _, _, _, _, O, O, i, i, O],
             [O, O, O, _, _, _, _, _, _, _, _, _, _, O, O, O]])
-        return patch
+
+        keypoints_yx = {
+            'left_eye': [7.5, 6.5],
+            'right_eye': [7.5, 9.5],
+        }
+        return patch, keypoints_yx
+
+    @staticmethod
+    def eff():
+        """
+        test data patch
+
+        Ignore:
+            >>> from ndsampler.toydata import *  # NOQA
+            >>> kwplot.autompl()
+            >>> eff = kwimage.draw_text_on_image(None, 'F', (0, 1), valign='top')
+            >>> patch = Rasters.eff()
+            >>> data = np.clip(kwimage.imscale(Rasters.eff(), 2.2), 0, 1)
+            >>> kwplot.imshow(data)
+
+        """
+        (_, O) = 0, 1.0
+        patch = np.array([
+            [_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _],
+            [_, _, _, _, O, O, O, O, O, O, O, O, O, O, O, O, O, O, _, _],
+            [_, _, O, O, O, O, O, O, O, O, O, O, O, O, O, O, O, O, O, _],
+            [_, _, _, O, O, O, O, O, O, O, O, O, O, O, O, O, O, O, O, _],
+            [_, _, _, O, O, O, O, O, O, O, O, O, O, O, O, O, O, _, _, _],
+            [_, _, _, O, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _],
+            [_, _, _, O, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _],
+            [_, _, _, O, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _],
+            [_, _, _, O, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _],
+            [_, _, _, O, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _],
+            [_, _, _, O, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _],
+            [_, _, _, O, O, O, O, O, O, O, O, O, O, O, _, _, _, _, _, _],
+            [_, _, O, O, O, O, O, O, O, O, O, O, O, O, O, _, _, _, _, _],
+            [_, _, O, O, O, O, O, O, O, O, O, O, O, O, _, _, _, _, _, _],
+            [_, _, _, O, O, O, O, O, O, O, O, O, _, _, _, _, _, _, _, _],
+            [_, _, _, O, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _],
+            [_, _, _, O, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _],
+            [_, _, _, O, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _],
+            [_, _, _, O, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _],
+            [_, _, _, O, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _],
+            [_, _, _, O, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _],
+            [_, _, _, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _, _],
+            [_, _, _, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _, _],
+            [_, _, _, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _, _]])
+
+        keypoints_yx = {
+            'top_tip': (2.5, 18.5),
+            'mid_tip': (12.5, 14.5),
+            'bot_tip': (23.0, 4.5),
+        }
+        return patch, keypoints_yx
 
 
 class CategoryPatterns(object):
@@ -337,15 +393,19 @@ class CategoryPatterns(object):
         >>> from ndsampler.toydata import *  # NOQA
         >>> self = CategoryPatterns()
         >>> chip = np.zeros((100, 100, 3))
-        >>> offset = (10, 10)
-        >>> dims = (200, 200)
+        >>> offset = (20, 10)
+        >>> dims = (160, 140)
         >>> info = self.random_category(chip, offset, dims)
         >>> print('info = {}'.format(ub.repr2(info, nl=1)))
         >>> # xdoctest: +REQUIRES(--show)
         >>> import kwplot
         >>> kwplot.autompl()
-        >>> kwplot.imshow(info['data'], pnum=(1, 2, 1), fnum=1)
-        >>> #kwplot.imshow(info['segmentation'], pnum=(1, 2, 2), fnum=1)
+        >>> kwplot.imshow(info['data'], pnum=(1, 2, 1), fnum=1, title='chip-space')
+        >>> info['kpts2'].translate(-np.array(offset)).draw(radius=3)
+        >>> #####
+        >>> mask = kwimage.Mask.coerce(info['segmentation'])
+        >>> kwplot.imshow(mask.to_c_mask().data, pnum=(1, 2, 2), fnum=1, title='img-space')
+        >>> info['kpts2'].draw(radius=3)
         >>> kwplot.show_if_requested()
 
     """
@@ -355,13 +415,14 @@ class CategoryPatterns(object):
         self.fg_scale = fg_scale
         self.fg_intensity = fg_intensity
         self.category_to_elemfunc = {
-            'box': skimage.morphology.square,
-            # 'star': skimage.morphology.star,
-            'star': star,
-            'circle': skimage.morphology.disk,
             'superstar': lambda x: Rasters.superstar(),
-            'octagon': lambda x: skimage.morphology.octagon(x // 2, int(x / (2 * np.sqrt(2)))),
-            'diamond': skimage.morphology.diamond,
+            'eff':       lambda x: Rasters.eff(),
+
+            'box':     lambda x: (skimage.morphology.square(x), None),
+            'star':    lambda x: (star(x), None),
+            'circle':  lambda x: (skimage.morphology.disk(x), None),
+            'octagon': lambda x: (skimage.morphology.octagon(x // 2, int(x / (2 * np.sqrt(2)))), None),
+            'diamond': lambda x: (skimage.morphology.diamond(x), None),
         }
         # Make generation of shapes a bit faster?
         # Maybe there are too many input combinations for this?
@@ -370,6 +431,12 @@ class CategoryPatterns(object):
         # for key in self.category_to_elemfunc.keys():
         #     self.category_to_elemfunc[key] = ub.memoize(self.category_to_elemfunc[key])
 
+        # keep track of which keypoints belong to which categories
+        self.cname_to_kp = {
+            'superstar': ['left_eye', 'right_eye'],
+            'eff': ['top_tip', 'mid_tip', 'bot_tip'],
+        }
+
         if categories is None:
             self.categories = list(self.category_to_elemfunc.keys())
         else:
@@ -377,15 +444,22 @@ class CategoryPatterns(object):
 
         self._catlist = sorted(self.categories)
 
-    def random_category(self, chip, xy_offset=None, dims=None):
-        name = self.rng.choice(self._catlist)
-        elem_func = self.category_to_elemfunc[name]
-        data, mask = self._from_elem(elem_func, chip)
+        # flatten list of all keypoint categories
+        self.kp_classes = list(
+            ub.flatten([self.cname_to_kp.get(cname, []) for cname in self._catlist])
+        )
 
+    def random_category(self, chip, xy_offset=None, dims=None):
         import kwimage
+        name = self.rng.choice(self._catlist)
+        data, mask, kpts = self._from_elem(name, chip)
+
         mask = kwimage.Mask(mask, 'c_mask').to_array_rle()
-        segmentation = mask.translate(xy_offset, dims).to_bytes_rle().data
-        segmentation['counts'] = segmentation['counts'].decode('utf8')
+        if xy_offset is not None:
+            segmentation = mask.translate(xy_offset, output_dims=dims).to_bytes_rle()
+            kpts = kpts.translate(xy_offset, output_dims=dims)
+
+        segmentation.data['counts'] = segmentation.data['counts'].decode('utf8')
 
         center_xy = np.array(chip.shape[0:2][::-1]) / 2.0
         if xy_offset:
@@ -396,17 +470,32 @@ class CategoryPatterns(object):
         info = {
             'name': name,
             'data': data,
-            'segmentation': segmentation,
+            'segmentation': segmentation.data,
             'keypoints': [cx, cy, 2],
+            'kpts2': kpts,
         }
         return info
 
-    def _from_elem(self, elem_func, chip):
+    def _from_elem(self, name, chip):
+        print('name = {!r}'.format(name))
+
+        elem_func = self.category_to_elemfunc[name]
         x = max(chip.shape[0:2])
         # x = int(2 ** np.floor(np.log2(x)))
+        elem, kpts_yx = elem_func(x)
 
         size = tuple(map(int, chip.shape[0:2][::-1]))
-        elem = elem_func(x)
+
+        if kpts_yx is not None:
+            xy = np.array([yx[::-1] for yx in kpts_yx.values()])
+            kpts = kwimage.Points(xy=xy)
+            sf = np.array(size) / np.array(elem.shape[0:2][::-1])
+            kpts = kpts.scale(sf)
+        else:
+            # center
+            kpts = kwimage.Points(xy=np.array([[.5, .5]]))
+            kpts = kpts.scale(size)
+
         template = cv2.resize(elem, size).astype(np.float32)
         fg_intensity = np.float32(self.fg_intensity)
         fg_scale = np.float32(self.fg_scale)
@@ -417,7 +506,7 @@ class CategoryPatterns(object):
         fga = kwimage.ensure_alpha_channel(fgdata, alpha=template)
         data = kwimage.overlay_alpha_images(fga, chip, keepalpha=False)
         mask = (template > 0.05).astype(np.uint8)
-        return data, mask
+        return data, mask, kpts
 
 
 def star(a, dtype=np.uint8):
