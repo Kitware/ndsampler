@@ -282,6 +282,12 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
                     rel_ssegs (ndarray): segmentations relative to the sample
                     rel_kpts (ndarray): keypoints relative to the sample
 
+        CommandLine:
+            xdoctest -m ndsampler.coco_sampler CocoSampler.load_sample:2 --show
+
+            xdoctest -m ndsampler.coco_sampler CocoSampler.load_sample:1 --show
+            xdoctest -m ndsampler.coco_sampler CocoSampler.load_sample:3 --show
+
         Example:
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo()
@@ -338,6 +344,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> annots['rel_boxes'].translate([-.5, -.5]).draw()
             >>> annots['rel_ssegs'].draw(color='red', alpha=.6)
             >>> annots['rel_kpts'].draw(color='green', alpha=.4, radius=10)
+            >>> kwplot.show_if_requested()
 
         Example:
             >>> from ndsampler.coco_sampler import *

@@ -300,12 +300,19 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
         Returns:
             Dict: tr: target info dictionary
 
+        CommandLine:
+            xdoctest -m ndsampler.coco_regions CocoRegions.get_negative
+
         Example:
             >>> from ndsampler.coco_regions import *
             >>> from ndsampler import coco_sampler
             >>> rng = kwarray.ensure_rng(0)
             >>> self = coco_sampler.CocoSampler.demo().regions
             >>> tr = self.get_negative(rng=rng)
+            >>> # xdoctest: +IGNORE_WANT
+            >>> assert 'category_id' in tr
+            >>> assert 'aid' in tr
+            >>> assert 'cx' in tr
             >>> print(ub.repr2(tr, precision=2))
             {
                 'aid': -1,

@@ -8,9 +8,9 @@ import kwarray
 import kwimage
 import skimage
 import skimage.morphology  # NOQA
-import cv2
 from ndsampler import abstract_sampler
 from ndsampler import category_tree
+from ndsampler.toypatterns import CategoryPatterns
 import networkx as nx
 
 
@@ -48,23 +48,11 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
     """
 
     def __init__(self, n_positives=1e5, seed=None, gsize=(416, 416), categories=None):
+        self.categories = CategoryPatterns.coerce(categories)
 
-        if categories is None:
-            self.categories = [
-                # 'box',
-                'circle',
-                'star',
-                'superstar',
-                'eff',
-                # 'octagon',
-                # 'diamond'
-            ]
-
-        # TODO: make better toy keypoints
-        self.kp_catnames = ['center']
-
+        self.cname_to_cid = {}
         self.cname_to_cid = {
-            cname: cid for cid, cname in enumerate(self.categories, start=1)
+            cat['name']: cid for cid, cat in enumerate(self.categories, start=1)
         }
         self.cname_to_cid['background'] = 0
         self.cid_to_cname = {
@@ -82,8 +70,8 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
         self._n_positives = int(n_positives)
         self._n_images = 50
         self.seed = seed
-        # catpats = CategoryPatterns(self.categories, fg_scale=fg_scale,
-        #                            fg_intensity=fg_intensity, rng=rng)
+        # self.catpats = CategoryPatterns.coerce(self.categories)
+        # fg_scale=fg_scale, fg_intensity=fg_intensity, rng=rng)
 
     def load_item(self, index, pad=None, window_dims=None):
         """
@@ -130,8 +118,9 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
 
     def _lookup_kpnames(self, class_id):
         cname = self.lookup_class_name(class_id)
-        if cname is not None:
-            return ['center']
+        return self.categories.cname_to_kp[cname]
+        # if cname is not None:
+        #     return ['center']
 
     @property
     def n_categories(self):
@@ -212,7 +201,7 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
         sseg_list = []
         kpts_list = []
 
-        kp_catnames = self.kp_catnames
+        kp_catnames = self.categories.kp_catnames
         for ann in anns:
             coco_sseg = ann.get('segmentation', None)
             coco_kpts = ann.get('keypoints', None)
@@ -244,7 +233,7 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
 
         rel_ssegs = kwimage.PolygonList(sseg_list)
         rel_kpts = kwimage.PolygonList(kpts_list)
-        rel_kpts.meta['classes'] = self.kp_catnames
+        rel_kpts.meta['classes'] = self.categories.kp_catnames
 
         rel_boxes = kwimage.Boxes([a['bbox'] for a in anns], 'xywh').to_cxywh()
 
@@ -269,7 +258,7 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
 
         Example:
             >>> from ndsampler.toydata import *
-            >>> self = DynamicToySampler(1e3)
+            >>> self = DynamicToySampler(1e2)
             >>> sample = self.load_positive()
             >>> annots = sample['annots']
             >>> assert len(annots['aids']) > 0
@@ -281,7 +270,7 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
             >>> kwplot.imshow(sample['im'], pnum=(1, 1, 1), fnum=1)
             >>> annots['rel_boxes'].translate([-.5, -.5]).draw()
             >>> annots['rel_ssegs'].draw(color='red', alpha=.6)
-            >>> annots['rel_kpts'].draw(color='green', alpha=.8, radius=8)
+            >>> annots['rel_kpts'].draw(color='green', alpha=.8, radius=4)
         """
         if index is not None and self.seed is not None:
             rng = self.seed * len(self) + index
@@ -298,260 +287,6 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
         sample = self._load_toy_sample(window_dims, pad, rng,
                                        centerobj='neg', n_annots=(0, 10))
         return sample
-
-
-class Rasters:
-    @staticmethod
-    def superstar():
-        """
-        test data patch
-
-        Ignore:
-            >>> kwplot.autompl()
-            >>> patch = Rasters.superstar()
-            >>> data = np.clip(kwimage.imscale(patch, 2.2), 0, 1)
-            >>> kwplot.imshow(data)
-
-        """
-        (_, i, O) = 0, 1.0, .5
-        patch = np.array([
-            [_, _, _, _, _, _, _, O, O, _, _, _, _, _, _, _],
-            [_, _, _, _, _, _, O, i, i, O, _, _, _, _, _, _],
-            [_, _, _, _, _, _, O, i, i, O, _, _, _, _, _, _],
-            [_, _, _, _, _, O, i, i, i, i, O, _, _, _, _, _],
-            [O, O, O, O, O, O, i, i, i, i, O, O, O, O, O, O],
-            [O, i, i, i, i, i, i, i, i, i, i, i, i, i, i, O],
-            [_, O, i, i, i, i, O, i, i, O, i, i, i, i, O, _],
-            [_, _, O, i, i, i, O, i, i, O, i, i, i, O, _, _],
-            [_, _, _, O, i, i, O, i, i, O, i, i, O, _, _, _],
-            [_, _, _, O, i, i, i, i, i, i, i, i, O, _, _, _],
-            [_, _, O, i, i, i, i, i, i, i, i, i, i, O, _, _],
-            [_, _, O, i, i, i, i, i, i, i, i, i, i, O, _, _],
-            [_, O, i, i, i, i, i, O, O, i, i, i, i, i, O, _],
-            [_, O, i, i, i, O, O, _, _, O, O, i, i, i, O, _],
-            [O, i, i, O, O, _, _, _, _, _, _, O, O, i, i, O],
-            [O, O, O, _, _, _, _, _, _, _, _, _, _, O, O, O]])
-
-        keypoints_yx = {
-            'left_eye': [7.5, 6.5],
-            'right_eye': [7.5, 9.5],
-        }
-        return patch, keypoints_yx
-
-    @staticmethod
-    def eff():
-        """
-        test data patch
-
-        Ignore:
-            >>> from ndsampler.toydata import *  # NOQA
-            >>> kwplot.autompl()
-            >>> eff = kwimage.draw_text_on_image(None, 'F', (0, 1), valign='top')
-            >>> patch = Rasters.eff()
-            >>> data = np.clip(kwimage.imscale(Rasters.eff(), 2.2), 0, 1)
-            >>> kwplot.imshow(data)
-
-        """
-        (_, O) = 0, 1.0
-        patch = np.array([
-            [_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _],
-            [_, _, _, _, O, O, O, O, O, O, O, O, O, O, O, O, O, O, _, _],
-            [_, _, O, O, O, O, O, O, O, O, O, O, O, O, O, O, O, O, O, _],
-            [_, _, _, O, O, O, O, O, O, O, O, O, O, O, O, O, O, O, O, _],
-            [_, _, _, O, O, O, O, O, O, O, O, O, O, O, O, O, O, _, _, _],
-            [_, _, _, O, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _],
-            [_, _, _, O, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _],
-            [_, _, _, O, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _],
-            [_, _, _, O, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _],
-            [_, _, _, O, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _],
-            [_, _, _, O, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _],
-            [_, _, _, O, O, O, O, O, O, O, O, O, O, O, _, _, _, _, _, _],
-            [_, _, O, O, O, O, O, O, O, O, O, O, O, O, O, _, _, _, _, _],
-            [_, _, O, O, O, O, O, O, O, O, O, O, O, O, _, _, _, _, _, _],
-            [_, _, _, O, O, O, O, O, O, O, O, O, _, _, _, _, _, _, _, _],
-            [_, _, _, O, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _],
-            [_, _, _, O, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _],
-            [_, _, _, O, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _],
-            [_, _, _, O, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _],
-            [_, _, _, O, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _],
-            [_, _, _, O, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _],
-            [_, _, _, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _, _],
-            [_, _, _, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _, _],
-            [_, _, _, O, O, O, _, _, _, _, _, _, _, _, _, _, _, _, _, _]])
-
-        keypoints_yx = {
-            'top_tip': (2.5, 18.5),
-            'mid_tip': (12.5, 14.5),
-            'bot_tip': (23.0, 4.5),
-        }
-        return patch, keypoints_yx
-
-
-class CategoryPatterns(object):
-    """
-    Example:
-        >>> from ndsampler.toydata import *  # NOQA
-        >>> self = CategoryPatterns()
-        >>> chip = np.zeros((100, 100, 3))
-        >>> offset = (20, 10)
-        >>> dims = (160, 140)
-        >>> info = self.random_category(chip, offset, dims)
-        >>> print('info = {}'.format(ub.repr2(info, nl=1)))
-        >>> # xdoctest: +REQUIRES(--show)
-        >>> import kwplot
-        >>> kwplot.autompl()
-        >>> kwplot.imshow(info['data'], pnum=(1, 2, 1), fnum=1, title='chip-space')
-        >>> info['kpts2'].translate(-np.array(offset)).draw(radius=3)
-        >>> #####
-        >>> mask = kwimage.Mask.coerce(info['segmentation'])
-        >>> kwplot.imshow(mask.to_c_mask().data, pnum=(1, 2, 2), fnum=1, title='img-space')
-        >>> info['kpts2'].draw(radius=3)
-        >>> kwplot.show_if_requested()
-
-    """
-    def __init__(self, categories=None, fg_scale=0.5, fg_intensity=0.9,
-                 rng=None):
-        self.rng = kwarray.ensure_rng(rng)
-        self.fg_scale = fg_scale
-        self.fg_intensity = fg_intensity
-        self.category_to_elemfunc = {
-            'superstar': lambda x: Rasters.superstar(),
-            'eff':       lambda x: Rasters.eff(),
-
-            'box':     lambda x: (skimage.morphology.square(x), None),
-            'star':    lambda x: (star(x), None),
-            'circle':  lambda x: (skimage.morphology.disk(x), None),
-            'octagon': lambda x: (skimage.morphology.octagon(x // 2, int(x / (2 * np.sqrt(2)))), None),
-            'diamond': lambda x: (skimage.morphology.diamond(x), None),
-        }
-        # Make generation of shapes a bit faster?
-        # Maybe there are too many input combinations for this?
-        # If we only allow certain size generations it should be ok
-
-        # for key in self.category_to_elemfunc.keys():
-        #     self.category_to_elemfunc[key] = ub.memoize(self.category_to_elemfunc[key])
-
-        # keep track of which keypoints belong to which categories
-        self.cname_to_kp = {
-            'superstar': ['left_eye', 'right_eye'],
-            'eff': ['top_tip', 'mid_tip', 'bot_tip'],
-        }
-
-        if categories is None:
-            self.categories = list(self.category_to_elemfunc.keys())
-        else:
-            self.categories = categories
-
-        self._catlist = sorted(self.categories)
-
-        # flatten list of all keypoint categories
-        self.kp_classes = list(
-            ub.flatten([self.cname_to_kp.get(cname, []) for cname in self._catlist])
-        )
-
-    def random_category(self, chip, xy_offset=None, dims=None):
-        import kwimage
-        name = self.rng.choice(self._catlist)
-        data, mask, kpts = self._from_elem(name, chip)
-
-        mask = kwimage.Mask(mask, 'c_mask').to_array_rle()
-        if xy_offset is not None:
-            segmentation = mask.translate(xy_offset, output_dims=dims).to_bytes_rle()
-            kpts = kpts.translate(xy_offset, output_dims=dims)
-
-        segmentation.data['counts'] = segmentation.data['counts'].decode('utf8')
-
-        center_xy = np.array(chip.shape[0:2][::-1]) / 2.0
-        if xy_offset:
-            center_xy += xy_offset
-
-        cx, cy = center_xy
-
-        info = {
-            'name': name,
-            'data': data,
-            'segmentation': segmentation.data,
-            'keypoints': [cx, cy, 2],
-            'kpts2': kpts,
-        }
-        return info
-
-    def _from_elem(self, name, chip):
-        print('name = {!r}'.format(name))
-
-        elem_func = self.category_to_elemfunc[name]
-        x = max(chip.shape[0:2])
-        # x = int(2 ** np.floor(np.log2(x)))
-        elem, kpts_yx = elem_func(x)
-
-        size = tuple(map(int, chip.shape[0:2][::-1]))
-
-        if kpts_yx is not None:
-            xy = np.array([yx[::-1] for yx in kpts_yx.values()])
-            kpts = kwimage.Points(xy=xy)
-            sf = np.array(size) / np.array(elem.shape[0:2][::-1])
-            kpts = kpts.scale(sf)
-        else:
-            # center
-            kpts = kwimage.Points(xy=np.array([[.5, .5]]))
-            kpts = kpts.scale(size)
-
-        template = cv2.resize(elem, size).astype(np.float32)
-        fg_intensity = np.float32(self.fg_intensity)
-        fg_scale = np.float32(self.fg_scale)
-        fgdata = kwarray.standard_normal(chip.shape, std=fg_scale,
-                                         mean=fg_intensity, rng=self.rng,
-                                         dtype=np.float32)
-        fgdata = np.clip(fgdata , 0, 1, out=fgdata)
-        fga = kwimage.ensure_alpha_channel(fgdata, alpha=template)
-        data = kwimage.overlay_alpha_images(fga, chip, keepalpha=False)
-        mask = (template > 0.05).astype(np.uint8)
-        return data, mask, kpts
-
-
-def star(a, dtype=np.uint8):
-    """Generates a star shaped structuring element.
-
-    Much faster than skimage.morphology version
-    """
-
-    if a == 1:
-        bfilter = np.zeros((3, 3), dtype)
-        bfilter[:] = 1
-        return bfilter
-
-    m = 2 * a + 1
-    n = a // 2
-    selem_square = np.zeros((m + 2 * n, m + 2 * n), dtype=np.uint8)
-    selem_square[n: m + n, n: m + n] = 1
-
-    c = (m + 2 * n - 1) // 2
-    if 1:
-        # We can do this much faster with opencv
-        b = (m + 2 * n) - 1
-        vertices = np.array([
-            [0, c],
-            [c, 0],
-            [b, c],
-            [c, b],
-            [0, c],
-        ])
-        import cv2
-        pts = vertices.astype(np.int)[:, None, :]
-        mask = np.zeros_like(selem_square)
-        mask = cv2.fillConvexPoly(mask, pts, color=1)
-        selem_rotated = mask
-    else:
-        from skimage.morphology.convex_hull import convex_hull_image
-        selem_rotated = np.zeros((m + 2 * n, m + 2 * n), dtype=np.float32)
-        selem_rotated[0, c] = selem_rotated[-1, c] = 1
-        selem_rotated[c, 0] = selem_rotated[c, -1] = 1
-        selem_rotated = convex_hull_image(selem_rotated).astype(int)
-
-    selem = np.add(selem_square, selem_rotated, out=selem_square)
-    selem[selem > 0] = 1
-
-    return selem.astype(dtype)
 
 
 def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
@@ -599,27 +334,28 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
         >>> img['imdata'] = '<ndarray shape={}>'.format(img['imdata'].shape)
         >>> print('img = {}'.format(ub.repr2(img)))
         >>> print('anns = {}'.format(ub.repr2(anns, nl=2, cbr=True)))
+        >>> # xdoctest: +IGNORE_WANT
         img = {
             'height': 32,
             'imdata': '<ndarray shape=(32, 32, 3)>',
             'width': 32,
         }
         anns = [{'bbox': [15, 10, 9, 8],
-          'category_name': 'superstar',
+          'category_name': 'star',
           'keypoints': [19.5, 14.0, 2],
-          'segmentation': {'counts': '\\?220h0400N110002OO00LXO0\\8', 'size': [32, 32]},},
+          'segmentation': {'counts': '[`06j0000O20N1000e8', 'size': [32, 32]},},
          {'bbox': [11, 20, 7, 7],
-          'category_name': 'octagon',
+          'category_name': 'eff',
           'keypoints': [14.5, 23.5, 2],
-          'segmentation': {'counts': 'f;3l02N2O0001N2N[=', 'size': [32, 32]},},
+          'segmentation': {'counts': 'd<7i0O1LWO0j00VOOk012O]=', 'size': [32, 32]},},
          {'bbox': [4, 4, 8, 6],
-          'category_name': 'superstar',
+          'category_name': 'star',
           'keypoints': [8.0, 7.0, 2],
-          'segmentation': {'counts': 'U4210j0300O01010O00MVO0ed0', 'size': [32, 32]},},
+          'segmentation': {'counts': 'U54l00O2O01N10kd0', 'size': [32, 32]},},
          {'bbox': [3, 20, 6, 7],
-          'category_name': 'superstar',
+          'category_name': 'star',
           'keypoints': [6.0, 23.5, 2],
-          'segmentation': {'counts': 'f3121i03N1102OOLWO1Sg0', 'size': [32, 32]},},]
+          'segmentation': {'counts': 'g31m04N000002L[f0', 'size': [32, 32]},},]
 
     Example:
         >>> # xdoctest: +REQUIRES(--show)
@@ -640,11 +376,11 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
     anchors = np.asarray(anchors)
 
     rng = kwarray.ensure_rng(rng)
-    if isinstance(categories, CategoryPatterns) or hasattr(categories, '_catlist'):
-        catpats = categories
-    else:
-        catpats = CategoryPatterns(categories, fg_scale=fg_scale,
-                                   fg_intensity=fg_intensity, rng=rng)
+    # if isinstance(categories, CategoryPatterns) or hasattr(categories, 'obj_catnames'):
+    #     catpats = categories
+    # else:
+    catpats = CategoryPatterns.coerce(categories, fg_scale=fg_scale,
+                                      fg_intensity=fg_intensity, rng=rng)
 
     if n_annots is None:
         n_annots = (0, 50)
@@ -796,14 +532,15 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5):
 
     rng = np.random.RandomState(0)
 
-    categories = [
+    catpats = CategoryPatterns.coerce([
         # 'box',
-        'circle',
+        # 'circle',
         'star',
         'superstar',
+        'eff',
         # 'octagon',
         # 'diamond'
-    ]
+    ])
 
     anchors = np.array([
         [1, 1], [2, 2], [1.5, 1], [2, 1], [3, 1], [3, 2], [2.5, 2.5],
@@ -818,10 +555,10 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5):
         'anchors': anchors,
         'gsize': gsize,
         'n_imgs': n_imgs,
-        'categories': categories,
+        'categories': catpats,
     }
-    cacher = ub.Cacher('toy_dset_v2', dpath=ub.ensuredir(dpath, 'cache'),
-                       cfgstr=ub.repr2(cfg), verbose=3, enabled=1)
+    cacher = ub.Cacher('toy_dset_v3', dpath=ub.ensuredir(dpath, 'cache'),
+                       cfgstr=ub.repr2(cfg), verbose=3, enabled=0)
 
     img_dpath = ub.ensuredir((dpath, 'imgs_{}_{}'.format(
         cfg['n_imgs'], cacher._condense_cfgstr())))
@@ -850,19 +587,13 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5):
         })
 
         name_to_cid = {}
-        for i, name in enumerate(categories, start=1):
-            dataset['categories'].append({
-                'id': i,
-                'name': name,
-                # TODO: hack in class-specific keypoints
-                'keypoints': ['center'],
-                'skeleton': [],
-            })
-            name_to_cid[name] = i
+        for i, cat in enumerate(catpats, start=1):
+            dataset['categories'].append(cat)
+            name_to_cid[cat['name']] = cat['id']
 
         for i in ub.ProgIter(range(n_imgs), label='creating data'):
             img, anns = demodata_toy_img(anchors, gsize=gsize,
-                                         categories=categories,
+                                         categories=catpats,
                                          fg_scale=fg_scale, bg_scale=bg_scale,
                                          bg_intensity=bg_intensity, rng=rng)
             imdata = img.pop('imdata')
