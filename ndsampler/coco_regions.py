@@ -18,7 +18,6 @@ Cases to Handle:
         * Annotations can be clustered tightly together
         * Annotations are at massively different scales
     - [ ] Annotations are about the same size as the images
-    - [ ] Annotations are about the same size as the images
 
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
@@ -417,8 +416,8 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
 
         targets = kwarray.DataFrameArray()
         targets = kwarray.DataFrameArray(columns=['gid', 'aid', 'cx', 'cy',
-                                               'width', 'height',
-                                               'img_width', 'img_height'])
+                                                  'width', 'height',
+                                                  'img_width', 'img_height'])
         targets['gid'] = gids
         targets['aid'] = [-1] * len(gids)
         targets['category_id'] = [self.BACKGROUND_CLASS_ID] * len(gids)

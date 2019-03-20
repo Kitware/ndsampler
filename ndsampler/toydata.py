@@ -50,6 +50,8 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
     def __init__(self, n_positives=1e5, seed=None, gsize=(416, 416), categories=None):
         self.categories = CategoryPatterns.coerce(categories)
 
+        self.kp_catnames = self.categories.kp_catnames
+
         self.cname_to_cid = {}
         self.cname_to_cid = {
             cat['name']: cid for cid, cat in enumerate(self.categories, start=1)
@@ -512,6 +514,9 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5):
     Returns:
         dict: dataset in mscoco format
 
+    CommandLine:
+        xdoctest -m ndsampler.toydata demodata_toy_dset --show
+
     Example:
         >>> from ndsampler.toydata import *
         >>> import ndsampler
@@ -519,6 +524,7 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5):
         >>> dpath = ub.ensure_app_cache_dir('ndsampler', 'toy_dset')
         >>> dset = ndsampler.CocoDataset(dataset)
         >>> # xdoctest: +REQUIRES(--show)
+        >>> print(ub.repr2(dset.dataset, nl=2))
         >>> import kwplot
         >>> kwplot.autompl()
         >>> dset.show_image(gid=1)
