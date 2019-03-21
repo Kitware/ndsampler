@@ -47,14 +47,14 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
         >>> kwplot.show_if_requested()
     """
 
-    def __init__(self, n_positives=1e5, seed=None, gsize=(416, 416), categories=None):
+    def __init__(self, n_positives=1e5, seed=None, gsize=(416, 416),
+                 categories=None):
         self.categories = CategoryPatterns.coerce(categories)
 
         self.kp_catnames = self.categories.kp_catnames
 
-        self.cname_to_cid = {}
         self.cname_to_cid = {
-            cat['name']: cid for cid, cat in enumerate(self.categories, start=1)
+            cat['name']: cat['id'] for cat in self.categories
         }
         self.cname_to_cid['background'] = 0
         self.cid_to_cname = {
@@ -72,6 +72,10 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
         self._n_positives = int(n_positives)
         self._n_images = 50
         self.seed = seed
+
+        self.gray = True
+        self._n_annots_pos = (1, 100)
+        self._n_annots_neg = (0, 10)
         # self.catpats = CategoryPatterns.coerce(self.categories)
         # fg_scale=fg_scale, fg_intensity=fg_intensity, rng=rng)
 
@@ -148,6 +152,7 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
         rng = kwarray.ensure_rng(rng)
         img, anns = demodata_toy_img(gsize=self._full_imgsize,
                                      categories=self.categories,
+                                     gray=self.gray,
                                      rng=rng, n_annots=(0, 10))
         _node_to_id = self.catgraph.node_to_id
         img['id'] = int(rng.rand() * self._n_images)
@@ -175,6 +180,7 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
         img, anns = demodata_toy_img(gsize=gsize,
                                      rng=rng,
                                      categories=self.categories,
+                                     gray=self.gray,
                                      centerobj=centerobj, n_annots=n_annots)
         im = img['imdata']
         if centerobj == 'neg':
@@ -278,7 +284,8 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
             rng = self.seed * len(self) + index
 
         sample = self._load_toy_sample(window_dims, pad, rng,
-                                       centerobj='pos', n_annots=(1, 100))
+                                       centerobj='pos',
+                                       n_annots=self._n_annots_pos)
         return sample
 
     def load_negative(self, index=None, pad=None, window_dims=None, rng=None):
@@ -287,7 +294,8 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
             rng = kwarray.ensure_rng(self.seed * len(self) + index)
 
         sample = self._load_toy_sample(window_dims, pad, rng,
-                                       centerobj='neg', n_annots=(0, 10))
+                                       centerobj='neg',
+                                       n_annots=self._n_annots_neg)
         return sample
 
 

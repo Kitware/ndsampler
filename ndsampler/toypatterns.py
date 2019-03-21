@@ -1,4 +1,5 @@
 import cv2
+import six
 import kwarray
 import kwimage
 import numpy as np
@@ -62,7 +63,6 @@ class CategoryPatterns(object):
                 cname_to_cat = {c['name']: c for c in cls._default_categories}
                 arg = list(ub.take(cname_to_cat, catnames))
             elif ub.iterable(data) and len(data) > 0:
-                import six
                 if isinstance(data[0], six.string_types):
                     catnames = data
                     cname_to_cat = {c['name']: c for c in cls._default_categories}
@@ -73,7 +73,7 @@ class CategoryPatterns(object):
                     raise Exception
             else:
                 raise Exception
-            return cls(arg, **kwargs)
+            return cls(categories=arg, **kwargs)
 
     def __init__(self, categories=None, fg_scale=0.5, fg_intensity=0.9,
                  rng=None):
@@ -107,6 +107,12 @@ class CategoryPatterns(object):
         self.kp_classes = list(
             ub.flatten([self.cname_to_kp.get(cname, []) for cname in self.obj_catnames])
         )
+        self.cname_to_cid = {
+            cat['name']: cat['id'] for cat in self.categories
+        }
+        self.cname_to_cx = {
+            cat['name']: cx for cx, cat in enumerate(self.categories)
+        }
 
     def __len__(self):
         return len(self.categories)
@@ -118,6 +124,9 @@ class CategoryPatterns(object):
         for cat in self.categories:
             yield cat
 
+    def index(self, name):
+        return self.cname_to_cx[name]
+
     def get(self, index, default=ub.NoParam):
         if default is ub.NoParam:
             return self.categories[index]
@@ -128,23 +137,24 @@ class CategoryPatterns(object):
                 return default
 
     def random_category(self, chip, xy_offset=None, dims=None):
-        import kwimage
         cname = self.rng.choice(self.obj_catnames)
         data, mask, kpts = self._from_elem(cname, chip)
+        info = self._package_info(cname, data, mask, kpts, xy_offset, dims)
+        return info
 
-        mask = kwimage.Mask(mask, 'c_mask').to_array_rle()
+    def _package_info(self, cname, data, mask, kpts, xy_offset, dims):
+        """ packages data from _from_elem into coco-like annotation """
+        import kwimage
+        segmentation = kwimage.Mask(mask, 'c_mask').to_array_rle()
         if xy_offset is not None:
-            segmentation = mask.translate(xy_offset, output_dims=dims).to_bytes_rle()
+            segmentation = segmentation.translate(xy_offset, output_dims=dims)
             kpts = kpts.translate(xy_offset, output_dims=dims)
 
+        segmentation = segmentation.to_bytes_rle()
         segmentation.data['counts'] = segmentation.data['counts'].decode('utf8')
 
-        # center_xy = np.array(chip.shape[0:2][::-1]) / 2.0
-        # if xy_offset:
-        #     center_xy += xy_offset
-        # cx, cy = center_xy
-
-        keypoints = list(ub.flatten([(x, y, 2) for x, y in kpts.data['xy'].data.tolist()]))
+        keypoints = list(ub.flatten([
+            (x, y, 2) for x, y in kpts.data['xy'].data.tolist()]))
 
         info = {
             'name': cname,
