@@ -101,7 +101,7 @@ class CategoryPatterns(object):
         self.cname_to_kp = {c['name']: c.get('keypoints', []) for c in self.categories}
 
         self.obj_catnames = sorted([c['name'] for c in self.categories])
-        self.kp_catnames = sorted(ub.flatten(self.cname_to_kp.values()))
+        self.kp_classes = sorted(ub.flatten(self.cname_to_kp.values()))
 
         # flatten list of all keypoint categories
         self.kp_classes = list(

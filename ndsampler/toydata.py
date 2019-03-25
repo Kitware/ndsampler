@@ -51,7 +51,7 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
                  categories=None):
         self.categories = CategoryPatterns.coerce(categories)
 
-        self.kp_catnames = self.categories.kp_catnames
+        self.kp_classes = self.categories.kp_classes
 
         self.cname_to_cid = {
             cat['name']: cat['id'] for cat in self.categories
@@ -209,7 +209,7 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
         sseg_list = []
         kpts_list = []
 
-        kp_catnames = self.categories.kp_catnames
+        kp_classes = self.categories.kp_classes
         for ann in anns:
             coco_sseg = ann.get('segmentation', None)
             coco_kpts = ann.get('keypoints', None)
@@ -220,10 +220,10 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
                 flags = (coco_xyf.T[2] > 0)
                 xy_pts = coco_xyf[flags, 0:2]
                 kpnames = list(ub.compress(kpnames, flags))
-                kp_class_idxs = np.array([kp_catnames.index(n) for n in kpnames])
+                kp_class_idxs = np.array([kp_classes.index(n) for n in kpnames])
                 rel_points = kwimage.Points(xy=xy_pts,
                                             class_idxs=kp_class_idxs,
-                                            classes=kp_catnames)
+                                            classes=kp_classes)
                 # rel_points = abs_points.translate(offset)
             else:
                 rel_points = None
@@ -241,7 +241,7 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
 
         rel_ssegs = kwimage.PolygonList(sseg_list)
         rel_kpts = kwimage.PolygonList(kpts_list)
-        rel_kpts.meta['classes'] = self.categories.kp_catnames
+        rel_kpts.meta['classes'] = self.categories.kp_classes
 
         rel_boxes = kwimage.Boxes([a['bbox'] for a in anns], 'xywh').to_cxywh()
 

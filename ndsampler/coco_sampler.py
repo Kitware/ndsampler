@@ -90,7 +90,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         self.catgraph = self.regions.catgraph
 
         # === Hacked in attributes ===
-        self.kp_catnames = self.dset.keypoint_categories()
+        self.kp_classes = self.dset.keypoint_categories()
         self.BACKGROUND_CLASS_ID = self.regions.BACKGROUND_CLASS_ID  # currently hacked in
 
     @property
@@ -427,7 +427,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         kpts_list = []
 
         coco_dset = self.dset
-        kp_catnames = self.kp_catnames
+        kp_classes = self.kp_classes
         for aid in overlap_aids:
             ann = coco_dset.anns[aid]
             coco_sseg = ann.get('segmentation', None)
@@ -438,10 +438,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
                 flags = (coco_xyf.T[2] > 0)
                 xy_pts = coco_xyf[flags, 0:2]
                 kpnames = list(ub.compress(kpnames, flags))
-                kp_class_idxs = np.array([kp_catnames.index(n) for n in kpnames])
+                kp_class_idxs = np.array([kp_classes.index(n) for n in kpnames])
                 abs_points = kwimage.Points(xy=xy_pts,
                                             class_idxs=kp_class_idxs,
-                                            classes=kp_catnames)
+                                            classes=kp_classes)
                 rel_points = abs_points.translate(offset)
             else:
                 rel_points = None
@@ -464,7 +464,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
 
         rel_ssegs = kwimage.PolygonList(sseg_list)
         rel_kpts = kwimage.PolygonList(kpts_list)
-        rel_kpts.meta['classes'] = self.kp_catnames
+        rel_kpts.meta['classes'] = self.kp_classes
 
         annots = {
             'aids': np.array(overlap_aids),
