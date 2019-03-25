@@ -18,18 +18,18 @@ Cases to Handle:
         * Annotations can be clustered tightly together
         * Annotations are at massively different scales
     - [ ] Annotations are about the same size as the images
-    - [ ] Annotations are about the same size as the images
 
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 import itertools as it
 import ubelt as ub  # NOQA
-import kwil
 import numpy as np
 from os.path import join
 from ndsampler import util
 from ndsampler import isect_indexer
 from ndsampler import coco_dataset
+import kwarray
+import kwimage
 
 
 class MissingNegativePool(AssertionError):
@@ -119,6 +119,10 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
         self.BACKGROUND_CLASS_ID = self.catgraph.node_to_id.get('background', 0)
 
     @property
+    def classes(self):
+        return self.catgraph
+
+    @property
     def n_negatives(self):
         return len(self._negative_pool) if self._negative_pool is not None else 0
 
@@ -181,8 +185,8 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
         _hashid = getattr(self.dset, 'hashid', None)
         if _hashid is None:
             if self.verbose > 1:
-                print('Constructing regions hashid')
-            self.dset._build_hashid()
+                print('Constructing regions hashid (ignoring pixel data)')
+            self.dset._build_hashid(hash_pixels=False)
             _hashid = getattr(self.dset, 'hashid', None)
         return _hashid, None
 
@@ -234,7 +238,7 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
                     self.targets['width'] / self.targets['img_width'],
                     self.targets['height'] / self.targets['img_height']
                 ]).T
-                rng = kwil.ensure_rng(0)
+                rng = kwarray.ensure_rng(0)
                 rng.shuffle(neg_anchors)
                 neg_anchors = neg_anchors[0:1000]
 
@@ -260,7 +264,7 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
 
         Args:
             gid (int): image id
-            region (kwil.Boxes): bounding box
+            region (kwimage.Boxes): bounding box
             visible_thresh (float): does not return annotations with visibility
                 less than this threshold.
 
@@ -295,12 +299,19 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
         Returns:
             Dict: tr: target info dictionary
 
+        CommandLine:
+            xdoctest -m ndsampler.coco_regions CocoRegions.get_negative
+
         Example:
             >>> from ndsampler.coco_regions import *
             >>> from ndsampler import coco_sampler
-            >>> rng = kwil.ensure_rng(0)
+            >>> rng = kwarray.ensure_rng(0)
             >>> self = coco_sampler.CocoSampler.demo().regions
             >>> tr = self.get_negative(rng=rng)
+            >>> # xdoctest: +IGNORE_WANT
+            >>> assert 'category_id' in tr
+            >>> assert 'aid' in tr
+            >>> assert 'cx' in tr
             >>> print(ub.repr2(tr, precision=2))
             {
                 'aid': -1,
@@ -352,13 +363,13 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
 
         Example:
             >>> from ndsampler import coco_sampler
-            >>> rng = kwil.ensure_rng(0)
+            >>> rng = kwarray.ensure_rng(0)
             >>> self = coco_sampler.CocoSampler.demo().regions
             >>> tr = self.get_positive(0, rng=rng)
             >>> print(ub.repr2(tr, precision=2))
         """
         if index is None:
-            rng = kwil.ensure_rng(rng)
+            rng = kwarray.ensure_rng(rng)
             index = rng.randint(0, self.n_positives)
 
         if self._pos_select_idxs is not None:
@@ -367,7 +378,6 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
         tr = self.targets.iloc[index]
         return tr
 
-    @kwil.profile
     def _random_negatives(self, num, exact=False, neg_anchors=None,
                           window_size=None, rng=None, thresh=0.0):
         """
@@ -388,13 +398,13 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
             >>> from ndsampler import coco_sampler
             >>> self = coco_sampler.CocoSampler.demo().regions
             >>> num = 100
-            >>> rng = kwil.ensure_rng(0)
+            >>> rng = kwarray.ensure_rng(0)
             >>> targets = self._random_negatives(num, rng=rng)
             >>> assert len(targets) <= num
             >>> targets = self._random_negatives(num, exact=True)
             >>> assert len(targets) == num
         """
-        rng = kwil.ensure_rng(rng)
+        rng = kwarray.ensure_rng(rng)
 
         # Choose some number of centers in each dimension
         if neg_anchors is None and window_size is None:
@@ -404,10 +414,10 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
             num, anchors=neg_anchors, window_size=window_size, exact=exact,
             rng=rng, thresh=thresh)
 
-        targets = kwil.DataFrameArray()
-        targets = kwil.DataFrameArray(columns=['gid', 'aid', 'cx', 'cy',
-                                               'width', 'height',
-                                               'img_width', 'img_height'])
+        targets = kwarray.DataFrameArray()
+        targets = kwarray.DataFrameArray(columns=['gid', 'aid', 'cx', 'cy',
+                                                  'width', 'height',
+                                                  'img_width', 'img_height'])
         targets['gid'] = gids
         targets['aid'] = [-1] * len(gids)
         targets['category_id'] = [self.BACKGROUND_CLASS_ID] * len(gids)
@@ -501,7 +511,7 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
             print('Preselect {} negatives'.format(num))
 
         enabled = bool(self.hashid and self.workdir and rng is not None)
-        rng = kwil.ensure_rng(rng)
+        rng = kwarray.ensure_rng(rng)
         thresh = 0.3
         cfgstr = ''
         cache_dpath = None
@@ -560,7 +570,7 @@ def tabular_coco_targets(dset):
     """
     Transforms COCO annotations into a tabular form
 
-    _ = kwil.profile_now(tabular_coco_targets)(dset)
+    _ = xdev.profile_now(tabular_coco_targets)(dset)
     """
     import warnings
     # TODO: better handling of non-bounding box annotations; ignore for now
@@ -582,7 +592,7 @@ def tabular_coco_targets(dset):
         xywh = [ann['bbox'] for ann in anns]
         xywh = np.array(xywh, dtype=np.float32)
 
-    boxes = kwil.Boxes(xywh, 'xywh')
+    boxes = kwimage.Boxes(xywh, 'xywh')
     cxywhs = boxes.to_cxywh().data.reshape(-1, 4)
 
     aids = [ann['id'] for ann in anns]
@@ -613,7 +623,7 @@ def tabular_coco_targets(dset):
     table['img_height'] = np.array(img_height, dtype=np.int32)
 
     # table = ub.map_vals(np.asarray, table)
-    targets = kwil.DataFrameArray(table)
+    targets = kwarray.DataFrameArray(table)
 
     return targets
 
@@ -634,10 +644,10 @@ def select_positive_regions(targets, window_dims=(300, 300), thresh=0.0,
         >>> print(len(selected))
         >>> print(len(dset.anns))
     """
-    unique_gids, groupxs = kwil.group_indices(targets['gid'])
+    unique_gids, groupxs = kwarray.group_indices(targets['gid'])
     gid_to_groupx = dict(zip(unique_gids, groupxs))
     wh, ww = window_dims
-    rng = kwil.ensure_rng(rng)
+    rng = kwarray.ensure_rng(rng)
     selection = []
 
     # Get all the bounding boxes
@@ -648,7 +658,7 @@ def select_positive_regions(targets, window_dims=(300, 300), thresh=0.0,
     wws = np.full(n, ww, dtype=np.float32)
     whs = np.full(n, wh, dtype=np.float32)
     cxywh = np.hstack([a[:, None] for a in [cxs, cys, wws, whs]])
-    boxes = kwil.Boxes(cxywh, 'cxywh').to_tlbr()
+    boxes = kwimage.Boxes(cxywh, 'cxywh').to_tlbr()
 
     iter_ = ub.ProgIter(gid_to_groupx.items(),
                         enabled=verbose,
@@ -661,7 +671,7 @@ def select_positive_regions(targets, window_dims=(300, 300), thresh=0.0,
         # Randomize which candidate windows have the highest scores so the
         # selection can vary each epoch.
         cand_scores = rng.rand(len(cand_windows))
-        cand_dets = kwil.Detections(boxes=cand_windows, scores=cand_scores)
+        cand_dets = kwimage.Detections(boxes=cand_windows, scores=cand_scores)
         # Non-max supresssion is really similar to set-cover
         keep = cand_dets.non_max_supression(thresh=thresh)
         selection.extend(groupx[keep])

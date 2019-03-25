@@ -1,0 +1,51 @@
+{
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "comment": "Each feature contains all information about a particular object",
+            "geometry": {
+                "type": "GeometryCollection",
+                "geometries": [
+                    {
+                        "type": "MultiPoint",
+                        "comment": "these are the keypoints",
+                        "coordinates": [[1, 2], [3, 4]]
+                    }, 
+                    {
+                        "type": "Polygon",
+                        "comment": "this is the bounding box",
+                        "coordinates": [[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]
+                    },
+                    {
+                        "type": "Polygon",
+                        "comment": "this is the segmentation region",
+                        "coordinates": [[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]
+                    }
+                ]
+            },
+            "properties": {
+                "comment": "I dont like giving information about each item in the geometry collection outside of each particular goemetry object, but I dont see another way to do it. I really dont like that these properties are highly dependent on the ordering of each geometry object in the geometry collection",
+                "geometries_metadata": [
+                    {
+                        "comment": "it would be much nicer if this actually lived inside the multipoint geometry object",
+                        "annotation_type": "semenatic_keypoint",
+                        "keypoint_ids": [0, 1, 2]
+                    },
+                    {
+                        "comment": "it would be much nicer if this actually lived inside the multipoint geometry object",
+                        "annotation_type": "object_bbox",
+                        "category_id": 5
+                    },
+                    {
+                        "annotation_type": "object_mask"
+                    }
+                ]
+            }
+        },
+        {"comment": "another feature"}, 
+        {"comment": "..."}, 
+        {"comment": "final feature"}
+    ],
+    "categories": "Custom feild defining what the categories referenced by the category ids are"
+}

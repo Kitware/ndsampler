@@ -15,8 +15,8 @@ Ignore:
     cond_probs.sum(dim=1)
     class_probs.sum(dim=1)
 
-    import kwil
-    kwil.autompl()
+    import kwplot
+    kwplot.autompl()
     import graphid
     graphid.util.show_nx(self.graph)
 
@@ -24,12 +24,14 @@ Ignore:
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 import torch
-import kwil
+import kwarray
+import functools
 import itertools as it
 import networkx as nx
 import ubelt as ub
 import torch.nn.functional as F
-import numpy as np  # NOQA
+import numpy as np
+import xdev
 
 
 class CategoryTree(ub.NiceRepr):
@@ -42,6 +44,8 @@ class CategoryTree(ub.NiceRepr):
               compute the heirarchical softmax
 
         - [ ] I think its ok to keep the decision function here.
+
+        - [ ] Should we not use an implicit root by default?
 
     Example:
         >>> from ndsampler.category_tree import *
@@ -96,10 +100,18 @@ class CategoryTree(ub.NiceRepr):
             >>> print(CategoryTree.from_mutex(['a', 'b', 'c']))
             <CategoryTree(nNodes=3, maxDepth=1, maxBreadth=3)>
         """
+        nodes = list(nodes)
         graph = nx.DiGraph()
         graph.add_nodes_from(nodes)
+        start = 0
         if 'background' in graph.nodes:
+            # hack
             graph.node['background']['id'] = 0
+            start = 1
+
+        for i, node in enumerate(nodes, start=start):
+            graph.node[node]['id'] = graph.node[node].get('id', i)
+
         return cls(graph)
 
     @classmethod
@@ -109,9 +121,9 @@ class CategoryTree(ub.NiceRepr):
         return self
 
     @classmethod
-    def cast(cls, data):
+    def coerce(cls, data):
         """
-        Attempt to cast data as a CategoryTree object.
+        Attempt to coerce data as a CategoryTree object.
 
         This is primarilly useful for when the software stack depends on
         categories being represnet
@@ -148,6 +160,10 @@ class CategoryTree(ub.NiceRepr):
         else:
             raise TypeError('Unknown type {}: {!r}'.format(type(data), data))
         return self
+
+    @classmethod
+    def cast(cls, data):
+        return cls.coerce(data)
 
     @ub.memoize_method
     def id_to_idx(self):
@@ -229,6 +245,36 @@ class CategoryTree(ub.NiceRepr):
         """
         return self.__getstate__()
 
+    def _demo_probs(self, num=5, rng=0, nonrandom=3, hackargmax=True):
+        """ dummy probabilities for testing """
+        rng = kwarray.ensure_rng(rng)
+        class_energy = torch.FloatTensor(rng.rand(num, len(self)))
+
+        # Setup the first few examples to prefer being classified
+        # as a fine grained class to a decreasing degree.
+        # The first example is set to have equal energy
+        # The i + 2-th example is set to have an extremely high energy.
+        start = 0
+        nonrandom = min(nonrandom, (num - start))
+        if nonrandom > 0:
+            path = sorted(ub.take(self.node_to_idx, nx.dag_longest_path(self.graph)))
+
+            class_energy[start] = 1 / len(class_energy[start])
+            if hackargmax:
+                # HACK: even though we want to test uniform distributions, it makes
+                # regression tests difficiult because torch and numpy return a
+                # different argmax when the array has more than one max value.
+                # add a VERY small epsilon to make max values distinct
+                class_energy[start] += torch.linspace(0, .00001, len(class_energy[start]))
+
+            if nonrandom > 1:
+                for i in range(nonrandom - 2):
+                    class_energy[start + i + 1][path] += 2 ** (i / 4)
+                class_energy[start + i + 2][path] += 2 ** 20
+
+        class_probs = self.heirarchical_softmax(class_energy, dim=1)
+        return class_probs
+
     @classmethod
     def demo(cls, key='coco', **kwargs):
         """
@@ -244,14 +290,15 @@ class CategoryTree(ub.NiceRepr):
         if key == 'coco':
             from ndsampler import coco_dataset
             dset = coco_dataset.CocoDataset.demo(**kwargs)
-            dset.add_category('background', cid=0)
+            dset.add_category('background', id=0)
             graph = dset.category_graph()
         elif key == 'btree':
             r = kwargs.pop('r', 3)
             h = kwargs.pop('h', 3)
             graph = nx.generators.balanced_tree(r=r, h=h, create_using=nx.DiGraph())
             graph = nx.relabel_nodes(graph, {n: n + 1 for n in graph})
-            graph.add_node(0)
+            if kwargs.pop('add_zero', True):
+                graph.add_node(0)
             assert not kwargs
         else:
             raise KeyError(key)
@@ -270,6 +317,9 @@ class CategoryTree(ub.NiceRepr):
             >>> assert recon.__json__() == self.__json__()
         """
         state = self.__dict__.copy()
+        for key in list(state.keys()):
+            if key.startswith('_cache'):
+                state.pop(key)
         state['graph'] = to_directed_nested_tuples(self.graph)
         return state
 
@@ -284,6 +334,19 @@ class CategoryTree(ub.NiceRepr):
             max(it.chain([0], map(len, self.idx_groups))),
         )
 
+    def is_mutex(self):
+        """
+        Returns True if all categories are mutually exclusive (i.e. flat)
+
+        If true, then the classes may be represented as a simple list of class
+        names without any loss of information, otherwise the underlying
+        category graph is necessary to preserve all knowledge.
+
+        TODO:
+            - [ ] what happens when we have a dummy root?
+        """
+        return len(self.graph.edges) == 0
+
     @property
     def num_classes(self):
         return self.graph.number_of_nodes()
@@ -291,6 +354,10 @@ class CategoryTree(ub.NiceRepr):
     @property
     def class_names(self):
         return self.idx_to_node
+
+    def index(self, node):
+        """ Return the index that corresponds to the category name """
+        return self.node_to_idx[node]
 
     def _build_index(self):
         """ construct lookup tables """
@@ -319,6 +386,7 @@ class CategoryTree(ub.NiceRepr):
         self.node_to_idx = node_to_idx
         self.idx_groups = idx_groups
 
+    @xdev.profile
     def conditional_log_softmax(self, class_energy, dim):
         """
         Computes conditional log probabilities of each class in the category tree
@@ -350,6 +418,7 @@ class CategoryTree(ub.NiceRepr):
             cond_logits.index_copy_(dim, index, logit_group)
         return cond_logits
 
+    @xdev.profile
     def _apply_logit_chain_rule(self, cond_logits, dim):
         """
         Applies the probability chain rule (in log space, which has better
@@ -364,9 +433,12 @@ class CategoryTree(ub.NiceRepr):
                 log(P(node)) = log(P(node | parent)) + log(P(parent))
         """
         # The dynamic program was faster on the CPU in a dummy test case
-        @ub.memoize
+        memo = {}
+
         def log_prob(node):
             """ dynamic program to compute absolute class log probability """
+            if node in memo:
+                return memo[node]
             logp_node_given_parent = cond_logits.select(dim, self.node_to_idx[node])
             parents = list(self.graph.predecessors(node))
             if len(parents) == 0:
@@ -376,13 +448,22 @@ class CategoryTree(ub.NiceRepr):
                 logp_node = logp_node_given_parent + log_prob(parents[0])
             else:
                 raise AssertionError('not a tree')
+            memo[node] = logp_node
             return logp_node
+
         class_logits = torch.empty_like(cond_logits)
         if cond_logits.numel() > 0:
             for idx, node in enumerate(self.idx_to_node):
-                class_logits.select(dim, idx)[:] = log_prob(node)
+                # Note: the this is the bottleneck in this function
+                if True:
+                    class_logits.select(dim, idx)[:] = log_prob(node)
+                else:
+                    result = log_prob(node)  # 50% of the time
+                    dest = class_logits.select(dim, idx)  # 8% of the time
+                    dest[:] = result  # 37% of the time
         return class_logits
 
+    @xdev.profile
     def source_log_softmax(self, class_energy, dim):
         """
         Top-down heirarchical softmax
@@ -427,6 +508,7 @@ class CategoryTree(ub.NiceRepr):
         class_logits = self._apply_logit_chain_rule(cond_logits, dim=dim)
         return class_logits
 
+    @xdev.profile
     def sink_log_softmax(self, class_energy, dim):
         """
         Bottom-up heirarchical softmax
@@ -577,11 +659,13 @@ class CategoryTree(ub.NiceRepr):
     def show(self):
         """
         Ignore:
-            >>> import kwil
-            >>> kwil.autompl()
+            >>> import kwplot
+            >>> kwplot.autompl()
             >>> from ndsampler import category_tree
             >>> self = category_tree.CategoryTree.demo()
             >>> self.show()
+
+            python -c "import kwplot, ndsampler, graphid; kwplot.autompl(); graphid.util.show_nx(ndsampler.category_tree.CategoryTree.demo().graph); kwplot.show_if_requested()" --show
         """
         try:
             pos = nx.drawing.nx_agraph.graphviz_layout(self.graph, prog='dot')
@@ -616,14 +700,15 @@ class CategoryTree(ub.NiceRepr):
             >>> pred_idxs, pred_conf = self.decision(class_probs, dim, thresh=thresh)
             >>> pred_cnames = list(ub.take(self.idx_to_node, pred_idxs))
         """
-        import kwil
-        impl = kwil.ArrayAPI.impl(class_probs)
+        import kwarray
+        impl = kwarray.ArrayAPI.impl(class_probs)
 
         sources = list(source_nodes(self.graph))
         other_dims = sorted(set(range(len(class_probs.shape))) - {dim})
 
         # Rearange probs so the class dimension is at the end
-        flat_class_probs = class_probs.transpose(*other_dims + [dim]).reshape(-1, class_probs.shape[dim])
+        # flat_class_probs = class_probs.transpose(*other_dims + [dim]).reshape(-1, class_probs.shape[dim])
+        flat_class_probs = impl.transpose(class_probs, other_dims + [dim]).reshape(-1, class_probs.shape[dim])
         flat_jdxs = np.arange(flat_class_probs.shape[0])
 
         def _descend(depth, nodes, jdxs):
@@ -649,11 +734,11 @@ class CategoryTree(ub.NiceRepr):
             # TODO: is there a more intelligent way to do this?
             check_children = pred_conf > thresh
 
-            if np.any(check_children):
+            if impl.any(check_children):
                 # Check the children of these nodes
                 check_jdxs = jdxs[check_children]
                 check_idxs = pred_idxs[check_children]
-                group_idxs, groupxs = kwil.group_indices(check_idxs)
+                group_idxs, groupxs = kwarray.group_indices(check_idxs)
                 for idx, groupx in zip(group_idxs, groupxs):
                     node = self.idx_to_node[idx]
                     children = list(self.graph.successors(node))
@@ -678,22 +763,38 @@ class CategoryTree(ub.NiceRepr):
         pred_idxs, pred_conf = _descend(0, nodes, jdxs)
         return pred_idxs, pred_conf
 
-    @kwil.profile
-    def decision(self, class_probs, dim, thresh=0.5, criterion='gini'):
+    def decision(self, class_probs, dim, thresh=0.5, criterion='gini',
+                 ignore_class_idxs=None, always_refine_idxs=None):
         """
         Chooses the finest-grained category based on information gain
 
         Args:
-            thresh (float): threshold on simplicity ratio (higher is less permissive)
+            thresh (float): threshold on simplicity ratio.
+                Small thresholds are more permissive, i.e. the returned classes
+                will often be more fined-grained. Larger thresholds are less
+                permissive and prefer coarse-grained classes.
+
             criterion (str): how to compute information. Either entropy or gini.
+
+            ignore_class_idxs (List[int], optional): if specified this is a list
+                of class indices which we are not allowed to predict. We
+                will procede as if the graph did not contain these nodes.
+                (Useful for getting low-probability detections).
+
+            always_refine_idxs  (List[int], optional):
+                if specified this is a list of class indices that we will
+                always refine into a more fine-grained class.
+                (Useful if you have a dummy root)
+
+        Returns:
+            Tuple[Tensor, Tensor]: pred_idxs, pred_conf:
+                pred_idxs: predicted class indices
+                pred_conf: associated confidence
 
         Example:
             >>> from ndsampler.category_tree import *
-            >>> import torch
-            >>> import kwil
-            >>> from ndsampler import category_tree
-            >>> self = category_tree.CategoryTree.demo('btree', r=3, h=3)
-            >>> rng = kwil.ensure_rng(0)
+            >>> self = CategoryTree.demo('btree', r=3, h=3)
+            >>> rng = kwarray.ensure_rng(0)
             >>> class_energy = torch.FloatTensor(rng.rand(33, len(self)))
             >>> # Setup the first few examples to prefer being classified
             >>> # as a fine grained class to a decreasing degree.
@@ -714,28 +815,87 @@ class CategoryTree(ub.NiceRepr):
             >>> print('pred_conf = {!r}'.format(pred_conf))
             >>> print('pred_idxs = {!r}'.format(pred_idxs))
             >>> pred_cnames = list(ub.take(self.idx_to_node, pred_idxs))
+
+        Example:
+            >>> from ndsampler.category_tree import *
+            >>> self = CategoryTree.demo('btree', r=3, h=3)
+            >>> class_probs = self._demo_probs()
+            >>> # Test ignore_class_idxs
+            >>> self.decision(class_probs, dim=1, ignore_class_idxs=[0])
+            >>> # Should not be able to ignore all top level nodes
+            >>> import pytest
+            >>> with pytest.raises(ValueError):
+            >>>     self.decision(class_probs, dim=1, ignore_class_idxs=self.idx_groups[0])
+            >>> # But it is OK to ignore all child nodes at a particular level
+            >>> self.decision(class_probs, dim=1, ignore_class_idxs=self.idx_groups[1])
+
+        Example:
+            >>> from ndsampler.category_tree import *
+            >>> self = CategoryTree.demo('btree', r=3, h=3, add_zero=False)
+            >>> class_probs = self._demo_probs(num=30, nonrandom=20)
+            >>> pred_idxs0, pref_conf0 = self.decision(class_probs, dim=1, always_refine_idxs=[])
+            >>> assert 0 in pred_idxs0
+            >>> ###
+            >>> #print(ub.color_text('!!!!!!!!!!!!!!!!!!!', 'white'))
+            >>> pred_idxs1, pref_conf1 = self.decision(class_probs, dim=1, always_refine_idxs=[0])
+            >>> #print(ub.color_text('!!!!!!!!!!!!!!!!!!!', 'red'))
+            >>> pred_idxs2, pref_conf2 = self.decision(class_probs.numpy(), dim=1, always_refine_idxs=[0])
+            >>> assert np.all(pred_idxs1 == pred_idxs2)
+            >>> assert 0 not in pred_idxs1
+
+        Example:
+            >>> from ndsampler.category_tree import *
+            >>> graph = nx.from_dict_of_lists({
+            >>>     'a': ['b', 'q'],
+            >>>     'b': ['c'],
+            >>>     'c': ['d'],
+            >>>     'd': ['e', 'f'],
+            >>> }, nx.DiGraph)
+            >>> self = CategoryTree(graph)
+            >>> class_probs = self._demo_probs()
+            >>> pred_idxs1, pref_conf1 = self.decision(class_probs, dim=1)
+            >>> self = CategoryTree.demo('btree', r=1, h=4, add_zero=False)
+            >>> class_probs = self._demo_probs()
+            >>> # We should always descend to the finest level if we just have a straight line
+            >>> pred_idxs1, pref_conf1 = self.decision(class_probs, dim=1)
+            >>> assert np.all(pred_idxs1 == 4)
+
+        Example:
+            >>> # FIXME: What do we do in this case?
+            >>> # Do we always decend at level A?
+            >>> from ndsampler.category_tree import *
+            >>> graph = nx.from_dict_of_lists({
+            >>>     'a': ['b', 'c'],
+            >>> }, nx.DiGraph)
+            >>> self = CategoryTree(graph)
+            >>> class_probs = self._demo_probs(num=10, nonrandom=8)
+            >>> pred_idxs1, pref_conf1 = self.decision(class_probs, dim=1)
+            >>> print('pred_idxs1 = {!r}'.format(pred_idxs1))
         """
         if criterion == 'prob':
             return self._prob_decision(class_probs, dim, thresh=thresh)
 
-        import kwil
-        impl = kwil.ArrayAPI.impl(class_probs)
+        DEBUG = False
+
+        impl = kwarray.ArrayAPI.impl(class_probs)
 
         sources = list(source_nodes(self.graph))
         other_dims = sorted(set(range(len(class_probs.shape))) - {dim})
 
         # Rearange probs so the class dimension is at the end
-        flat_class_probs = class_probs.transpose(*other_dims + [dim]).reshape(-1, class_probs.shape[dim])
+        flat_class_probs = impl.transpose(class_probs, other_dims + [dim]).reshape(-1, class_probs.shape[dim])
         flat_jdxs = np.arange(flat_class_probs.shape[0])
 
         if criterion == 'gini':
-            _criterion = gini
+            _criterion = functools.partial(gini, axis=dim, impl=impl)
+            # _criterion = functools.partial(gini, axis=dim)
         elif criterion == 'entropy':
-            _criterion = entropy
+            _criterion = functools.partial(entropy, axis=dim, impl=impl)
+            # _criterion = functools.partial(entropy, axis=dim)
         else:
             raise KeyError(criterion)
 
-        def _descend2(depth, nodes, jdxs):
+        def _entropy_refine(depth, nodes, jdxs):
             """
             Recursively descend the class tree starting at the coursest level.
             At each level we decide if the items will take a category at this
@@ -746,49 +906,59 @@ class CategoryTree(ub.NiceRepr):
                 nodes (list) : set of sibling nodes at a this level
                 jdxs (ArrayLike): item indices that made it to this level (note
                     idxs are used for class indices)
-
-            Ignore:
-                print(ub.repr2(class_energy[0:5].numpy(), precision=3, supress_small=True))
-
-                print(ub.repr2(class_probs[0:5], precision=2, supress_small=True))
-                print(ub.repr2(expanded_probs[0:5], precision=2, supress_small=True))
-
-                print(ub.repr2(sub_h_level, precision=2, supress_small=True))
-                print(ub.repr2(h_expanded, precision=2, supress_small=True))
             """
+            if DEBUG:
+                print(ub.color_text('* REFINE nodes={}'.format(nodes), 'blue'))
             # Look at the probabilities of each node at this level
             idxs = sorted(self.node_to_idx[node] for node in nodes)
+            if ignore_class_idxs:
+                ignore_nodes = set(ub.take(self.idx_to_node, ignore_class_idxs))
+                idxs = sorted(set(idxs) - set(ignore_class_idxs))
+                if len(idxs) == 0:
+                    raise ValueError('Cannot ignore all top-level classes')
             probs = flat_class_probs[jdxs][:, idxs]
-            # jdxs = jdxs[probs.T[0].argsort()]
-            # probs = flat_class_probs[jdxs][:, idxs]
 
-            # Choose a category to predict at this level
+            # Choose a highest probability category to predict at this level
             pred_conf, pred_cx = impl.max_argmax(probs, axis=1)
-            pred_idxs = np.array(idxs)[pred_cx]
-
-            # Compute amount of information (entropy/gini) on the parent level
-            # h_level = _criterion(probs)
+            pred_idxs = np.array(idxs)[impl.numpy(pred_cx)]
 
             # Group each example which predicted the same class at this level
-            group_idxs, groupxs = kwil.group_indices(pred_idxs)
+            group_idxs, groupxs = kwarray.group_indices(pred_idxs)
+            if DEBUG:
+                groupxs = list(ub.take(groupxs, group_idxs.argsort()))
+                group_idxs = group_idxs[group_idxs.argsort()]
+                # print('groupxs = {!r}'.format(groupxs))
+                # print('group_idxs = {!r}'.format(group_idxs))
+
             for idx, groupx in zip(group_idxs, groupxs):
                 # Get the children of this node (idx)
                 node = self.idx_to_node[idx]
-                children = list(self.graph.successors(node))
+                children = sorted(self.graph.successors(node))
+                if ignore_class_idxs:
+                    children = sorted(set(children) - ignore_nodes)
+
                 if children:
+                    # Check if it would be simple to refine the coarse category
+                    # current prediction into one of its finer-grained child
+                    # categories. Do this by considering the entropy at this
+                    # level if we replace this coarse-node with the child
+                    # fine-nodes. Then compare that entropy to what we would
+                    # get if we were perfectly uncertain about the child node
+                    # prediction (i.e. the worst case). If the entropy we get
+                    # is much lower than the worst case, then it is simple to
+                    # descend the tree and predict a finer-grained label.
+
                     # Expand this node into all of its children
                     child_idxs = set(self.node_to_idx[child] for child in children)
 
-                    groupx.sort()
                     # Get example indices (jdxs) assigned to category idx
+                    groupx.sort()
                     group_jdxs = jdxs[groupx]
 
                     # Expand this parent node, but keep the parent's siblings
-                    ommer_idxs = set(idxs) - {idx}  # Note: ommer = Aunt/Uncle
+                    ommer_idxs = sorted(set(idxs) - {idx})  # Note: ommer = Aunt/Uncle
                     expanded_idxs = sorted(ommer_idxs) + sorted(child_idxs)
                     expanded_probs = flat_class_probs[group_jdxs][:, expanded_idxs]
-
-                    # assert np.allclose(expanded_probs.sum(axis=1), 1)
 
                     # Compute the entropy of the expanded distribution
                     h_expanded = _criterion(expanded_probs)
@@ -798,71 +968,49 @@ class CategoryTree(ub.NiceRepr):
                     # Get the absolute probabilities assigned the parents siblings
                     ommer_probs = flat_class_probs[group_jdxs][:, sorted(ommer_idxs)]
 
+                    # Compute the worst-case entropy after expanding the node
                     # In the worst case the parent probability is distributed
                     # uniformly among all of its children
                     c = len(children)
-                    child_probs_worst = np.repeat(p_parent / c, c, axis=1)
-                    expanded_probs_worst = np.hstack([ommer_probs, child_probs_worst])
-                    # Compute the worst-case entropy after expanding the node
-                    h_worst_expanded = _criterion(expanded_probs_worst)
+                    child_probs_worst = impl.tile(p_parent / c, reps=[1, c])
+                    expanded_probs_worst = impl.hstack([ommer_probs, child_probs_worst])
+                    h_expanded_worst = _criterion(expanded_probs_worst)
 
                     # Normalize the entropy we got by the worst case.
-                    complexity_ratio = h_expanded / h_worst_expanded
+                    # eps = float(np.finfo(np.float32).min)
+                    eps = 1e-30
+                    complexity_ratio = h_expanded / (h_expanded_worst + eps)
                     simplicity_ratio = 1 - complexity_ratio
 
                     # If simplicity ratio is over a threshold refine the parent
                     refine_flags = simplicity_ratio > thresh
-                    DEBUG = False
+
+                    if always_refine_idxs is not None:
+                        if idx in always_refine_idxs:
+                            refine_flags[:] = 1
+
+                    refine_flags = kwarray.ArrayAPI.numpy(refine_flags).astype(np.bool)
+
                     if DEBUG:
                         print('-----------')
                         print('idx = {!r}'.format(idx))
+                        print('ommer_idxs = {!r}'.format(ommer_idxs))
                         print('depth = {!r}'.format(depth))
                         import pandas as pd
                         print('expanded_probs =\n{}'.format(
                             ub.repr2(expanded_probs, precision=2, supress_small=True)))
                         df = pd.DataFrame({
                             'h': h_expanded,
-                            'h_worst': h_worst_expanded,
+                            'h_worst': h_expanded_worst,
                             'ratio': complexity_ratio,
                             'flags': refine_flags.astype(np.uint8)
                         })
                         print(df)
-                        # print('h_expanded / h_worst_expanded =\n{}'.format(
-                        #     ub.repr2(
-                        #         np.vstack([h_expanded[None, :], h_worst_expanded[None, :]]),
-                        #         precision=2, supress_small=True)
-                        # ))
-                        # print('complexity_ratio = {!r}'.format(complexity_ratio))
-                        # print('refine_flags = {!r}'.format(refine_flags.astype(np.uint8)))
                         print('-----------')
-
-                    # if False:
-                    # group_h_level = h_level[groupx]
-                    #     # Difference in entropy is how much information you've
-                    #     # gained by moving to the next level
-                    #     information_loss = h_expanded - group_h_level
-                    #     m = expanded_probs.shape[1]
-                    #     n = probs.shape[1]
-                    #     ommer_h = _criterion(ommer_probs)
-                    #     (c / m) * np.log2(m) - ommer_h
-                    #     _criterion(np.ones(m) / m, axis=0)
-                    #     _criterion(np.ones(n) / n, axis=0)
-                    #     maximal_uncertain_entropy = -(n * (1/n * np.log2(1/n))) - -(m * (1/m * np.log2(1/m)))
-                    #     loss_norm = information_loss / maximal_uncertain_entropy
-                    #     # else:
-                    #     child_probs = flat_class_probs[group_jdxs][:, sorted(child_idxs)]
-                    #     child_condprob = child_probs / p_parent
-                    #     h_child_cond = _criterion(child_condprob)
-                    #     np.log2(c / p_parent)
-                    #     group_h_level - h_child_cond
-                    #     h_child = _criterion(child_probs)
-                    #     # Move to the next level if the information loss is under
-                    #     # the threshold
-                    #     refine_flags = information_loss < thresh
 
                     if np.any(refine_flags):
                         refine_jdxs = group_jdxs[refine_flags]
-                        refine_idxs, refine_conf = _descend2(depth + 1, children, refine_jdxs)
+                        refine_idxs, refine_conf = _entropy_refine(depth + 1, children, refine_jdxs)
                         # Overwrite course decisions with refined decisions.
                         refine_groupx = groupx[refine_flags]
                         pred_idxs[refine_groupx] = refine_idxs
@@ -872,7 +1020,7 @@ class CategoryTree(ub.NiceRepr):
         nodes = sources
         jdxs = flat_jdxs
         depth = 0
-        pred_idxs, pred_conf = _descend2(depth, nodes, jdxs)
+        pred_idxs, pred_conf = _entropy_refine(depth, nodes, jdxs)
         return pred_idxs, pred_conf
 
 
@@ -969,33 +1117,31 @@ def from_directed_nested_tuples(encoding):
 
 def gini(probs, axis=1, impl=np):
     """
-    Approximates entropy, but faster to compute
+    Approximates Shannon Entropy, but faster to compute
 
-    probs = np.array([
-        [1, 0, 0, 0, 0],
-        [.2, .2, .2, .2, .2],
-    ])
-    probs = np.array([
-        [0, 1],
-        [.1, .9],
-        [.5, .5],
-    ])
-    gini(probs)
-    entropy(probs)
-
-    probs = np.array([[0, 1], [.1, .9], [.5, .5],])
-    entropy(probs)
-
-    probs = np.array([[0, 0, 1], [.05, .05, .9], [1/3, 1/3, 1/3],])
-    entropy(probs)
-
-    for i in range(1, 10):
-        print(entropy(np.ones(i) / i, axis=0))
+    Example:
+        >>> rng = kwarray.ensure_rng(0)
+        >>> probs = torch.softmax(torch.Tensor(rng.rand(3, 10)), 1)
+        >>> gini(probs.numpy(), impl=kwarray.ArrayAPI.coerce('numpy'))
+        array([0.896..., 0.890..., 0.892...
+        >>> gini(probs, impl=kwarray.ArrayAPI.coerce('torch'))
+        tensor([0.896..., 0.890..., 0.892...
     """
     return 1 - impl.sum(probs ** 2, axis=axis)
 
 
 def entropy(probs, axis=1, impl=np):
+    """
+    Standard Shannon (Information Theory) Entropy
+
+    Example:
+        >>> rng = kwarray.ensure_rng(0)
+        >>> probs = torch.softmax(torch.Tensor(rng.rand(3, 10)), 1)
+        >>> entropy(probs.numpy(), impl=kwarray.ArrayAPI.coerce('numpy'))
+        array([3.295..., 3.251..., 3.265...
+        >>> entropy(probs, impl=kwarray.ArrayAPI.coerce('torch'))
+        tensor([3.295..., 3.251..., 3.265...
+    """
     with np.errstate(divide='ignore'):
         logprobs = impl.log2(probs)
         logprobs = impl.nan_to_num(logprobs, copy=False)
