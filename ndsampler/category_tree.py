@@ -31,6 +31,7 @@ import networkx as nx
 import ubelt as ub
 import torch.nn.functional as F
 import numpy as np
+import xdev
 
 
 class CategoryTree(ub.NiceRepr):
@@ -385,6 +386,7 @@ class CategoryTree(ub.NiceRepr):
         self.node_to_idx = node_to_idx
         self.idx_groups = idx_groups
 
+    @xdev.profile
     def conditional_log_softmax(self, class_energy, dim):
         """
         Computes conditional log probabilities of each class in the category tree
@@ -416,6 +418,7 @@ class CategoryTree(ub.NiceRepr):
             cond_logits.index_copy_(dim, index, logit_group)
         return cond_logits
 
+    @xdev.profile
     def _apply_logit_chain_rule(self, cond_logits, dim):
         """
         Applies the probability chain rule (in log space, which has better
@@ -430,9 +433,12 @@ class CategoryTree(ub.NiceRepr):
                 log(P(node)) = log(P(node | parent)) + log(P(parent))
         """
         # The dynamic program was faster on the CPU in a dummy test case
-        @ub.memoize
+        memo = {}
+
         def log_prob(node):
             """ dynamic program to compute absolute class log probability """
+            if node in memo:
+                return memo[node]
             logp_node_given_parent = cond_logits.select(dim, self.node_to_idx[node])
             parents = list(self.graph.predecessors(node))
             if len(parents) == 0:
@@ -442,13 +448,22 @@ class CategoryTree(ub.NiceRepr):
                 logp_node = logp_node_given_parent + log_prob(parents[0])
             else:
                 raise AssertionError('not a tree')
+            memo[node] = logp_node
             return logp_node
+
         class_logits = torch.empty_like(cond_logits)
         if cond_logits.numel() > 0:
             for idx, node in enumerate(self.idx_to_node):
-                class_logits.select(dim, idx)[:] = log_prob(node)
+                # Note: the this is the bottleneck in this function
+                if True:
+                    class_logits.select(dim, idx)[:] = log_prob(node)
+                else:
+                    result = log_prob(node)  # 50% of the time
+                    dest = class_logits.select(dim, idx)  # 8% of the time
+                    dest[:] = result  # 37% of the time
         return class_logits
 
+    @xdev.profile
     def source_log_softmax(self, class_energy, dim):
         """
         Top-down heirarchical softmax
@@ -493,6 +508,7 @@ class CategoryTree(ub.NiceRepr):
         class_logits = self._apply_logit_chain_rule(cond_logits, dim=dim)
         return class_logits
 
+    @xdev.profile
     def sink_log_softmax(self, class_energy, dim):
         """
         Bottom-up heirarchical softmax
