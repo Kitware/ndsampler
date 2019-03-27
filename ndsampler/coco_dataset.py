@@ -1063,7 +1063,7 @@ class MixinCocoDraw(object):
         """
         import matplotlib as mpl
         from matplotlib import pyplot as plt
-        from PIL import Image
+        # from PIL import Image
         import kwimage
         import kwplot
 
@@ -1183,8 +1183,9 @@ class MixinCocoDraw(object):
 
         # Show image
         gpath = join(self.img_root, img['file_name'])
-        with Image.open(gpath) as pil_img:
-            np_img = np.array(pil_img)
+        # with Image.open(gpath) as pil_img:
+        #     np_img = np.array(pil_img)
+        np_img = kwimage.imread(gpath)
         np_img = kwimage.atleast_3channels(np_img)
 
         fig = plt.gcf()
@@ -1270,8 +1271,8 @@ class MixinCocoAddRemove(object):
         img['id'] = int(id)
         img['file_name'] = str(file_name)
         img.update(**kw)
-        self.dataset['images'].append(img)
         self.index._add_image(id, img)
+        self.dataset['images'].append(img)
         self._invalidate_hashid()
         return id
 
@@ -1335,6 +1336,12 @@ class MixinCocoAddRemove(object):
     def add_images(self, imgs):
         """
         Faster less-safe multi-item alternative
+
+        Note:
+            THIS FUNCTION WAS DESIGNED FOR SPEED, AS SUCH IT DOES NOT CHECK IF
+            THE IMAGE-IDs or FILE_NAMES ARE DUPLICATED AND WILL BLINDLY ADD
+            DATA EVEN IF IT IS BAD. THE SINGLE IMAGE VERSION IS SLOWER BUT
+            SAFER.
 
         Args:
             imgs (List[Dict]): list of image dictionaries
@@ -1561,6 +1568,7 @@ class CocoIndex(object):
         self.cid_to_aids = None
         self.name_to_cat = None
         self.file_name_to_img = None
+        self._CHECKS = True
 
     def __bool__(self):
         return self.anns is not None
@@ -1569,11 +1577,52 @@ class CocoIndex(object):
 
     def _add_image(self, gid, img):
         if self.imgs is not None:
+            file_name = img['file_name']
+            if self._CHECKS:
+                if file_name in self.file_name_to_img:
+                    raise ValueError(
+                        'image with file_name={} already exists'.format(
+                            file_name))
             self.imgs[gid] = img
             self.gid_to_aids[gid] = self._set()
-            self.file_name_to_img[img['file_name']] = img
+            self.file_name_to_img[file_name] = img
 
     def _add_images(self, imgs):
+        """
+        Note:
+            THIS FUNCTION WAS DESIGNED FOR SPEED, AS SUCH IT DOES NOT CHECK IF
+            THE IMAGE-IDs or FILE_NAMES ARE DUPLICATED AND WILL BLINDLY ADD
+            DATA EVEN IF IT IS BAD. THE SINGLE IMAGE VERSION IS SLOWER BUT
+            SAFER.
+
+        Ignore:
+            # If we did do checks, what would be the fastest way?
+
+            import ndsampler
+            x = ndsampler.CocoDataset()
+            for i in range(1000):
+                x.add_image(file_name=str(i))
+
+            y = ndsampler.CocoDataset()
+            for i in range(1000, 2000):
+                y.add_image(file_name=str(i))
+
+            imgs = list(y.imgs.values())
+            new_file_name_to_img = {img['file_name']: img for img in imgs}
+
+            import ubelt as ub
+            ti = ub.Timerit(100, bestof=10, verbose=2)
+
+            for timer in ti.reset('set intersection'):
+                with timer:
+                    # WINNER
+                    bool(set(x.index.file_name_to_img) & set(new_file_name_to_img))
+
+            for timer in ti.reset('dict contains'):
+                with timer:
+                    any(f in x.index.file_name_to_img
+                        for f in new_file_name_to_img.keys())
+        """
         if self.imgs is not None:
             gids = [img['id'] for img in imgs]
             new_imgs = dict(zip(gids, imgs))
