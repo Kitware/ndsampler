@@ -1156,7 +1156,7 @@ class MixinCocoDraw(object):
 
             if 'segmentation' in ann:
                 sseg = ann['segmentation']
-                print('sseg = {!r}'.format(sseg))
+                # print('sseg = {!r}'.format(sseg))
                 if isinstance(sseg, dict):
                     # Handle COCO-RLE-segmentations; convert to raw binary masks
                     sseg = dict(sseg)
@@ -1222,7 +1222,7 @@ class MixinCocoDraw(object):
             ax.set_title(title)
 
         if sseg_polys:
-            print('sseg_polys = {!r}'.format(sseg_polys))
+            # print('sseg_polys = {!r}'.format(sseg_polys))
             poly_col = mpl.collections.PatchCollection(
                 sseg_polys, 2, alpha=0.4)
             ax.add_collection(poly_col)

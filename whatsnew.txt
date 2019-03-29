@@ -1,3 +1,9 @@
+Version 0.2.0
+-------------
+* Fixes for larger images (maybe need to do something else besides memmap)
+* Fixes for kwimage 0.4.0 api changes
+
+
 Version 0.1.0
 -------------
 * The CocoDataset "key" now defaults to the full basename instead of only the first part.

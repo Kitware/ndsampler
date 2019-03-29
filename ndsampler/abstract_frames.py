@@ -212,7 +212,9 @@ class Frames(object):
 
             if not exists(mem_gpath):
                 # Load all the image data and dump it to npy format
-                raw_data = np.asarray(Image.open(gpath))
+                import kwimage
+                raw_data = kwimage.imread(gpath)
+                # raw_data = np.asarray(Image.open(gpath))
 
                 # Even with the file-lock and atomic save there is still a race
                 # condition somewhere. Not sure what it is.

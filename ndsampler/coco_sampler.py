@@ -1,4 +1,4 @@
-#d -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
 import ubelt as ub
 import numpy as np
@@ -435,6 +435,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             if coco_kpts is not None:
                 kpnames = coco_dset._lookup_kpnames(ann['category_id'])
                 coco_xyf = np.array(coco_kpts).reshape(-1, 3)
+                # TODO: use Points._from_coco
                 flags = (coco_xyf.T[2] > 0)
                 xy_pts = coco_xyf[flags, 0:2]
                 kpnames = list(ub.compress(kpnames, flags))
@@ -447,9 +448,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
                 rel_points = None
 
             if coco_sseg is not None:
-                # TODO: implement MultiPolygon coerce instead
-                abs_sseg = kwimage.Mask.coerce(coco_sseg, shape=data_dims)
-                abs_sseg = abs_sseg.to_multi_polygon()
+                # x = _coerce_coco_segmentation(coco_sseg, data_dims)
+                # abs_sseg = kwimage.Mask.coerce(coco_sseg, dims=data_dims)
+                abs_sseg = kwimage.MultiPolygon.coerce(coco_sseg, dims=data_dims)
+                # abs_sseg = abs_sseg.to_multi_polygon()
                 rel_sseg = abs_sseg.translate(offset)
             else:
                 rel_sseg = None

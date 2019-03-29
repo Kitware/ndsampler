@@ -231,7 +231,7 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
             if coco_sseg is not None:
                 # TODO: implement MultiPolygon coerce instead
                 data_dims = gsize[::-1]
-                abs_sseg = kwimage.Mask.coerce(coco_sseg, shape=data_dims)
+                abs_sseg = kwimage.Mask.coerce(coco_sseg, dims=data_dims)
                 rel_sseg = abs_sseg.to_multi_polygon()
             else:
                 rel_sseg = None
