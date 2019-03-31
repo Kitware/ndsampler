@@ -468,6 +468,26 @@ class MixinCocoExtras(object):
     Misc functions for coco
     """
 
+    def load_image(self, gid_or_img):
+        """
+        Reads an image from disk and
+
+        Args:
+            gid_or_img (gid or dict): image id or image dict
+
+        Returns:
+            np.ndarray : the image
+        """
+        try:
+            img = gid_or_img
+            gpath = join(self.img_root, img['file_name'])
+        except Exception:
+            img = self.imgs[gid_or_img]
+            gpath = join(self.img_root, img['file_name'])
+
+        np_img = kwimage.imread(gpath)
+        return np_img
+
     @classmethod
     def demo(cls):
         dataset = demo_coco_data()
@@ -1182,10 +1202,8 @@ class MixinCocoDraw(object):
                     raise TypeError(type(sseg))
 
         # Show image
-        gpath = join(self.img_root, img['file_name'])
-        # with Image.open(gpath) as pil_img:
-        #     np_img = np.array(pil_img)
-        np_img = kwimage.imread(gpath)
+        np_img = self.load_image(img)
+
         np_img = kwimage.atleast_3channels(np_img)
 
         fig = plt.gcf()

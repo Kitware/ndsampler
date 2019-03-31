@@ -305,6 +305,24 @@ class CategoryTree(ub.NiceRepr):
         self = cls(graph)
         return self
 
+    def to_coco(self):
+        """
+        Converts to a coco-style data structure
+        """
+        for cid, node in self.id_to_node.items():
+            # Skip if background already added
+            cat = {
+                'id': cid,
+                'name': node,
+            }
+            parents = list(self.graph.predecessors(node))
+            if len(parents) == 1:
+                cat['supercategory'] = parents[0]
+            else:
+                if len(parents) > 1:
+                    raise Exception('not a tree')
+            yield cat
+
     def __getstate__(self):
         """
         Example:
