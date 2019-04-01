@@ -30,3 +30,25 @@ annotation that takes up the entire image.
   However, we are bad at loading images with one single large object that needs
   to be downsampled (e.g. loading an entire 1024x1024 image and downsampling it
   to 224x224). We should find a way to mitigate this.
+
+
+# NOTES:
+There (will be) a GDAL backend for FramesSampler
+
+
+```python
+# References:
+# https://gis.stackexchange.com/questions/28966/python-gdal-package-missing-header-file-when-installing-via-pip
+
+
+# Install GDAL system libs
+sudo apt install libgdal-dev
+
+GDAL_VERSION=`gdal-config --version`
+echo "GDAL_VERSION = $GDAL_VERSION" 
+pip install --global-option=build_ext --global-option="-I/usr/include/gdal" GDAL==$GDAL_VERSION
+
+
+# Test that this works
+python -c "from osgeo import gdal; print(gdal)"
+```
