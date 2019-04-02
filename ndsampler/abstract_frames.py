@@ -1,4 +1,14 @@
 # -*- coding: utf-8 -*-
+"""
+Fast access to subregions of images
+
+
+TODO:
+    - [X] Implement npy memmap backend
+    - [ ] Implement gdal COG.TIFF backend
+        - [ ] Use as COG if input file is a COG
+        - [ ] Convert to COG if needed
+"""
 from __future__ import absolute_import, division, print_function, unicode_literals
 import itertools as it
 import numpy as np
