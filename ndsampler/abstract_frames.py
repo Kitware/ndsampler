@@ -128,23 +128,26 @@ class Frames(object):
             region = tuple(region) + tail
         return region
 
-    @lru_cache(4)  # Keeps frequently accessed memmaps open
+    @lru_cache(4)  # Keeps frequently accessed images open
     def load_image(self, image_id, bands=None, scale=0, cache=True):
-        """
-        Returns a memmapped reference to the entire image
-        """
         if bands is not None:
             raise NotImplementedError('cannot handle different bands')
 
         if scale != 0:
             raise NotImplementedError('can only handle scale=0')
 
-        gpath = self._lookup_gpath(image_id)
-
         if not cache:
+            gpath = self._lookup_gpath(image_id)
             raw_data = np.asarray(Image.open(gpath))
             return raw_data
 
+        return self._load_image_npy(image_id, cache=cache)
+
+    def _load_image_npy(self, image_id, cache=True):
+        """
+        Returns a memmapped reference to the entire image
+        """
+        gpath = self._lookup_gpath(image_id)
         hashid = self._lookup_hashid(image_id)
 
         mem_gname = '{}_{}.npy'.format(image_id, hashid)
@@ -192,60 +195,116 @@ class Frames(object):
                 raise
         return file
 
+    def _load_image_cog(self, image_id, cache=True):
+        """
+        Returns a special array-like object with a COG GeoTIFF backend
+        """
+        gpath = self._lookup_gpath(image_id)
+        hashid = self._lookup_hashid(image_id)
+
+        cog_gname = '{}_{}.cog.tiff'.format(image_id, hashid)
+        cog_gpath = join(self.cache_dpath, cog_gname)
+        if not exists(cog_gpath):
+            self._ensure_cog_representation(gpath, cog_gpath)
+        file = NotImplementedError
+        return file
+
+    def _ensure_cog_representation(gpath, cog_gpath):
+        """
+        """
+        _locked_cache_write(_cog_cache_write, cog_gpath, _cog_cache_write)
+
     @staticmethod
     def ensure_npy_representation(gpath, mem_gpath):
         """
         Ensures that mem_gpath exists in a multiprocessing-safe way
         """
-        import multiprocessing
-
-        lock_fpath = mem_gpath + '.lock'
-
-        DEBUG = 0
-
-        if DEBUG:
-            procid = multiprocessing.current_process()
-            def _debug(msg):
-                with open(lock_fpath + '.debug', 'a') as f:
-                    f.write(msg + '\n')
-            _debug(lock_fpath)
-            _debug('{} attempts aquire'.format(procid))
-
-        # Ensure that another process doesn't write to the same image
-        # FIXME: lockfiles may not be cleaned up gracefully
-        # See: https://github.com/harlowja/fasteners/issues/26
-        lock_fpath = mem_gpath + '.lock'
-        with fasteners.InterProcessLock(lock_fpath):
-
-            if DEBUG:
-                _debug('{} aquires'.format(procid))
-
-            if not exists(mem_gpath):
-                # Load all the image data and dump it to npy format
-                import kwimage
-                raw_data = kwimage.imread(gpath)
-                # raw_data = np.asarray(Image.open(gpath))
-
-                # Even with the file-lock and atomic save there is still a race
-                # condition somewhere. Not sure what it is.
-                # _semi_atomic_numpy_save(mem_gpath, raw_data)
-
-                with atomicwrites.atomic_write(mem_gpath, mode='wb', overwrite=True) as file:
-                    np.save(file, raw_data)
-
-                if DEBUG:
-                    _debug('{} wrote'.format(procid))
-            else:
-                if DEBUG:
-                    _debug('{} does not need to write'.format(procid))
-
-            if DEBUG:
-                _debug('{} releasing'.format(procid))
-
-        if DEBUG:
-            _debug('{} released'.format(procid))
+        _locked_cache_write(gpath, mem_gpath, _npy_cache_write)
 
     _load_subregion = load_region
+
+
+def _cog_cache_write(gpath, cache_gpath):
+    """
+    Example:
+        >>> import ndsampler
+        >>> from ndsampler.abstract_frames import *
+        >>> workdir = ub.ensure_app_cache_dir('ndsampler')
+        >>> dset = ndsampler.CocoDataset.demo()
+        >>> imgs = dset.images()
+        >>> id_to_name = imgs.lookup('file_name', keepid=True)
+        >>> id_to_path = {gid: join(dset.img_root, name)
+        >>>               for gid, name in id_to_name.items()}
+        >>> self = SimpleFrames(id_to_path, workdir=workdir)
+
+        image_id = ub.peek(id_to_name)
+        gpath = self._lookup_gpath(image_id)
+        hashid = self._lookup_hashid(image_id)
+        cog_gname = '{}_{}.cog.tiff'.format(image_id, hashid)
+        cache_gpath = cog_gpath = join(self.cache_dpath, cog_gname)
+    """
+    # Load all the image data and dump it to npy format
+    import kwimage
+    raw_data = kwimage.imread(gpath)
+    # raw_data = np.asarray(Image.open(gpath))
+    _imwrite_cloud_optimized_geotiff(cache_gpath, raw_data)
+
+
+def _npy_cache_write(gpath, cache_gpath):
+    # Load all the image data and dump it to npy format
+    import kwimage
+    raw_data = kwimage.imread(gpath)
+    # raw_data = np.asarray(Image.open(gpath))
+
+    # Even with the file-lock and atomic save there is still a race
+    # condition somewhere. Not sure what it is.
+    # _semi_atomic_numpy_save(cache_gpath, raw_data)
+
+    with atomicwrites.atomic_write(cache_gpath, mode='wb', overwrite=True) as file:
+        np.save(file, raw_data)
+
+
+def _locked_cache_write(gpath, cache_gpath, _write_func):
+    """
+    Ensures that mem_gpath exists in a multiprocessing-safe way
+    """
+    import multiprocessing
+
+    lock_fpath = cache_gpath + '.lock'
+
+    DEBUG = 0
+
+    if DEBUG:
+        procid = multiprocessing.current_process()
+        def _debug(msg):
+            with open(lock_fpath + '.debug', 'a') as f:
+                f.write(msg + '\n')
+        _debug(lock_fpath)
+        _debug('{} attempts aquire'.format(procid))
+
+    # Ensure that another process doesn't write to the same image
+    # FIXME: lockfiles may not be cleaned up gracefully
+    # See: https://github.com/harlowja/fasteners/issues/26
+    lock_fpath = cache_gpath + '.lock'
+    with fasteners.InterProcessLock(lock_fpath):
+
+        if DEBUG:
+            _debug('{} aquires'.format(procid))
+
+        if not exists(cache_gpath):
+            _write_func(gpath, cache_gpath)
+
+            if DEBUG:
+                _debug('{} wrote'.format(procid))
+        else:
+            if DEBUG:
+                _debug('{} does not need to write'.format(procid))
+
+        if DEBUG:
+            _debug('{} releasing'.format(procid))
+
+    if DEBUG:
+        _debug('{} released'.format(procid))
 
 
 # def _semi_atomic_numpy_save(fpath, data):
@@ -350,3 +409,57 @@ def __notes__():
         file = np.memmap(mem_gpath, dtype=img_dtype, shape=img_shape,
                          offset=128, mode='r')
         return file
+
+
+def _imwrite_cloud_optimized_geotiff(fpath, data):
+    """
+    References:
+        https://geoexamples.com/other/2019/02/08/cog-tutorial.html#create-a-cog-using-gdal-python
+
+    Notes:
+        conda install gdal
+
+        OR
+
+        sudo apt install gdal-dev
+
+    Example:
+        data = (np.random.rand(1000, 1000, 3) * 255).astype(np.uint8)
+        fpath = '/tmp/foo.cog.tiff'
+        import netharn as nh
+        print(nh.util.get_file_info(fpath))
+
+        fpath2 = '/tmp/foo.png'
+        kwimage.imwrite(fpath2, data)
+        print(nh.util.get_file_info(fpath2))
+
+        fpath3 = '/tmp/foo.jpg'
+        kwimage.imwrite(fpath3, data)
+        print(nh.util.get_file_info(fpath3))
+    """
+    import gdal
+    y_size, x_size, num_bands = data.shape
+
+    kindsize = (data.dtype.kind, data.dtype.itemsize)
+    if kindsize == ('u', 1):
+        eType = gdal.GDT_Byte
+    else:
+        raise TypeError(kindsize)
+
+    driver = gdal.GetDriverByName('MEM')
+    data_set = driver.Create('', x_size, y_size, num_bands,
+                             eType=eType)
+
+    for i in range(num_bands):
+        data_set.GetRasterBand(i + 1).WriteArray(data[i])
+
+    data = None
+    data_set.BuildOverviews("NEAREST", [2, 4, 8, 16, 32, 64])
+
+    driver = gdal.GetDriverByName('GTiff')
+    data_set2 = driver.CreateCopy(fpath, data_set,
+                                  options=["COPY_SRC_OVERVIEWS=YES",
+                                           "TILED=YES",
+                                           "COMPRESS=LZW"])
+    data_set2.FlushCache()
+    return fpath

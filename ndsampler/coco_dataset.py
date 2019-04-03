@@ -110,6 +110,22 @@ class ObjectList1D(ub.NiceRepr):
     property access.
 
     Similar to ibeis._ibeis_object.ObjectList1D
+
+    Types:
+        ObjT = Ann | Img | Cat  # can be one of these types
+        ObjectList1D gives us access to a List[ObjT]
+
+    Example:
+        >>> import ndsampler
+        >>> dset = ndsampler.CocoDataset.demo()
+        >>> # Both annots and images are object lists
+        >>> self = dset.annots()
+        >>> self = dset.images()
+        >>> # can call with a list of ids or not, for everything
+        >>> self = dset.annots([1, 2, 11])
+        >>> self = dset.images([1, 2, 3])
+        >>> self.lookup('id')
+        >>> self.lookup(['id'])
     """
 
     def __init__(self, ids, dset, key):
@@ -126,8 +142,14 @@ class ObjectList1D(ub.NiceRepr):
     def __len__(self):
         return len(self._ids)
 
+    @property
+    def _id_to_obj(self):
+        return self._dset.index._id_lookup[self._key]
+
     def take(self, idxs):
         """
+        Take a subset by index
+
         Example:
             >>> self = CocoDataset.demo().annots()
             >>> assert len(self.take([0, 2, 3])) == 3
@@ -138,6 +160,8 @@ class ObjectList1D(ub.NiceRepr):
 
     def compress(self, flags):
         """
+        Take a subset by flags
+
         Example:
             >>> self = CocoDataset.demo().images()
             >>> assert len(self.compress([True, False, True])) == 2
@@ -149,11 +173,64 @@ class ObjectList1D(ub.NiceRepr):
     def _lookup(self, key):
         raise NotImplementedError('must be implemented')
 
+    def peek(self):
+        return ub.peek(self._id_to_obj.values())
+
+    def lookup(self, key, default=ub.NoParam, keepid=False):
+        """
+        Lookup a list of object attributes
+
+        Args:
+            key (str | Iterable): name of the property you want to lookup
+                can also be a list of names, in which case we return a dict
+
+            default : if specified, uses this value if it doesn't exist
+                in an ObjT.
+
+            keepid: if True, return a mapping from ids to the property
+
+        Returns:
+            List[ObjT]: a list of whatever type the object is
+            Dict[str, ObjT]
+
+        Example:
+            >>> import ndsampler
+            >>> dset = ndsampler.CocoDataset.demo()
+            >>> self = dset.annots()
+            >>> self.lookup('id')
+            >>> key = ['id']
+            >>> default = None
+            >>> self.lookup(key=['id', 'image_id'])
+            >>> self.lookup(key=['id', 'image_id'])
+            >>> self.lookup(key='foo', default=None, keepid=True)
+            >>> self.lookup(key=['foo'], default=None, keepid=True)
+            >>> self.lookup(key=['id', 'image_id'], keepid=True)
+        """
+        if ub.iterable(key):
+            return {k: self.lookup(k, default, keepid) for k in key}
+        else:
+            _lut = self._id_to_obj
+            _no_default = default is ub.NoParam
+            if keepid:
+                if _no_default:
+                    attr_list = {_id: _lut[_id][key] for _id in self._ids}
+                else:
+                    attr_list = {_id: _lut[_id].get(key, default) for _id in self._ids}
+            else:
+                if _no_default:
+                    attr_list = [_lut[_id][key] for _id in self._ids]
+                else:
+                    attr_list = [_lut[_id].get(key, default) for _id in self._ids]
+            return attr_list
+
     def _ilookup(self, key):
         raise NotImplementedError('must be implemented')
 
 
 class ObjectGroups(ub.NiceRepr):
+    """
+    An object for holding a groups of `ObjectList1D` objects
+    """
     def __init__(self, groups, dset):
         self._groups = groups
 
@@ -1582,6 +1659,7 @@ class CocoIndex(object):
         self.anns = None
         self.imgs = None
         self.cats = None
+        self._id_lookup = None
         self.gid_to_aids = None
         self.cid_to_aids = None
         self.name_to_cat = None
@@ -1718,6 +1796,7 @@ class CocoIndex(object):
         self.anns = None
         self.imgs = None
         self.cats = None
+        self._id_lookup = None
         self.gid_to_aids = None
         self.cid_to_aids = None
         self.name_to_cat = None
@@ -1800,9 +1879,15 @@ class CocoIndex(object):
                 gid_to_aids[gid] = self._set()
 
         # create class members
+        self._id_lookup = {
+            'categories': cats,
+            'images': imgs,
+            'annotations': anns,
+        }
         self.anns = anns
         self.imgs = imgs
         self.cats = cats
+
         self.gid_to_aids = gid_to_aids
         self.cid_to_aids = cid_to_aids
         self.name_to_cat = {cat['name']: cat for cat in self.cats.values()}
