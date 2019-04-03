@@ -51,18 +51,45 @@ class Frames(object):
         >>> assert self.load_image(1).shape == (512, 512, 3)
         >>> assert self.load_region(1, (slice(-20), slice(-10))).shape == (492, 502, 3)
 
-    Ignore:
-        self._backend = 'cog'
-        %timeit self.load_region(1, (slice(-20), slice(-10)))
-
-        self._backend = 'npy'
-        %timeit self.load_region(1, (slice(-20), slice(-10)))
+    Benchmark:
+        >>> import ubelt as ub
+        >>> #
+        >>> ti = ub.Timerit(100, bestof=3, verbose=2)
+        >>> self = SimpleFrames.demo()
+        >>> #
+        >>> self._backend = 'cog'
+        >>> for timer in ti.reset('cog-small-subregion'):
+        >>>     self.load_image(1)[10:42, 10:42]
+        >>> #
+        >>> self._backend = 'npy'
+        >>> for timer in ti.reset('npy-small-subregion'):
+        >>>     self.load_image(1)[10:42, 10:42]
+        >>> print('----')
+        >>> #
+        >>> self._backend = 'cog'
+        >>> for timer in ti.reset('cog-large-subregion'):
+        >>>     self.load_image(1)[3:-3, 3:-3]
+        >>> #
+        >>> self._backend = 'npy'
+        >>> for timer in ti.reset('npy-large-subregion'):
+        >>>     self.load_image(1)[3:-3, 3:-3]
+        >>> print('----')
+        >>> #
+        >>> self._backend = 'cog'
+        >>> for timer in ti.reset('cog-loadimage'):
+        >>>     self.load_image(1)
+        >>> #
+        >>> self._backend = 'npy'
+        >>> for timer in ti.reset('npy-loadimage'):
+        >>>     self.load_image(1)
     """
 
-    def __init__(self, id_to_hashid=None, hashid_mode='PATH', workdir=None):
+    def __init__(self, id_to_hashid=None, hashid_mode='PATH', workdir=None,
+                 backend='cog'):
 
-        self._backend = 'npy'
-        # self._backend = 'cog'
+        # self._backend = 'npy'
+        self._backend = backend
+        assert self._backend in ['cog', 'npy']
 
         if id_to_hashid is None:
             id_to_hashid = {}
@@ -222,6 +249,7 @@ class Frames(object):
                 raise
         return file
 
+    @lru_cache(4)  # Keeps frequently accessed images open
     def _load_image_cog(self, image_id, cache=True):
         """
         Returns a special array-like object with a COG GeoTIFF backend
@@ -483,7 +511,7 @@ def _imwrite_cloud_optimized_geotiff(fpath, data):
                              eType=eType)
 
     for i in range(num_bands):
-        data_set.GetRasterBand(i + 1).WriteArray(data[i])
+        data_set.GetRasterBand(i + 1).WriteArray(data[:, :, i])
 
     data = None
     data_set.BuildOverviews("NEAREST", [2, 4, 8, 16, 32, 64])
