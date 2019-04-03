@@ -38,9 +38,31 @@ class Frames(object):
     Abstract implementation of Frames.
 
     Need to overload constructor and implement _lookup_gpath.
+
+    Example:
+        >>> from ndsampler.abstract_frames import *
+        >>> self = SimpleFrames.demo()
+        >>> file = self.load_image(1)
+        >>> print('file = {!r}'.format(file))
+        >>> self._backend = 'npy'
+        >>> assert self.load_image(1).shape == (512, 512, 3)
+        >>> assert self.load_region(1, (slice(-20), slice(-10))).shape == (492, 502, 3)
+        >>> self._backend = 'cog'
+        >>> assert self.load_image(1).shape == (512, 512, 3)
+        >>> assert self.load_region(1, (slice(-20), slice(-10))).shape == (492, 502, 3)
+
+    Ignore:
+        self._backend = 'cog'
+        %timeit self.load_region(1, (slice(-20), slice(-10)))
+
+        self._backend = 'npy'
+        %timeit self.load_region(1, (slice(-20), slice(-10)))
     """
 
     def __init__(self, id_to_hashid=None, hashid_mode='PATH', workdir=None):
+
+        self._backend = 'npy'
+        # self._backend = 'cog'
 
         if id_to_hashid is None:
             id_to_hashid = {}
@@ -128,7 +150,6 @@ class Frames(object):
             region = tuple(region) + tail
         return region
 
-    @lru_cache(4)  # Keeps frequently accessed images open
     def load_image(self, image_id, bands=None, scale=0, cache=True):
         if bands is not None:
             raise NotImplementedError('cannot handle different bands')
@@ -141,8 +162,14 @@ class Frames(object):
             raw_data = np.asarray(Image.open(gpath))
             return raw_data
 
-        return self._load_image_npy(image_id, cache=cache)
+        if self._backend == 'cog':
+            return self._load_image_cog(image_id, cache=cache)
+        elif self._backend == 'npy':
+            return self._load_image_npy(image_id, cache=cache)
+        else:
+            raise KeyError(self._backend)
 
+    @lru_cache(4)  # Keeps frequently accessed images open
     def _load_image_npy(self, image_id, cache=True):
         """
         Returns a memmapped reference to the entire image
@@ -206,22 +233,19 @@ class Frames(object):
         cog_gpath = join(self.cache_dpath, cog_gname)
         if not exists(cog_gpath):
             self._ensure_cog_representation(gpath, cog_gpath)
-        file = NotImplementedError
+        file = LazyGDalFrameFile(cog_gpath)
         return file
 
+    @staticmethod
     def _ensure_cog_representation(gpath, cog_gpath):
-        """
-        """
-        _locked_cache_write(_cog_cache_write, cog_gpath, _cog_cache_write)
+        _locked_cache_write(_cog_cache_write, gpath, cache_gpath=cog_gpath)
 
     @staticmethod
     def ensure_npy_representation(gpath, mem_gpath):
         """
         Ensures that mem_gpath exists in a multiprocessing-safe way
         """
-        _locked_cache_write(gpath, mem_gpath, _npy_cache_write)
-
-    _load_subregion = load_region
+        _locked_cache_write(_npy_cache_write, gpath, cache_gpath=mem_gpath)
 
 
 def _cog_cache_write(gpath, cache_gpath):
@@ -236,17 +260,15 @@ def _cog_cache_write(gpath, cache_gpath):
         >>> id_to_path = {gid: join(dset.img_root, name)
         >>>               for gid, name in id_to_name.items()}
         >>> self = SimpleFrames(id_to_path, workdir=workdir)
-
-        image_id = ub.peek(id_to_name)
-        gpath = self._lookup_gpath(image_id)
-        hashid = self._lookup_hashid(image_id)
-        cog_gname = '{}_{}.cog.tiff'.format(image_id, hashid)
-        cache_gpath = cog_gpath = join(self.cache_dpath, cog_gname)
+        >>> image_id = ub.peek(id_to_name)
+        >>> gpath = self._lookup_gpath(image_id)
+        >>> hashid = self._lookup_hashid(image_id)
+        >>> cog_gname = '{}_{}.cog.tiff'.format(image_id, hashid)
+        >>> cache_gpath = cog_gpath = join(self.cache_dpath, cog_gname)
     """
     # Load all the image data and dump it to npy format
     import kwimage
     raw_data = kwimage.imread(gpath)
-    # raw_data = np.asarray(Image.open(gpath))
     _imwrite_cloud_optimized_geotiff(cache_gpath, raw_data)
 
 
@@ -264,7 +286,7 @@ def _npy_cache_write(gpath, cache_gpath):
         np.save(file, raw_data)
 
 
-def _locked_cache_write(gpath, cache_gpath, _write_func):
+def _locked_cache_write(_write_func, gpath, cache_gpath):
     """
     Ensures that mem_gpath exists in a multiprocessing-safe way
     """
@@ -341,13 +363,9 @@ class SimpleFrames(Frames):
         id_to_path (Dict): mapping from image-id to image path
 
     Example:
-        >>> import ndsampler
         >>> from ndsampler.abstract_frames import *
-        >>> workdir = ub.ensure_app_cache_dir('ndsampler')
-        >>> dset = ndsampler.CocoDataset.demo()
-        >>> id_to_path = {img['id']: join(dset.img_root, img['file_name'])
-        >>>               for img in dset.imgs.values()}
-        >>> self = SimpleFrames(id_to_path, workdir=workdir)
+        >>> self = SimpleFrames.demo()
+        >>> self._backend == 'npy'
         >>> assert self.load_image(1).shape == (512, 512, 3)
         >>> assert self.load_region(1, (slice(-20), slice(-10))).shape == (492, 502, 3)
     """
@@ -360,6 +378,18 @@ class SimpleFrames(Frames):
 
     def _lookup_gpath(self, image_id):
         return self.id_to_path[image_id]
+
+    @classmethod
+    def demo(self):
+        import ndsampler
+        workdir = ub.ensure_app_cache_dir('ndsampler')
+        dset = ndsampler.CocoDataset.demo()
+        imgs = dset.images()
+        id_to_name = imgs.lookup('file_name', keepid=True)
+        id_to_path = {gid: join(dset.img_root, name)
+                      for gid, name in id_to_name.items()}
+        self = SimpleFrames(id_to_path, workdir=workdir)
+        return self
 
 
 def __notes__():
@@ -422,12 +452,14 @@ def _imwrite_cloud_optimized_geotiff(fpath, data):
         OR
 
         sudo apt install gdal-dev
+        pip install gdal ---with special flags, forgot which though, sry
 
     Example:
-        data = (np.random.rand(1000, 1000, 3) * 255).astype(np.uint8)
-        fpath = '/tmp/foo.cog.tiff'
-        import netharn as nh
-        print(nh.util.get_file_info(fpath))
+        >>> data = (np.random.rand(1000, 1000, 3) * 255).astype(np.uint8)
+        >>> fpath = '/tmp/foo.cog.tiff'
+        >>> _imwrite_cloud_optimized_geotiff(fpath, data)
+        >>> import netharn as nh
+        >>> print(nh.util.get_file_info(fpath))
 
         fpath2 = '/tmp/foo.png'
         kwimage.imwrite(fpath2, data)
@@ -463,3 +495,101 @@ def _imwrite_cloud_optimized_geotiff(fpath, data):
                                            "COMPRESS=LZW"])
     data_set2.FlushCache()
     return fpath
+
+
+class LazyGDalFrameFile(ub.NiceRepr):
+    """
+    Example:
+        >>> from ndsampler.abstract_frames import *
+        >>> self = SimpleFrames.demo()
+        >>> file = self._load_image_cog(1)
+        >>> cog_fpath = file.cog_fpath
+        >>> print('file = {!r}'.format(file))
+        >>> file[0:3, 0:3]
+        >>> file[:, :, 0]
+        >>> file[0]
+        >>> file[0, 3]
+    """
+    def __init__(self, cog_fpath):
+        self.cog_fpath = cog_fpath
+
+    @property
+    def shape(self):
+        import gdal
+        ds = gdal.Open(self.cog_fpath, gdal.GA_ReadOnly)
+        width = ds.RasterXSize
+        height = ds.RasterYSize
+        C = ds.RasterCount
+        return (height, width, C)
+
+    def __nice__(self):
+        from os.path import basename
+        return '.../' + basename(self.cog_fpath)
+
+    def __getitem__(self, index):
+        """
+        References:
+            https://gis.stackexchange.com/questions/162095/gdal-driver-create-typeerror
+        """
+        import gdal
+        ds = gdal.Open(self.cog_fpath, gdal.GA_ReadOnly)
+
+        width = ds.RasterXSize
+        height = ds.RasterYSize
+        C = ds.RasterCount
+
+        def rectify_slice(part, D):
+            if part is None:
+                return slice(0, D)
+            elif isinstance(part, slice):
+                start = 0 if part.start is None else max(0, part.start)
+                stop = D if part.stop is None else min(D, part.stop)
+                if stop < 0:
+                    stop = D + stop
+                assert part.step is None
+                part = slice(start, stop)
+                return part
+            elif isinstance(part, int):
+                part = slice(part, part + 1)
+            else:
+                raise TypeError(part)
+            return part
+
+        if not ub.iterable(index):
+            index = [index]
+
+        index = list(index)
+        if len(index) < 3:
+            n = (3 - len(index))
+            index = index + [None] * n
+
+        ypart = rectify_slice(index[0], height)
+        xpart = rectify_slice(index[1], width)
+        channel_part = rectify_slice(index[2], C)
+        trailing_part = [channel_part]
+
+        if len(trailing_part) == 1:
+            channel_part = trailing_part[0]
+            rb_indices = range(*channel_part.indices(C))
+        else:
+            rb_indices = range(C)
+            assert len(trailing_part) <= 1
+
+        channels = []
+        for i in rb_indices:
+            rb = ds.GetRasterBand(1 + i)
+            xsize = rb.XSize
+            ysize = rb.YSize
+
+            ystart, ystop = map(int, [ypart.start, ypart.stop])
+            ysize = ystop - ystart
+
+            xstart, xstop = map(int, [xpart.start, xpart.stop])
+            xsize = xstop - xstart
+
+            gdalkw = dict(xoff=xstart, yoff=ystart, win_xsize=xsize, win_ysize=ysize)
+            channel = rb.ReadAsArray(**gdalkw)
+            channels.append(channel)
+
+        img_part = np.dstack(channels)
+        return img_part
