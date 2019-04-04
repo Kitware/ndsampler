@@ -117,7 +117,10 @@ class Frames(object):
         Returns the path where cached frame representations will be stored
         """
         if self._cache_dpath is None:
-            self._cache_dpath = ub.ensuredir(join(self.workdir, '_cache/frames'))
+            if self._backend == 'npy':
+                self._cache_dpath = ub.ensuredir(join(self.workdir, '_cache/frames'))
+            else:
+                self._cache_dpath = ub.ensuredir(join(self.workdir, '_cache/frames/' + self._backend))
         return self._cache_dpath
 
     def _lookup_gpath(self, image_id):
