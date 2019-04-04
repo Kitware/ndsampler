@@ -144,6 +144,28 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         return self.regions.preselect(**kwargs)
 
     def load_image_with_annots(self, image_id):
+        """
+        Args:
+            image_id (int): the coco image id
+
+        Returns:
+            Tuple[Dict, List[Dict]]:
+                img: the coco image dict augmented with imdata
+                anns: the coco annotations in this image
+
+        Example:
+            >>> from ndsampler.coco_sampler import *
+            >>> self = CocoSampler.demo()
+            >>> rng = None
+            >>> img, anns = self.load_image_with_annots(1)
+            >>> dets = kwimage.Detections.from_coco_annots(anns, dset=self.dset)
+            >>> # xdoc: +REQUIRES(--show)
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> kwplot.imshow(img['imdata'][:])
+            >>> dets.draw()
+            >>> kwplot.show_if_requested()
+        """
         full_image = self.frames.load_image(image_id)
         gid = image_id
         coco_dset = self.dset

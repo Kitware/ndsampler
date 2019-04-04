@@ -530,32 +530,54 @@ def _imwrite_cloud_optimized_geotiff(fpath, data):
 
 class LazyGDalFrameFile(ub.NiceRepr):
     """
+    TODO:
+        - [ ] Move to its own backend module
+        - [ ] When used with COCO, allow the image metadata to populate the
+              height, width, and channels if possible.
+
     Example:
         >>> from ndsampler.abstract_frames import *
-        >>> self = SimpleFrames.demo()
-        >>> file = self._load_image_cog(1)
-        >>> cog_fpath = file.cog_fpath
-        >>> print('file = {!r}'.format(file))
-        >>> file[0:3, 0:3]
-        >>> file[:, :, 0]
-        >>> file[0]
-        >>> file[0, 3]
+        >>> self = LazyGDalFrameFile.demo()
+        >>> cog_fpath = self.cog_fpath
+        >>> print('self = {!r}'.format(self))
+        >>> self[0:3, 0:3]
+        >>> self[:, :, 0]
+        >>> self[0]
+        >>> self[0, 3]
+
+        >>> import kwplot
+        >>> kwplot.imshow(self)
     """
     def __init__(self, cog_fpath):
         self.cog_fpath = cog_fpath
-        self.ds = None
+
+    @ub.memoize_property
+    def _ds(self):
+        import gdal
+        ds = gdal.Open(self.cog_fpath, gdal.GA_ReadOnly)
+        return ds
+
+    @classmethod
+    def demo(cls):
+        self = SimpleFrames.demo()
+        self = self._load_image_cog(1)
+        return self
+
+    @property
+    def ndim(self):
+        return len(self.shape)
 
     @property
     def shape(self):
-        if self.ds is None:
-            import gdal
-            self.ds = ds = gdal.Open(self.cog_fpath, gdal.GA_ReadOnly)
-        else:
-            ds = self.ds
+        ds = self._ds
         width = ds.RasterXSize
         height = ds.RasterYSize
         C = ds.RasterCount
         return (height, width, C)
+
+    @property
+    def dtype(self):
+        return np.dtype('uint8')
 
     def __nice__(self):
         from os.path import basename
@@ -566,32 +588,10 @@ class LazyGDalFrameFile(ub.NiceRepr):
         References:
             https://gis.stackexchange.com/questions/162095/gdal-driver-create-typeerror
         """
-        if self.ds is None:
-            import gdal
-            self.ds = ds = gdal.Open(self.cog_fpath, gdal.GA_ReadOnly)
-        else:
-            ds = self.ds
-
+        ds = self._ds
         width = ds.RasterXSize
         height = ds.RasterYSize
         C = ds.RasterCount
-
-        def rectify_slice(part, D):
-            if part is None:
-                return slice(0, D)
-            elif isinstance(part, slice):
-                start = 0 if part.start is None else max(0, part.start)
-                stop = D if part.stop is None else min(D, part.stop)
-                if stop < 0:
-                    stop = D + stop
-                assert part.step is None
-                part = slice(start, stop)
-                return part
-            elif isinstance(part, int):
-                part = slice(part, part + 1)
-            else:
-                raise TypeError(part)
-            return part
 
         if not ub.iterable(index):
             index = [index]
@@ -601,9 +601,9 @@ class LazyGDalFrameFile(ub.NiceRepr):
             n = (3 - len(index))
             index = index + [None] * n
 
-        ypart = rectify_slice(index[0], height)
-        xpart = rectify_slice(index[1], width)
-        channel_part = rectify_slice(index[2], C)
+        ypart = _rectify_slice_dim(index[0], height)
+        xpart = _rectify_slice_dim(index[1], width)
+        channel_part = _rectify_slice_dim(index[2], C)
         trailing_part = [channel_part]
 
         if len(trailing_part) == 1:
@@ -631,3 +631,21 @@ class LazyGDalFrameFile(ub.NiceRepr):
 
         img_part = np.dstack(channels)
         return img_part
+
+
+def _rectify_slice_dim(part, D):
+    if part is None:
+        return slice(0, D)
+    elif isinstance(part, slice):
+        start = 0 if part.start is None else max(0, part.start)
+        stop = D if part.stop is None else min(D, part.stop)
+        if stop < 0:
+            stop = D + stop
+        assert part.step is None
+        part = slice(start, stop)
+        return part
+    elif isinstance(part, int):
+        part = slice(part, part + 1)
+    else:
+        raise TypeError(part)
+    return part
