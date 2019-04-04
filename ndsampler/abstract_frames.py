@@ -543,11 +543,15 @@ class LazyGDalFrameFile(ub.NiceRepr):
     """
     def __init__(self, cog_fpath):
         self.cog_fpath = cog_fpath
+        self.ds = None
 
     @property
     def shape(self):
-        import gdal
-        ds = gdal.Open(self.cog_fpath, gdal.GA_ReadOnly)
+        if self.ds is None:
+            import gdal
+            self.ds = ds = gdal.Open(self.cog_fpath, gdal.GA_ReadOnly)
+        else:
+            ds = self.ds
         width = ds.RasterXSize
         height = ds.RasterYSize
         C = ds.RasterCount
@@ -562,8 +566,11 @@ class LazyGDalFrameFile(ub.NiceRepr):
         References:
             https://gis.stackexchange.com/questions/162095/gdal-driver-create-typeerror
         """
-        import gdal
-        ds = gdal.Open(self.cog_fpath, gdal.GA_ReadOnly)
+        if self.ds is None:
+            import gdal
+            self.ds = ds = gdal.Open(self.cog_fpath, gdal.GA_ReadOnly)
+        else:
+            ds = self.ds
 
         width = ds.RasterXSize
         height = ds.RasterYSize
