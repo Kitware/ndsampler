@@ -285,7 +285,7 @@ class Frames(object):
                 # If we already are a cog, then just use it
                 ub.symlink(gpath, cog_gpath)
             else:
-                self._ensure_cog_representation(gpath, cog_gpath, lossy=True)
+                self._ensure_cog_representation(gpath, cog_gpath)
 
             if DEBUG:
                 import netharn as nh
