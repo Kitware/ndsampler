@@ -900,6 +900,7 @@ class MixinCocoExtras(object):
             if 'url' in img:
                 if _has_download_permission():
                     gpath = join(self.img_root, img['file_name'])
+                    ub.ensuredir(os.path.dirname(gpath))
                     ub.grabdata(img['url'], gpath)
                 else:
                     raise Exception('no permission, abort')
