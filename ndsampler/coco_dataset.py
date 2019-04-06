@@ -2042,9 +2042,13 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
                     if os.path.exists(_tmp):
                         _root = _tmp
                 else:
-                    raise TypeError(_root)
+                    if isinstance(_root, list) and _root == []:
+                        _root = '.'
+                    else:
+                        raise TypeError('_root = {!r}'.format(_root))
                 try:
                     img_root = join(root, _root)
+
                 except Exception:
                         print('_root = {!r}'.format(_root))
                         print('root = {!r}'.format(root))
