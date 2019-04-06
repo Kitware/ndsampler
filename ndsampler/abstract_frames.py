@@ -548,8 +548,8 @@ class LazyGDalFrameFile(ub.NiceRepr):
         >>> self[0]
         >>> self[0, 3]
 
-        >>> import kwplot
-        >>> kwplot.imshow(self)
+        >>> # import kwplot
+        >>> # kwplot.imshow(self[:])
     """
     def __init__(self, cog_fpath):
         self.cog_fpath = cog_fpath
