@@ -318,7 +318,7 @@ def _cog_cache_write(gpath, cache_gpath):
     raw_data = kwimage.imread(gpath)
     with atomicwrites.atomic_write(cache_gpath + '.proxy', mode='w', overwrite=True) as file:
         file.write('begin: ' + ub.timestamp())
-        _imwrite_cloud_optimized_geotiff(cache_gpath, raw_data)
+        _imwrite_cloud_optimized_geotiff(cache_gpath, raw_data, lossy=True)
         file.write('end: ' + ub.timestamp())
 
 
@@ -491,10 +491,16 @@ def __notes__():
         return file
 
 
-def _imwrite_cloud_optimized_geotiff(fpath, data):
+def _imwrite_cloud_optimized_geotiff(fpath, data, lossy=True):
     """
+    Args:
+        fpath (PathLike):
+        data (ndarray):
+        lossy (bool, default=True): Use lossy compression if True
+
     References:
         https://geoexamples.com/other/2019/02/08/cog-tutorial.html#create-a-cog-using-gdal-python
+        http://osgeo-org.1560.x6.nabble.com/gdal-dev-Creating-Cloud-Optimized-GeoTIFFs-td5320101.html
 
     Notes:
         conda install gdal
@@ -505,11 +511,20 @@ def _imwrite_cloud_optimized_geotiff(fpath, data):
         pip install gdal ---with special flags, forgot which though, sry
 
     Example:
+        >>> from ndsampler.abstract_frames import *
+        >>> from ndsampler.abstract_frames import _imwrite_cloud_optimized_geotiff
         >>> data = (np.random.rand(1000, 1000, 3) * 255).astype(np.uint8)
         >>> fpath = '/tmp/foo.cog.tiff'
         >>> _imwrite_cloud_optimized_geotiff(fpath, data)
         >>> import netharn as nh
         >>> print(nh.util.get_file_info(fpath))
+        >>> from ndsampler.validate_cog import validate as _validate_cog
+        >>> errors = _validate_cog(fpath)
+        >>> warnings, errors, details = _validate_cog(fpath)
+        >>> print('details = ' + ub.repr2(details))
+        >>> print('warnings = ' + ub.repr2(warnings))
+        >>> print('errors = ' + ub.repr2(errors))
+        >>> assert not errors
 
         fpath2 = '/tmp/foo.png'
         kwimage.imwrite(fpath2, data)
@@ -518,6 +533,12 @@ def _imwrite_cloud_optimized_geotiff(fpath, data):
         fpath3 = '/tmp/foo.jpg'
         kwimage.imwrite(fpath3, data)
         print(nh.util.get_file_info(fpath3))
+
+    Ignore:
+        du -sh ~/data/vigilant/lemon/images/3857_7_77_42_20190204_54e93edb-df59-4924-b8d6-0b2d451f77d9.ptif
+        du -sh ~/test.cog.tif
+        gdal_translate 3857_7_77_42_20190204_54e93edb-df59-4924-b8d6-0b2d451f77d9.ptif ~/test.cog.tif -co TILED=YES -co COMPRESS=LZW -co COPY_SRC_OVERVIEWS=YES
+        gdal_translate 3857_7_77_42_20190204_54e93edb-df59-4924-b8d6-0b2d451f77d9.ptif ~/test.cog.tif -co TILED=YES -co COMPRESS=JPEG -co PHOTOMETRIC=YCBCR -co COPY_SRC_OVERVIEWS=YES
     """
     import gdal
     y_size, x_size, num_bands = data.shape
@@ -536,13 +557,15 @@ def _imwrite_cloud_optimized_geotiff(fpath, data):
         data_set.GetRasterBand(i + 1).WriteArray(data[:, :, i])
 
     data = None
-    data_set.BuildOverviews("NEAREST", [2, 4, 8, 16, 32, 64])
+    data_set.BuildOverviews('NEAREST', [2, 4, 8, 16, 32, 64])
+
+    if lossy:
+        options = ['COMPRESS=JPEG' 'PHOTOMETRIC=YCBCR' 'COPY_SRC_OVERVIEWS=YES']
+    else:
+        options = ['COPY_SRC_OVERVIEWS=YES', 'TILED=YES', 'COMPRESS=LZW']
 
     driver = gdal.GetDriverByName('GTiff')
-    data_set2 = driver.CreateCopy(fpath, data_set,
-                                  options=["COPY_SRC_OVERVIEWS=YES",
-                                           "TILED=YES",
-                                           "COMPRESS=LZW"])
+    data_set2 = driver.CreateCopy(fpath, data_set, options=options)
     data_set2.FlushCache()
     return fpath
 
