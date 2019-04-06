@@ -2494,15 +2494,22 @@ def demo_coco_data():
         >>> self.show_image(gid=1)
         >>> kwplot.show_if_requested()
     """
-    gpath1 = kwimage.grab_test_image_fpath('astro')
-    gpath2 = kwimage.grab_test_image_fpath('carl')
-    gpath3 = kwimage.grab_test_image_fpath('stars')
+
+    from kwimage.im_demodata import _TEST_IMAGES
+    from os.path import commonprefix, relpath
+
+    test_imgs_keys = ['astro', 'carl', 'starts']
+    urls = {k: _TEST_IMAGES[k]['url'] for k in test_imgs_keys}
+    gpaths = {k: kwimage.grab_test_image_fpath(k) for k in test_imgs_keys}
+    img_root = commonprefix(gpaths.values())
+
+    gpath1, gpath2, gpath3 = ub.take(gpaths, test_imgs_keys)
+    url1, url2, url3 = ub.take(urls, test_imgs_keys)
+    # gpath2 = kwimage.grab_test_image_fpath('carl')
+    # gpath3 = kwimage.grab_test_image_fpath('stars')
     # gpath1 = ub.grabdata('https://i.imgur.com/KXhKM72.png')
     # gpath2 = ub.grabdata('https://i.imgur.com/flTHWFD.png')
     # gpath3 = ub.grabdata('https://i.imgur.com/kCi7C1r.png')
-
-    from os.path import commonprefix, relpath
-    img_root = commonprefix([gpath1, gpath2, gpath3])
 
     # Make file names relative for consistent testing purpose
     gname1 = relpath(gpath1, img_root)
@@ -2545,9 +2552,12 @@ def demo_coco_data():
             },
         ],
         'images': [
-            {'id': 1, 'file_name': gname1},
-            {'id': 2, 'file_name': gname2},
-            {'id': 3, 'file_name': gname3},
+            # {'id': 1, 'file_name': gname1},
+            # {'id': 2, 'file_name': gname2},
+            # {'id': 3, 'file_name': gname3},
+            {'id': 1, 'file_name': gname1, 'url': url1},
+            {'id': 2, 'file_name': gname2, 'url': url2},
+            {'id': 3, 'file_name': gname3, 'url': url3},
         ],
         'annotations': [
             {'id': 1, 'image_id': 1, 'category_id': 1,
