@@ -260,7 +260,9 @@ class Frames(object):
         gpath = self._lookup_gpath(image_id)
         hashid = self._lookup_hashid(image_id)
 
-        cog_gname = '{}_{}.cog.tiff'.format(image_id, hashid)
+        fname_base = os.path.basename(gpath).split('.')[0]
+
+        cog_gname = '{}_{}_{}.cog.tiff'.format(image_id, fname_base, hashid)
         cog_gpath = join(self.cache_dpath, cog_gname)
         if not exists(cog_gpath):
             # If the file already is a cog, just use it
