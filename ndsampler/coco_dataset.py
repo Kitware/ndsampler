@@ -2035,7 +2035,20 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
         if img_root is None:
             if 'img_root' in data:
                 # allow image root to be specified in the dataset
-                img_root = join(root, data['img_root'])
+                _root = data['img_root']
+                if isinstance(_root, six.string_types):
+                    import os
+                    _tmp = ub.expandpath(_root)
+                    if os.path.exists(_tmp):
+                        _root = _tmp
+                else:
+                    raise TypeError(_root)
+                try:
+                    img_root = join(root, _root)
+                except Exception:
+                        print('_root = {!r}'.format(_root))
+                        print('root = {!r}'.format(root))
+                        raise
             else:
                 img_root = root
 
