@@ -285,8 +285,8 @@ class Frames(object):
 
             if DEBUG:
                 import netharn as nh
-                print(nh.util.get_file_info(gpath))
-                print(nh.util.get_file_info(cog_gpath))
+                print('gpath = ' + ub.repr2(nh.util.get_file_info(gpath)))
+                print('cog_gpath = ' + ub.repr2(nh.util.get_file_info(cog_gpath)))
 
         file = LazyGDalFrameFile(cog_gpath)
         return file
