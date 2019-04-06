@@ -896,7 +896,7 @@ class MixinCocoExtras(object):
                     _HAS_PREMISSION[0] = True
             return _HAS_PREMISSION[0]
 
-        for img in _gen_missing_imgs():
+        for img in ub.ProgIter(_gen_missing_imgs(), desc='ensure image data'):
             if 'url' in img:
                 if _has_download_permission():
                     gpath = join(self.img_root, img['file_name'])
