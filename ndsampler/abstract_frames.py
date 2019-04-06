@@ -266,8 +266,10 @@ class Frames(object):
         cog_gpath = join(self.cache_dpath, cog_gname)
         if not exists(cog_gpath):
             # If the file already is a cog, just use it
-            from ndsampler.validate_cog import main as _is_cog
-            if _is_cog(gpath) == 0:
+            from ndsampler.validate_cog import validate as _validate_cog
+            warnings, errors, details = _validate_cog(gpath)
+            gpath_is_cog = not bool(errors)
+            if gpath_is_cog:
                 # If we already are a cog, then just use it
                 ub.symlink(gpath, cog_gpath)
             else:
