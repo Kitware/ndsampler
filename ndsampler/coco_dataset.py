@@ -345,23 +345,48 @@ class Annots(ObjectList1D):
 
     @property
     def aids(self):
+        """ The annotation ids of this column of annotations """
         return self._ids
 
     @property
     def images(self):
+        """
+        Get the column of images
+
+        Returns:
+            Images
+        """
         return self._dset.images(self.gids)
 
     @property
     def gids(self):
+        """
+        Get the column of image-ids
+
+        Returns:
+            List[int]: list of image ids
+        """
         return self._lookup('image_id')
 
     @property
     def cids(self):
+        """
+        Get the column of category-ids
+
+        Returns:
+            List[int]
+        """
         return self._lookup('category_id')
 
     @property
     def cnames(self):
-        return [self.dset.cats[self._lookup('category_id')]['name']]
+        """
+        Get the column of category names
+
+        Returns:
+            List[int]
+        """
+        return [cat['name'] for cat in ub.take(self._dset.cats, self.cids)]
 
     def _lookup(self, key):
         return [ann[key] for ann in ub.take(self._dset.anns, self._ids)]
@@ -372,7 +397,7 @@ class Annots(ObjectList1D):
     @property
     def boxes(self):
         """
-        Returns kwimage-style boxes
+        Get the column of kwimage-style bounding boxes
 
         Example:
             >>> self = CocoDataset.demo().annots([1, 2, 11])
@@ -393,11 +418,7 @@ class Annots(ObjectList1D):
 
         Example:
             >>> self = CocoDataset.demo().annots([1, 2, 11])
-            >>> print(self.boxes)
-            <Boxes(xywh,
-                array([[ 10,  10, 360, 490],
-                       [350,   5, 130, 290],
-                       [124,  96,  45,  18]]))>
+            >>> print(self.xywh)
         """
         xywh = self._lookup('bbox')
         return xywh
