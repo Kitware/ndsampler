@@ -268,6 +268,12 @@ class Frames(object):
             # If the file already is a cog, just use it
             from ndsampler.validate_cog import validate as _validate_cog
             warnings, errors, details = _validate_cog(gpath)
+            from multiprocessing import current_process
+            if current_process().name == 'MainProcess':
+                print('details = ' + ub.repr2(details))
+                print('warnings = ' + ub.repr2(warnings))
+                print('errors = ' + ub.repr2(errors))
+
             gpath_is_cog = not bool(errors)
             if gpath_is_cog:
                 # If we already are a cog, then just use it
