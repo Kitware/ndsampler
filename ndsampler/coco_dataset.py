@@ -273,6 +273,15 @@ class Images(ObjectList1D):
         return (img[key] for img in ub.take(self._dset.imgs, self._ids))
 
     @property
+    def gname(self):
+        return self._lookup('file_name')
+
+    @property
+    def gpath(self):
+        root = self._dset.img_root
+        return [join(root, gname) for gname in self.gname]
+
+    @property
     def width(self):
         return self._lookup('width')
 
@@ -871,6 +880,31 @@ class MixinCocoExtras(object):
             else:
                 raise KeyError('could not find keypoint names for cid={}, cat={}, orig_cat={}'.format(cid, cat, orig_cat))
         return kpnames
+
+    def _ensure_image_data(self, verbose=1):
+        import os
+        def _gen_missing_imgs():
+            for img in self.dataset['images']:
+                gpath = join(self.img_root, img['file_name'])
+                if not os.path.exists(gpath):
+                    yield img
+
+        def _has_download_permission(_HAS_PREMISSION=[False]):
+            if not _HAS_PREMISSION[0] or ub.argflag(('-y', '--yes')):
+                ans = input('is it ok to download? (enter y for yes)')
+                if ans in ['yes', 'y']:
+                    _HAS_PREMISSION[0] = True
+            return _HAS_PREMISSION[0]
+
+        for img in _gen_missing_imgs():
+            if 'url' in img:
+                if _has_download_permission():
+                    gpath = join(self.img_root, img['file_name'])
+                    ub.grabdata(img['url'], gpath)
+                else:
+                    raise Exception('no permission, abort')
+            else:
+                raise Exception('missing image, but no url')
 
     def missing_images(self):
         import os
@@ -2043,12 +2077,11 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
                         _root = _tmp
                 else:
                     if isinstance(_root, list) and _root == []:
-                        _root = '.'
+                        _root = ''
                     else:
                         raise TypeError('_root = {!r}'.format(_root))
                 try:
                     img_root = join(root, _root)
-
                 except Exception:
                         print('_root = {!r}'.format(_root))
                         print('root = {!r}'.format(root))
