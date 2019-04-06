@@ -263,7 +263,13 @@ class Frames(object):
         cog_gname = '{}_{}.cog.tiff'.format(image_id, hashid)
         cog_gpath = join(self.cache_dpath, cog_gname)
         if not exists(cog_gpath):
-            self._ensure_cog_representation(gpath, cog_gpath)
+            # If the file already is a cog, just use it
+            from ndsampler.validate_cog import main as _is_cog
+            if _is_cog(gpath) == 0:
+                # If we already are a cog, then just use it
+                ub.symlink(gpath, cog_gpath)
+            else:
+                self._ensure_cog_representation(gpath, cog_gpath)
         file = LazyGDalFrameFile(cog_gpath)
         return file
 

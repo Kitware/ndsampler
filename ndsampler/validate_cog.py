@@ -243,4 +243,7 @@ def main():
 
 
 if __name__ == '__main__':
+    """
+    python -m ndsampler.validate_cog
+    """
     sys.exit(main())
