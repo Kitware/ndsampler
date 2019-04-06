@@ -280,6 +280,12 @@ class Frames(object):
                 ub.symlink(gpath, cog_gpath)
             else:
                 self._ensure_cog_representation(gpath, cog_gpath)
+
+            if current_process().name == 'MainProcess':
+                import netharn as nh
+                print(nh.util.get_file_info(gpath))
+                print(nh.util.get_file_info(cog_gpath))
+
         file = LazyGDalFrameFile(cog_gpath)
         return file
 
