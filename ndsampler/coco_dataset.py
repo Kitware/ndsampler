@@ -1409,6 +1409,52 @@ class MixinCocoAddRemove(object):
         self._invalidate_hashid(['annotations'])
         return id
 
+    def add_category(self, name, supercategory=None, id=None, **kw):
+        """
+        Adds a category
+
+        Args:
+            name (str): name of the new category
+            supercategory (str, optional): parent of this category
+            id (int, optional): use this category id, if it was not taken
+
+        CommandLine:
+            xdoctest -m ndsampler.coco_dataset MixinCocoAddRemove.add_category
+
+        Example:
+            >>> self = CocoDataset.demo()
+            >>> prev_n_cats = self.n_cats
+            >>> cid = self.add_category('dog', supercategory='object')
+            >>> assert self.cats[cid]['name'] == 'dog'
+            >>> assert self.n_cats == prev_n_cats + 1
+            >>> import pytest
+            >>> with pytest.raises(ValueError):
+            >>>     self.add_category('dog', supercategory='object')
+        """
+        index = self.index
+        if index.cats and name in index.name_to_cat:
+            raise ValueError('Category name={!r} already exists'.format(name))
+
+        if id is None:
+            id = self._next_ids.get('cid')
+        elif index.cats and id in index.cats:
+            raise IndexError('Category id={} already exists'.format(id))
+
+        cat = _dict()
+        cat['id'] = int(id)
+        cat['name'] = str(name)
+        if supercategory:
+            cat['supercategory'] = supercategory
+        cat.update(**kw)
+
+        # Add to raw data structure
+        self.dataset['categories'].append(cat)
+
+        # And add to the indexes
+        index._add_category(id, name, cat)
+        self._invalidate_hashid(['categories'])
+        return id
+
     def add_annotations(self, anns):
         """
         Faster less-safe multi-item alternative
@@ -1450,51 +1496,6 @@ class MixinCocoAddRemove(object):
         self.dataset['images'].extend(imgs)
         self.index._add_images(imgs)
         self._invalidate_hashid(['images'])
-
-    def add_category(self, name, supercategory=None, id=None):
-        """
-        Adds a category
-
-        Args:
-            name (str): name of the new category
-            supercategory (str, optional): parent of this category
-            id (int, optional): use this category id, if it was not taken
-
-        CommandLine:
-            xdoctest -m ndsampler.coco_dataset MixinCocoAddRemove.add_category
-
-        Example:
-            >>> self = CocoDataset.demo()
-            >>> prev_n_cats = self.n_cats
-            >>> cid = self.add_category('dog', supercategory='object')
-            >>> assert self.cats[cid]['name'] == 'dog'
-            >>> assert self.n_cats == prev_n_cats + 1
-            >>> import pytest
-            >>> with pytest.raises(ValueError):
-            >>>     self.add_category('dog', supercategory='object')
-        """
-        index = self.index
-        if index.cats and name in index.name_to_cat:
-            raise ValueError('Category name={!r} already exists'.format(name))
-
-        if id is None:
-            id = self._next_ids.get('cid')
-        elif index.cats and id in index.cats:
-            raise IndexError('Category id={} already exists'.format(id))
-
-        cat = _dict()
-        cat['id'] = int(id)
-        cat['name'] = str(name)
-        if supercategory:
-            cat['supercategory'] = supercategory
-
-        # Add to raw data structure
-        self.dataset['categories'].append(cat)
-
-        # And add to the indexes
-        index._add_category(id, name, cat)
-        self._invalidate_hashid(['categories'])
-        return id
 
     def clear_images(self):
         """
