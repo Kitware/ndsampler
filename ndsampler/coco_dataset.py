@@ -627,7 +627,7 @@ class MixinCocoExtras(object):
                 },
                 'images': {
                     'pixels': '67d741fefc8...',
-                    'json': 'd52eeb0c4...',
+                    'json': '92b7b764ce248...',
                     'num': 3,
                 },
                 'categories': {
@@ -635,7 +635,7 @@ class MixinCocoExtras(object):
                     'num': 8,
                 },
             }
-            self.hashid = 'bfe51a12576d1a4d4feeaa...
+            self.hashid = '19e7b38f12783eaba1ab...
 
         Doctest:
             >>> self = CocoDataset.demo()
@@ -2501,7 +2501,7 @@ def demo_coco_data():
     test_imgs_keys = ['astro', 'carl', 'stars']
     urls = {k: _TEST_IMAGES[k]['url'] for k in test_imgs_keys}
     gpaths = {k: kwimage.grab_test_image_fpath(k) for k in test_imgs_keys}
-    img_root = commonprefix(gpaths.values())
+    img_root = commonprefix(list(gpaths.values()))
 
     gpath1, gpath2, gpath3 = ub.take(gpaths, test_imgs_keys)
     url1, url2, url3 = ub.take(urls, test_imgs_keys)
