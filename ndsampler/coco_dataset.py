@@ -359,6 +359,10 @@ class Annots(ObjectList1D):
     def cids(self):
         return self._lookup('category_id')
 
+    @property
+    def cnames(self):
+        return [self.dset.cats[self._lookup('category_id')]['name']]
+
     def _lookup(self, key):
         return [ann[key] for ann in ub.take(self._dset.anns, self._ids)]
 
@@ -2031,6 +2035,8 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
 
     def copy(self):
         """
+        Deep copies this object
+
         Example:
             >>> from ndsampler.coco_dataset import *
             >>> self = CocoDataset.demo()
