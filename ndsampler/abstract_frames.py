@@ -300,7 +300,7 @@ def _cog_cache_write(gpath, cache_gpath):
     # Load all the image data and dump it to npy format
     import kwimage
     raw_data = kwimage.imread(gpath)
-    with atomicwrites.atomic_write(cache_gpath + '.proxy', mode='wb', overwrite=True) as file:
+    with atomicwrites.atomic_write(cache_gpath + '.proxy', mode='w', overwrite=True) as file:
         file.write('begin: ' + ub.timestamp())
         _imwrite_cloud_optimized_geotiff(cache_gpath, raw_data)
         file.write('end: ' + ub.timestamp())

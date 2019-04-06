@@ -2498,7 +2498,7 @@ def demo_coco_data():
     from kwimage.im_demodata import _TEST_IMAGES
     from os.path import commonprefix, relpath
 
-    test_imgs_keys = ['astro', 'carl', 'starts']
+    test_imgs_keys = ['astro', 'carl', 'stars']
     urls = {k: _TEST_IMAGES[k]['url'] for k in test_imgs_keys}
     gpaths = {k: kwimage.grab_test_image_fpath(k) for k in test_imgs_keys}
     img_root = commonprefix(gpaths.values())
