@@ -269,7 +269,9 @@ class Frames(object):
             from ndsampler.validate_cog import validate as _validate_cog
             warnings, errors, details = _validate_cog(gpath)
             from multiprocessing import current_process
-            if current_process().name == 'MainProcess':
+            DEBUG = current_process().name == 'MainProcess'
+
+            if DEBUG:
                 print('details = ' + ub.repr2(details))
                 print('warnings = ' + ub.repr2(warnings))
                 print('errors = ' + ub.repr2(errors))
@@ -281,7 +283,7 @@ class Frames(object):
             else:
                 self._ensure_cog_representation(gpath, cog_gpath)
 
-            if current_process().name == 'MainProcess':
+            if DEBUG:
                 import netharn as nh
                 print(nh.util.get_file_info(gpath))
                 print(nh.util.get_file_info(cog_gpath))
