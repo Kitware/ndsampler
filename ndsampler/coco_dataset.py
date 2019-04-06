@@ -800,6 +800,18 @@ class MixinCocoExtras(object):
             resolved_id = id_or_name_or_dict['id']
         return resolved_id
 
+    def _resolve_to_gid(self, id_or_name_or_dict):
+        """
+        Ensures output is an category id
+        """
+        if isinstance(id_or_name_or_dict, INT_TYPES):
+            resolved_id = id_or_name_or_dict
+        elif isinstance(id_or_name_or_dict, six.string_types):
+            resolved_id = self.index.file_name_to_img[id_or_name_or_dict]['id']
+        else:
+            resolved_id = id_or_name_or_dict['id']
+        return resolved_id
+
     def _resolve_to_ann(self, aid_or_ann):
         """
         Ensures output is an annotation dictionary
@@ -1707,6 +1719,61 @@ class MixinCocoAddRemove(object):
 
         return remove_info
 
+    def remove_images(self, gids_or_imgs, verbose=0):
+        """
+        Args:
+            gids_or_imgs (List): list of image dicts, names, or ids
+
+        Returns:
+            Dict: num_removed: information on the number of items removed
+
+        Example:
+            >>> from ndsampler.coco_dataset import *
+            >>> self = CocoDataset.demo()
+            >>> assert len(self.dataset['images']) == 3
+            >>> gids_or_imgs = [self.imgs[2], 'KXhKM72.png']
+            >>> self.remove_images(gids_or_imgs)
+            >>> assert len(self.dataset['images']) == 1
+            >>> self._check_index()
+            >>> gids_or_imgs = [3]
+            >>> self.remove_images(gids_or_imgs)
+            >>> assert len(self.dataset['images']) == 0
+            >>> self._check_index()
+        """
+        remove_info = {'annotations': None, 'images': None}
+        if gids_or_imgs:
+
+            if verbose > 1:
+                print('Removing annots of removed images')
+
+            remove_gids = list(map(self._resolve_to_gid, gids_or_imgs))
+            # First remove any annotation that belongs to those images
+            if self.gid_to_aids:
+                remove_aids = list(it.chain(*[self.gid_to_aids[gid]
+                                              for gid in remove_gids]))
+            else:
+                remove_aids = [ann['id'] for ann in self.dataset['annotations']
+                               if ann['image_id'] in remove_gids]
+
+            rminfo = self.remove_annotations(remove_aids, verbose=verbose)
+            remove_info.update(rminfo)
+
+            remove_info['images'] = len(remove_gids)
+            if verbose > 1:
+                print('Removing {} image entries'.format(len(remove_gids)))
+            gid_to_index = {
+                img['id']: index
+                for index, img in enumerate(self.dataset['images'])
+            }
+            # Lookup the indices to remove, sort in descending order
+            remove_idxs = list(ub.take(gid_to_index, remove_gids))
+            delitems(self.dataset['images'], remove_idxs)
+
+            self.index._remove_images(remove_gids, verbose=verbose)
+            self._invalidate_hashid(['images', 'annotations'])
+
+        return remove_info
+
 
 class CocoIndex(object):
     """
@@ -1852,6 +1919,16 @@ class CocoIndex(object):
                 del self.name_to_cat[cat['name']]
             if verbose > 2:
                 print('Updated category index')
+
+    def _remove_images(self, remove_gids, verbose=0):
+        # dynamically update the image index
+        if self.imgs is not None:
+            for gid in remove_gids:
+                img = self.imgs.pop(gid)
+                del self.gid_to_aids[gid]
+                del self.file_name_to_img[img['file_name']]
+            if verbose > 2:
+                print('Updated image index')
 
     def clear(self):
         self.anns = None
