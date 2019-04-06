@@ -523,9 +523,21 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, lossy=True):
         >>> from ndsampler.abstract_frames import _imwrite_cloud_optimized_geotiff
         >>> data = (np.random.rand(1000, 1000, 3) * 255).astype(np.uint8)
         >>> fpath = '/tmp/foo.cog.tiff'
-        >>> _imwrite_cloud_optimized_geotiff(fpath, data)
+
+        >>> _imwrite_cloud_optimized_geotiff(fpath, data, lossy=False)
         >>> import netharn as nh
-        >>> print(nh.util.get_file_info(fpath))
+        >>> print(ub.repr2(nh.util.get_file_info(fpath)))
+        >>> from ndsampler.validate_cog import validate as _validate_cog
+        >>> errors = _validate_cog(fpath)
+        >>> warnings, errors, details = _validate_cog(fpath)
+        >>> print('details = ' + ub.repr2(details))
+        >>> print('warnings = ' + ub.repr2(warnings))
+        >>> print('errors = ' + ub.repr2(errors))
+        >>> assert not errors
+
+        >>> _imwrite_cloud_optimized_geotiff(fpath, data, lossy=True)
+        >>> import netharn as nh
+        >>> print(ub.repr2(nh.util.get_file_info(fpath)))
         >>> from ndsampler.validate_cog import validate as _validate_cog
         >>> errors = _validate_cog(fpath)
         >>> warnings, errors, details = _validate_cog(fpath)
@@ -568,7 +580,7 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, lossy=True):
     data_set.BuildOverviews('NEAREST', [2, 4, 8, 16, 32, 64])
 
     if lossy:
-        options = ['COMPRESS=JPEG' 'PHOTOMETRIC=YCBCR' 'COPY_SRC_OVERVIEWS=YES']
+        options = ['COMPRESS=JPEG', 'PHOTOMETRIC=YCBCR', 'COPY_SRC_OVERVIEWS=YES']
     else:
         options = ['COPY_SRC_OVERVIEWS=YES', 'TILED=YES', 'COMPRESS=LZW']
 
