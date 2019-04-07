@@ -199,7 +199,7 @@ class Frames(object):
         else:
             raise KeyError(self._backend)
 
-    @lru_cache(4)  # Keeps frequently accessed images open
+    @lru_cache(1)  # Keeps frequently accessed images open
     def _load_image_npy(self, image_id, cache=True):
         """
         Returns a memmapped reference to the entire image
@@ -252,7 +252,7 @@ class Frames(object):
                 raise
         return file
 
-    @lru_cache(4)  # Keeps frequently accessed images open
+    @lru_cache(1)  # Keeps frequently accessed images open
     def _load_image_cog(self, image_id, cache=True):
         """
         Returns a special array-like object with a COG GeoTIFF backend
