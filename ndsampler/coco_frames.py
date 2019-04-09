@@ -62,5 +62,6 @@ class CocoFrames(abstract_frames.Frames, util.HashIdentifiable):
             flag = region[0].stop in [None, img['height']]
             flag &= region[1].stop in [None, img['width']]
             if flag:
-                region = None  # setting region to None disables memmap caching
+                region = None  # setting region to None disables memmap/geotiff caching
+
         return super(CocoFrames, self).load_region(image_id, region)

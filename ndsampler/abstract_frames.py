@@ -23,7 +23,6 @@ import atomicwrites
 import six
 
 import warnings
-from PIL import Image
 from os.path import exists
 from os.path import join
 
@@ -188,19 +187,21 @@ class Frames(object):
             raise NotImplementedError('can only handle scale=0')
 
         if not cache:
+            import kwimage
             gpath = self._lookup_gpath(image_id)
-            raw_data = np.asarray(Image.open(gpath))
+            raw_data = kwimage.imread(gpath)
+            # raw_data = np.asarray(Image.open(gpath))
             return raw_data
-
-        if self._backend == 'cog':
-            return self._load_image_cog(image_id, cache=cache)
-        elif self._backend == 'npy':
-            return self._load_image_npy(image_id, cache=cache)
         else:
-            raise KeyError(self._backend)
+            if self._backend == 'cog':
+                return self._load_image_cog(image_id)
+            elif self._backend == 'npy':
+                return self._load_image_npy(image_id)
+            else:
+                raise KeyError(self._backend)
 
     @lru_cache(1)  # Keeps frequently accessed images open
-    def _load_image_npy(self, image_id, cache=True):
+    def _load_image_npy(self, image_id):
         """
         Returns a memmapped reference to the entire image
         """
@@ -253,7 +254,7 @@ class Frames(object):
         return file
 
     @lru_cache(1)  # Keeps frequently accessed images open
-    def _load_image_cog(self, image_id, cache=True):
+    def _load_image_cog(self, image_id):
         """
         Returns a special array-like object with a COG GeoTIFF backend
         """
@@ -471,6 +472,7 @@ def __notes__():
         # cache directory in npy format. Then any subsequent time the image
         # is needed, we efficiently load it from numpy.
         import kwimage
+        from PIL import Image
         gpath = kwimage.grab_test_image_fpath()
         # Directly load a crop region with PIL (this is slow, why?)
         pil_img = Image.open(gpath)
@@ -563,10 +565,22 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, lossy=True):
         du -sh ~/data/vigilant/lemon/images/3857_7_77_42_20190204_54e93edb-df59-4924-b8d6-0b2d451f77d9.ptif
         du -sh ~/test.cog.tif
         gdal_translate 3857_7_77_42_20190204_54e93edb-df59-4924-b8d6-0b2d451f77d9.ptif ~/test.cog.tif -co TILED=YES -co COMPRESS=LZW -co COPY_SRC_OVERVIEWS=YES
-        gdal_translate 3857_7_77_42_20190204_54e93edb-df59-4924-b8d6-0b2d451f77d9.ptif ~/test.cog.tif -co TILED=YES -co COMPRESS=JPEG -co PHOTOMETRIC=YCBCR -co COPY_SRC_OVERVIEWS=YES
+        gdal_translate 3857_7_77_42_20190204_54e93edb-df59-4924-b8d6-0b2d451f77d9.ptif ~/test.cog.tif -co TILED=YES -co COMPRESS=JPEG -co COPY_SRC_OVERVIEWS=YES -co PHOTOMETRIC=YCBCR
+
+        gdal_translate foo.png test.cog.tif -co TILED=YES -co COMPRESS=JPEG -co COPY_SRC_OVERVIEWS=YES -co PHOTOMETRIC=YCBCR
+        gdal_translate foo.png test1.cog.tif -co TILED=YES -co COMPRESS=JPEG -co COPY_SRC_OVERVIEWS=YES
+        gdal_translate foo.png test2.cog.tif -co TILED=YES -co COMPRESS=LZW -co COPY_SRC_OVERVIEWS=YES
+
+        python -m ndsampler.validate_cog --verbose test.cog.tif
+        python -m ndsampler.validate_cog --verbose foo.png
+        python -m ndsampler.validate_cog --verbose /home/joncrall/work/lava/_cache/frames/cog/103307_image_00741_eb791c1d70a333627d376337f203554bf5e742b3.cog.tiff
     """
     import gdal
     y_size, x_size, num_bands = data.shape
+
+    if num_bands == 4:
+        # Silently discarding the alpha channel
+        num_bands = 3
 
     kindsize = (data.dtype.kind, data.dtype.itemsize)
     if kindsize == ('u', 1):
@@ -579,19 +593,27 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, lossy=True):
                              eType=eType)
 
     for i in range(num_bands):
-        data_set.GetRasterBand(i + 1).WriteArray(data[:, :, i])
+        band_data = np.ascontiguousarray(data[:, :, i])
+        data_set.GetRasterBand(i + 1).WriteArray(band_data)
 
-    data = None
     data_set.BuildOverviews('NEAREST', [2, 4, 8, 16, 32, 64])
 
     if lossy:
-        options = ['COMPRESS=JPEG', 'PHOTOMETRIC=YCBCR', 'COPY_SRC_OVERVIEWS=YES']
+        options = ['COPY_SRC_OVERVIEWS=YES', 'TILED=YES', 'COMPRESS=JPEG', 'PHOTOMETRIC=YCBCR']
+        # options = ['COPY_SRC_OVERVIEWS=YES', 'TILED=YES', 'COMPRESS=JPEG']
     else:
         options = ['COPY_SRC_OVERVIEWS=YES', 'TILED=YES', 'COMPRESS=LZW']
 
-    driver = gdal.GetDriverByName('GTiff')
-    data_set2 = driver.CreateCopy(fpath, data_set, options=options)
+    driver2 = gdal.GetDriverByName('GTiff')
+    data_set2 = driver2.CreateCopy(fpath, data_set, options=options)
+    # OK, so setting things to None turns out to be important. Gah!
     data_set2.FlushCache()
+    data_set = None
+    data_set2 = None
+
+    # if False:
+    #     z = gdal.Open(fpath, gdal.GA_ReadOnly)
+    #     z.GetRasterBand(1).GetMetadataItem('BLOCK_OFFSET_0_0', 'TIFF')
     return fpath
 
 

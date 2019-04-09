@@ -59,6 +59,9 @@ def validate(ds, check_tiled=True):
         file is not a Tiff.
     """
     from osgeo import gdal
+    details = {}
+    errors = []
+    warnings = []
 
     if int(gdal.VersionInfo('VERSION_NUM')) < 2020000:
         raise ValidateCloudOptimizedGeoTIFFException(
@@ -70,15 +73,11 @@ def validate(ds, check_tiled=True):
         ds = gdal.Open(ds)
         gdal.PopErrorHandler()
         if ds is None:
-            raise ValidateCloudOptimizedGeoTIFFException(
-                'Invalid file : %s' % gdal.GetLastErrorMsg())
+            errors.append('Invalid file : %s' % gdal.GetLastErrorMsg())
         if ds.GetDriver().ShortName != 'GTiff':
-            raise ValidateCloudOptimizedGeoTIFFException(
-                'The file is not a GeoTIFF')
+            errors.append('The file is not a GeoTIFF')
+            return warnings, errors, details
 
-    details = {}
-    errors = []
-    warnings = []
     filename = ds.GetDescription()
     main_band = ds.GetRasterBand(1)
     ovr_count = main_band.GetOverviewCount()
@@ -179,7 +178,7 @@ def validate(ds, check_tiled=True):
                 'The offset of the first block of overview of index %d should '
                 'be after the one of the overview of index %d' %
                 (i - 1, i)]
-    if len(data_offsets) >= 2 and data_offsets[0] < data_offsets[1]:
+    if len(data_offsets) >= 2 and data_offsets[0] is not None and data_offsets[0] < data_offsets[1]:
         errors += [
             'The offset of the first block of the main resolution image'
             'should be after the one of the overview of index %d' %
@@ -194,8 +193,13 @@ def main():
     i = 1
     filename = None
     quiet = False
+    verbose = True
     while i < len(sys.argv):
-        if sys.argv[i] == '-q':
+        if sys.argv[i] in ['-v', '--verbose']:
+            verbose = True
+            quiet = False
+        elif sys.argv[i] == '-q':
+            verbose = False
             quiet = True
         elif sys.argv[i][0] == '-':
             return Usage()
@@ -230,9 +234,17 @@ def main():
             if not quiet:
                 print('%s is a valid cloud optimized GeoTIFF' % filename)
 
-        if not quiet and not warnings and not errors:
-            print('\nThe size of all IFD headers is %d bytes' %
-                  min(details['data_offsets'][k] for k in details['data_offsets']))
+        if verbose:
+            import ubelt as ub
+            print('detils = ' + ub.repr2(details, nl=1))
+
+        if (not quiet and not warnings and not errors) or verbose:
+            if 'data_offsets' in details:
+                try:
+                    print('\nThe size of all IFD headers is %d bytes' %
+                          min(details['data_offsets'][k] for k in details['data_offsets']))
+                except TypeError:
+                    pass
     except ValidateCloudOptimizedGeoTIFFException as e:
         if not quiet:
             print('%s is NOT a valid cloud optimized GeoTIFF : %s' %
