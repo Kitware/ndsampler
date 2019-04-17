@@ -270,6 +270,7 @@ class Frames(object):
             from ndsampler.validate_cog import validate as _validate_cog
             warnings, errors, details = _validate_cog(gpath)
 
+            DEBUG = 0
             if 0:
                 from multiprocessing import current_process
                 DEBUG = current_process().name == 'MainProcess'
