@@ -335,7 +335,7 @@ def _cog_cache_write(gpath, cache_gpath):
     # TODO: THERE HAS TO BE A CORRECT WAY TO DO THIS.
     # However, I'm not sure what it is. I extend my appologies to whoever is
     # maintaining this code.
-    with atomicwrites.atomic_write(cache_gpath + '.proxy', mode='a', overwrite=True) as file:
+    with atomicwrites.atomic_write(cache_gpath + '.proxy', mode='w', overwrite=True) as file:
         file.write('begin: ' + ub.timestamp())
         _imwrite_cloud_optimized_geotiff(cache_gpath, raw_data, lossy=True)
         file.write('end: ' + ub.timestamp())
