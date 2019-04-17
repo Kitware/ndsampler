@@ -334,11 +334,13 @@ def _cog_cache_write(gpath, cache_gpath):
     raw_data = kwimage.imread(gpath)
     # TODO: THERE HAS TO BE A CORRECT WAY TO DO THIS.
     # However, I'm not sure what it is. I extend my appologies to whoever is
-    # maintaining this code.
+    # maintaining this code. Note: mode MUST be 'w'
     with atomicwrites.atomic_write(cache_gpath + '.proxy', mode='w', overwrite=True) as file:
-        file.write('begin: ' + ub.timestamp())
+        text = 'begin: ' + ub.timestamp()
+        file.write(text)
         _imwrite_cloud_optimized_geotiff(cache_gpath, raw_data, lossy=True)
-        file.write('end: ' + ub.timestamp())
+        text += '\nend: ' + ub.timestamp()
+        file.write(text)
 
     RUN_CORRUPTION_CHECKS = True
     if RUN_CORRUPTION_CHECKS:
