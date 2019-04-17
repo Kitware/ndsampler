@@ -326,6 +326,7 @@ def _cog_cache_write(gpath, cache_gpath):
         >>> hashid = self._lookup_hashid(image_id)
         >>> cog_gname = '{}_{}.cog.tiff'.format(image_id, hashid)
         >>> cache_gpath = cog_gpath = join(self.cache_dpath, cog_gname)
+        >>> _cog_cache_write(gpath, cache_gpath)
     """
     # Load all the image data and dump it to npy format
     import kwimage
@@ -334,6 +335,14 @@ def _cog_cache_write(gpath, cache_gpath):
         file.write('begin: ' + ub.timestamp())
         _imwrite_cloud_optimized_geotiff(cache_gpath, raw_data, lossy=True)
         file.write('end: ' + ub.timestamp())
+
+    if True:
+        # CHECK THAT THE DATA WAS WRITTEN CORRECTLY
+        file = LazyGDalFrameFile(cache_gpath)
+        orig_sum = raw_data.sum()
+        cache_sum = file[:].sum()
+        if orig_sum > 0 and cache_sum == 0:
+            raise Exception('FAILED TO WRITE COG FILE CORRECTLY')
 
 
 def _npy_cache_write(gpath, cache_gpath):
