@@ -270,7 +270,7 @@ class Frames(object):
             from ndsampler.validate_cog import validate as _validate_cog
             warnings, errors, details = _validate_cog(gpath)
 
-            if 1:
+            if 0:
                 from multiprocessing import current_process
                 DEBUG = current_process().name == 'MainProcess'
 
@@ -331,12 +331,16 @@ def _cog_cache_write(gpath, cache_gpath):
     # Load all the image data and dump it to npy format
     import kwimage
     raw_data = kwimage.imread(gpath)
-    with atomicwrites.atomic_write(cache_gpath + '.proxy', mode='w', overwrite=True) as file:
+    # TODO: THERE HAS TO BE A CORRECT WAY TO DO THIS.
+    # However, I'm not sure what it is. I extend my appologies to whoever is
+    # maintaining this code.
+    with atomicwrites.atomic_write(cache_gpath + '.proxy', mode='a', overwrite=True) as file:
         file.write('begin: ' + ub.timestamp())
         _imwrite_cloud_optimized_geotiff(cache_gpath, raw_data, lossy=True)
         file.write('end: ' + ub.timestamp())
 
-    if True:
+    RUN_CORRUPTION_CHECKS = True
+    if RUN_CORRUPTION_CHECKS:
         # CHECK THAT THE DATA WAS WRITTEN CORRECTLY
         file = LazyGDalFrameFile(cache_gpath)
         orig_sum = raw_data.sum()
