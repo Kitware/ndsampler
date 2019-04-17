@@ -270,17 +270,23 @@ class Frames(object):
             from ndsampler.validate_cog import validate as _validate_cog
             warnings, errors, details = _validate_cog(gpath)
 
-            DEBUG = 0
-            if 0:
+            if 1:
                 from multiprocessing import current_process
-                DEBUG = current_process().name == 'MainProcess'
+                if current_process().name == 'MainProcess':
+                    DEBUG = 1
+                    # DEBUG = 2
+            else:
+                DEBUG = 0
 
             if DEBUG:
                 print('<DEBUG INFO>')
-                print('details = ' + ub.repr2(details))
-                print('warnings = ' + ub.repr2(warnings))
-                print('errors (why we need to ensure) = ' + ub.repr2(errors))
+                if DEBUG > 1:
+                    print('details = ' + ub.repr2(details))
+                    print('warnings = ' + ub.repr2(warnings))
+                    print('errors (why we need to ensure) = ' + ub.repr2(errors))
+                import netharn as nh
                 print('BUILDING COG REPRESENTATION')
+                print(' * gpath = ' + ub.repr2(nh.util.get_file_info(gpath)))
 
             gpath_is_cog = not bool(errors)
             if gpath_is_cog:
@@ -290,9 +296,7 @@ class Frames(object):
                 self._ensure_cog_representation(gpath, cog_gpath)
 
             if DEBUG:
-                import netharn as nh
-                print('gpath = ' + ub.repr2(nh.util.get_file_info(gpath)))
-                print('cog_gpath = ' + ub.repr2(nh.util.get_file_info(cog_gpath)))
+                print(' * cog_gpath = ' + ub.repr2(nh.util.get_file_info(cog_gpath)))
                 print('</DEBUG INFO>')
 
         file = LazyGDalFrameFile(cog_gpath)
