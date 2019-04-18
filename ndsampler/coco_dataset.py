@@ -934,15 +934,22 @@ class MixinCocoExtras(object):
         # raise AssertionError('missing images')
 
     def rename_categories(self, mapper, strict=False, preserve=False,
-                          rebuild=True, simple=False):
+                          rebuild=True, simple=True):
         """
         Create a coarser categorization
+
+        Note: this function has been unstable in the past, and has not yet been
+        properly stabalized. Either avoid or use with care.
+        Ensuring `simple=True` should result in newer saner behavior that will
+        likely be backwards compatible.
 
         Args:
             mapper (dict or Function): maps old names to new names.
             strict (bool): if True, fails if mapper doesnt map all classes
             preserve (bool): if True, preserve old categories as supercatgories
                 FIXME: Broken
+
+            simple (bool, default=True): defaults to the new way of doing this.
 
         Example:
             >>> # DISABLE_DOCTEST
@@ -1284,7 +1291,8 @@ class MixinCocoDraw(object):
             elif 'keypoints' in ann:
                 x1, y1 = xys.min(axis=0)
 
-            catname = self.cats[ann['category_id']]['name']
+            cat = self.cats[ann['category_id']]
+            catname = cat['name']
             textkw = {
                 'horizontalalignment': 'left',
                 'verticalalignment': 'top',
@@ -1325,6 +1333,10 @@ class MixinCocoDraw(object):
 
             if 'segmentation' in ann:
                 sseg = ann['segmentation']
+
+                # Respect the 'color' attribute of categories
+                catcolor = cat.get('color', None)
+
                 # print('sseg = {!r}'.format(sseg))
                 if isinstance(sseg, dict):
                     # Handle COCO-RLE-segmentations; convert to raw binary masks
@@ -1337,7 +1349,7 @@ class MixinCocoDraw(object):
                         mask = kwimage.Mask(sseg, 'bytes_rle').to_c_mask().data
                     else:
                         mask = kwimage.Mask(sseg, 'array_rle').to_c_mask().data
-                    sseg_masks.append(mask)
+                    sseg_masks.append((mask, catcolor))
                 elif isinstance(sseg, list):
                     # Handle COCO-polygon-segmentation
                     # If the segmentation is a list of polygons
@@ -1345,7 +1357,11 @@ class MixinCocoDraw(object):
                         sseg = [sseg]
                     for flat in sseg:
                         poly_xys = np.array(flat).reshape(-1, 2)
-                        poly = mpl.patches.Polygon(poly_xys)
+                        polykw = {}
+                        if catcolor is not None:
+                            polykw['color'] = catcolor
+
+                        poly = mpl.patches.Polygon(poly_xys, **polykw)
                         sseg_polys.append(poly)
                 else:
                     raise TypeError(type(sseg))
@@ -1363,10 +1379,13 @@ class MixinCocoDraw(object):
             np_img01 = np_img / 255.0
 
             layers = []
-            layers.append(np_img01)
+            layers.append(kwimage.ensure_alpha_channel(np_img01))
             distinct_colors = kwplot.Color.distinct(len(sseg_masks))
 
-            for mask, col in zip(sseg_masks, distinct_colors):
+            for (mask, _catcolor), col in zip(sseg_masks, distinct_colors):
+                if _catcolor is not None:
+                    col = kwimage.ensure_float01(np.array(_catcolor)).tolist()
+
                 col = np.array(col + [1])[None, None, :]
                 alpha_mask = col * mask[:, :, None]
                 alpha_mask[..., 3] = mask * 0.5
