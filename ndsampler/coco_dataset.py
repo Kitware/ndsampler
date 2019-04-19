@@ -2549,6 +2549,7 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
                            for aid in self.gid_to_aids.get(gid, [])])
         new_dataset['annotations'] = list(ub.take(self.anns, sub_aids))
         new_dataset['images'] = list(ub.take(self.imgs, gids))
+        new_dataset['img_root'] = self.dataset.get('img_root', None)
 
         if copy:
             from copy import deepcopy
