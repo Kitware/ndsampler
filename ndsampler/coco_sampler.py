@@ -9,6 +9,7 @@ from ndsampler import coco_regions
 from ndsampler import coco_frames
 from ndsampler import abstract_sampler
 from ndsampler import util
+import xdev
 
 
 class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
@@ -280,6 +281,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         sample = self.load_sample(tr, pad=pad, window_dims=window_dims)
         return sample
 
+    @xdev.profile
     def load_sample(self, tr, pad=None, window_dims=None, visible_thresh=0.1,
                     padkw={'mode': 'constant'}):
         """
