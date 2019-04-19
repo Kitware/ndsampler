@@ -253,10 +253,16 @@ class Frames(object):
         gpath = self._lookup_gpath(image_id)
         hashid = self._lookup_hashid(image_id)
         fname_base = os.path.basename(gpath).split('.')[0]
+        # We actually don't want to write the image-id in the filename because
+        # the same file may be in different datasets with different ids.
         if mode == 'cog':
-            cache_gname = '{}_{}_{}.cog.tiff'.format(image_id, fname_base, hashid)
+            # cache_gname = '{}_{}_{}.cog.tiff'.format(image_id, fname_base, hashid)
+            cache_gname = '{}_{}.cog.tiff'.format(image_id, fname_base, hashid)
         elif mode == 'npy':
-            cache_gname = '{}_{}_{}.npy'.format(image_id, fname_base, hashid)
+            # cache_gname = '{}_{}_{}.npy'.format(image_id, fname_base, hashid)
+            cache_gname = '{}_{}.npy'.format(image_id, fname_base, hashid)
+        else:
+            raise KeyError(mode)
         cache_gpath = join(self.cache_dpath, cache_gname)
         return gpath, cache_gpath
 
