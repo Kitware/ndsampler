@@ -269,6 +269,9 @@ class Frames(object):
         cog_gpath = cache_gpath
 
         if not exists(cog_gpath):
+            if not exists(gpath):
+                raise OSError('Source image gpath={!r} for image_id={!r} does not exist!'.format(gpath, image_id))
+
             # If the file already is a cog, just use it
             from ndsampler.validate_cog import validate as _validate_cog
             warnings, errors, details = _validate_cog(gpath)
