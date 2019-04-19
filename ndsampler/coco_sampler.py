@@ -283,12 +283,21 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             tr (dict): image and bbox info for a positive / negative target.
                 must contain the keys ['cx', 'cy', 'gid'], if `window_dims` is
                 None it must also contain the keys ['width' and 'height'].
+
+                NEW: tr can now contain the key `slices`, which maps a tuple of
+                slices, one slice for each of the n dimensions.  If specified
+                this will overwrite the 'cx', 'cy' keys. The 'gid' key is still
+                required, and `pad` does still have an effect.
+
             pad (tuple): (height, width) extra context to add to window dims.
                 This helps prevent augmentation from producing boundary effects
+
             window_dims (tuple): (height, width) overrides the height/width
                 in tr to determine the extracted window size
+
             visible_thresh (float): does not return annotations with visibility
                 less than this threshold.
+
             padkw (dict): kwargs for `numpy.pad`
 
         Returns:
@@ -385,26 +394,33 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         if pad is None:
             pad = (0, 0)
         gid = tr['gid']
-
-        center = (tr['cy'], tr['cx'])
-
         # Determine the image extent
         img = self.dset.imgs[gid]
         data_dims = (img['height'], img['width'])
 
-        # Determine the requested window size
-        if window_dims is None:
-            window_dims = (tr['height'], tr['width'])
-            window_dims = np.ceil(np.array(window_dims)).astype(np.int)
-            window_dims = tuple(window_dims.tolist())
-        elif isinstance(window_dims, six.string_types) and window_dims == 'square':
-            window_dims = (tr['height'], tr['width'])
-            window_dims = np.ceil(np.array(window_dims)).astype(np.int)
-            window_dims = tuple(window_dims.tolist())
-            maxdim = max(window_dims)
-            window_dims = (maxdim, maxdim)
+        if 'slices' in tr:
+            # Slice was explicitly specified
+            import warnings
+            if bool(set(tr) & {'cx', 'cy', 'height', 'width'}) or window_dims:
+                warnings.warn('data_slice was specified, but ignored keys are present')
+            requested_slice = tr['slices']
+            data_slice, extra_padding = _rectify_slice2(requested_slice, data_dims, pad)
+        else:
+            # A center / width / height was specified
+            center = (tr['cy'], tr['cx'])
+            # Determine the requested window size
+            if window_dims is None:
+                window_dims = (tr['height'], tr['width'])
+                window_dims = np.ceil(np.array(window_dims)).astype(np.int)
+                window_dims = tuple(window_dims.tolist())
+            elif isinstance(window_dims, six.string_types) and window_dims == 'square':
+                window_dims = (tr['height'], tr['width'])
+                window_dims = np.ceil(np.array(window_dims)).astype(np.int)
+                window_dims = tuple(window_dims.tolist())
+                maxdim = max(window_dims)
+                window_dims = (maxdim, maxdim)
 
-        data_slice, extra_padding = _get_slice(data_dims, center, window_dims, pad=pad)
+            data_slice, extra_padding = _get_slice(data_dims, center, window_dims, pad=pad)
 
         # Load the image data
         im = self.frames.load_region(gid, data_slice)
@@ -572,7 +588,7 @@ def _get_slice(data_dims, center, window_dims, pad=None):
     data_slice, extra_padding = _rectify_slice(data_dims, low_dims,
                                                high_dims, pad)
 
-    data_slice = tuple([slice(low, high) for low, high in data_slice])
+    data_slice = tuple(slice(low, high) for low, high in data_slice)
     if sum(map(sum, extra_padding)) == 0:
         extra_padding = None
     return data_slice, extra_padding
@@ -636,6 +652,17 @@ def _rectify_slice(data_dims, low_dims, high_dims, pad):
         extra_high = max(0, high_diff + min(0, low_diff))
         extra = (extra_low, extra_high)
         extra_padding.append(extra)
+    return data_slice, extra_padding
+
+
+def _rectify_slice2(requested_slice, data_dims, pad=None):
+    low_dims = [s.start for s in requested_slice]
+    high_dims = [s.stop for s in requested_slice]
+    data_slice, extra_padding = _rectify_slice(data_dims, low_dims,
+                                               high_dims, pad)
+    data_slice = tuple(slice(low, high) for low, high in data_slice)
+    if sum(map(sum, extra_padding)) == 0:
+        extra_padding = None
     return data_slice, extra_padding
 
 
