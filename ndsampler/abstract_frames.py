@@ -272,6 +272,7 @@ class Frames(object):
 
             if 1:
                 from multiprocessing import current_process
+                DEBUG = 0
                 if current_process().name == 'MainProcess':
                     DEBUG = 2
             else:
