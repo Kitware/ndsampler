@@ -116,10 +116,7 @@ class Frames(object):
         Returns the path where cached frame representations will be stored
         """
         if self._cache_dpath is None:
-            if self._backend == 'npy':
-                self._cache_dpath = ub.ensuredir(join(self.workdir, '_cache/frames'))
-            else:
-                self._cache_dpath = ub.ensuredir(join(self.workdir, '_cache/frames/' + self._backend))
+            self._cache_dpath = ub.ensuredir(join(self.workdir, '_cache/frames/' + self._backend))
         return self._cache_dpath
 
     def _lookup_gpath(self, image_id):
@@ -206,10 +203,9 @@ class Frames(object):
         Returns a memmapped reference to the entire image
         """
         gpath = self._lookup_gpath(image_id)
-        hashid = self._lookup_hashid(image_id)
+        gpath, cache_gpath = self._gnames(image_id, mode='npy')
+        mem_gpath = cache_gpath
 
-        mem_gname = '{}_{}.npy'.format(image_id, hashid)
-        mem_gpath = join(self.cache_dpath, mem_gname)
         if not exists(mem_gpath):
             self.ensure_npy_representation(gpath, mem_gpath)
 
@@ -253,18 +249,25 @@ class Frames(object):
                 raise
         return file
 
+    def _gnames(self, image_id, mode):
+        gpath = self._lookup_gpath(image_id)
+        hashid = self._lookup_hashid(image_id)
+        fname_base = os.path.basename(gpath).split('.')[0]
+        if mode == 'cog':
+            cache_gname = '{}_{}_{}.cog.tiff'.format(image_id, fname_base, hashid)
+        elif mode == 'npy':
+            cache_gname = '{}_{}_{}.npy'.format(image_id, fname_base, hashid)
+        cache_gpath = join(self.cache_dpath, cache_gname)
+        return gpath, cache_gpath
+
     @lru_cache(1)  # Keeps frequently accessed images open
     def _load_image_cog(self, image_id):
         """
         Returns a special array-like object with a COG GeoTIFF backend
         """
-        gpath = self._lookup_gpath(image_id)
-        hashid = self._lookup_hashid(image_id)
+        gpath, cache_gpath = self._gnames(image_id, mode='cog')
+        cog_gpath = cache_gpath
 
-        fname_base = os.path.basename(gpath).split('.')[0]
-
-        cog_gname = '{}_{}_{}.cog.tiff'.format(image_id, fname_base, hashid)
-        cog_gpath = join(self.cache_dpath, cog_gname)
         if not exists(cog_gpath):
             # If the file already is a cog, just use it
             from ndsampler.validate_cog import validate as _validate_cog
