@@ -66,12 +66,14 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         self = CocoSampler(dset, workdir=workdir)
         return self
 
-    def __init__(self, dset, workdir=None, autoinit=True, verbose=0):
+    def __init__(self, dset, workdir=None, autoinit=True, backend='cog',
+                 verbose=0):
         super(CocoSampler, self).__init__()
         self.workdir = workdir
         self.dset = dset
         self.regions = None
         self.frames = None
+        self.backend = backend
         self.verbose = verbose
         self.BACKGROUND_CLASS_ID = None
 
@@ -85,7 +87,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         self.regions = coco_regions.CocoRegions(self.dset,
                                                 workdir=self.workdir,
                                                 verbose=self.verbose)
-        self.frames = coco_frames.CocoFrames(self.dset, workdir=self.workdir)
+        self.frames = coco_frames.CocoFrames(
+            self.dset,
+            workdir=self.workdir,
+            backend=self.backend,
+        )
 
         self.catgraph = self.regions.catgraph
 

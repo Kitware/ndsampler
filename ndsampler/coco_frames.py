@@ -30,8 +30,9 @@ class CocoFrames(abstract_frames.Frames, util.HashIdentifiable):
         >>> assert self.load_image(1).shape == (600, 600, 3)
         >>> assert self.load_image(1)[:-20, :-10].shape == (580, 590, 3)
     """
-    def __init__(self, dset, hashid_mode='PATH', workdir=None, verbose=0):
-        super(CocoFrames, self).__init__(hashid_mode=hashid_mode, workdir=workdir)
+    def __init__(self, dset, hashid_mode='PATH', workdir=None, verbose=0, backend='cog'):
+        super(CocoFrames, self).__init__(hashid_mode=hashid_mode,
+                                         workdir=workdir, backend=backend)
         self.dset = dset
         self.verbose = verbose
 
