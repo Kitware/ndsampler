@@ -257,10 +257,10 @@ class Frames(object):
         # the same file may be in different datasets with different ids.
         if mode == 'cog':
             # cache_gname = '{}_{}_{}.cog.tiff'.format(image_id, fname_base, hashid)
-            cache_gname = '{}_{}.cog.tiff'.format(image_id, fname_base, hashid)
+            cache_gname = '{}_{}.cog.tiff'.format(fname_base, hashid)
         elif mode == 'npy':
             # cache_gname = '{}_{}_{}.npy'.format(image_id, fname_base, hashid)
-            cache_gname = '{}_{}.npy'.format(image_id, fname_base, hashid)
+            cache_gname = '{}_{}.npy'.format(fname_base, hashid)
         else:
             raise KeyError(mode)
         cache_gpath = join(self.cache_dpath, cache_gname)
