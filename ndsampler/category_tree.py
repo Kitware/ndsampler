@@ -278,6 +278,9 @@ class CategoryTree(ub.NiceRepr):
     @classmethod
     def demo(cls, key='coco', **kwargs):
         """
+        Args:
+            key (str): specify which demo dataset to use.
+
         CommandLine:
             xdoctest -m ~/code/ndsampler/ndsampler/category_tree.py CategoryTree.demo
 
@@ -409,6 +412,10 @@ class CategoryTree(ub.NiceRepr):
         """
         Computes conditional log probabilities of each class in the category tree
 
+        Args:
+            class_energy (Tensor): raw values output by final network layer
+            dim (int): dimension where each index corresponds to a class
+
         Example:
             >>> from ndsampler.category_tree import *
             >>> graph = nx.generators.gnr_graph(30, 0.3, seed=321).reverse()
@@ -443,6 +450,10 @@ class CategoryTree(ub.NiceRepr):
         numerical properties) to a set of conditional probabilities (wrt this
         heriarchy) to achieve absolute probabilities for each node.
 
+        Args:
+            cond_logits (Tensor): conditional log probabilities for each class
+            dim (int): dimension where each index corresponds to a class
+
         Notes:
             Probability chain rule:
                 P(node) = P(node | parent) * P(parent)
@@ -453,7 +464,7 @@ class CategoryTree(ub.NiceRepr):
         # The dynamic program was faster on the CPU in a dummy test case
         memo = {}
 
-        def log_prob(node):
+        def log_prob(node, memo=memo):
             """ dynamic program to compute absolute class log probability """
             if node in memo:
                 return memo[node]
@@ -539,6 +550,12 @@ class CategoryTree(ub.NiceRepr):
 
         Does a regular softmax over all the mutually exclusive leaf nodes, then
         sums their probabilities to get the score for the parent nodes.
+
+        Args:
+            class_energy (Tensor): raw output from network. The values in
+                `class_energy[..., idx]` should correspond to the network
+                activations for the heirarchical class `self.idx_to_node[idx]`
+            dim (int): dimension corresponding to classes (usually 1)
 
         Example:
             >>> from ndsampler.category_tree import *
@@ -638,6 +655,10 @@ class CategoryTree(ub.NiceRepr):
         logits exactly contain the relevant information. In other words as long
         as the log probabilities are computed correctly, then the nothing
         special needs to happen when computing the loss.
+
+        Args:
+            class_logits (Tensor): log probabilities for each class
+            targets (Tensor): true class for each example
 
         Example:
             >>> from ndsampler.category_tree import *
