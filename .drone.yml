@@ -12,7 +12,7 @@ steps:
     commands:
       - pip install pip -U
       - pip install git+ssh://git@gitlab.kitware.com/vigilant/kwarray.git@dev/0.3.0#egg=kwarray
-      - pip install -v git+ssh://git@gitlab.kitware.com/vigilant/kwimage.git@dev/0.3.0#egg=kwimage
+      - pip install git+ssh://git@gitlab.kitware.com/vigilant/kwimage.git@dev/0.3.0#egg=kwimage
       - pip install git+ssh://git@gitlab.kitware.com/vigilant/kwimage.git@dev/0.3.0#egg=kwplot
       - pip install -r requirements.txt
       - pip install -e .
