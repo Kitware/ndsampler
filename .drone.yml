@@ -15,7 +15,7 @@ steps:
       - pip install git+ssh://git@gitlab.kitware.com/vigilant/kwimage.git@dev/0.3.0#egg=kwimage --no-use-pep517
       - pip install git+ssh://git@gitlab.kitware.com/vigilant/kwimage.git@dev/0.3.0#egg=kwplot --no-use-pep517
       - pip install -r requirements.txt
-      - pip install -e . --no-use-pep517
+      - pip install . --no-use-pep517
       - ./run_tests.py
 
     volumes:
@@ -49,7 +49,7 @@ steps:
       - pip install git+ssh://git@gitlab.kitware.com/vigilant/kwimage.git@dev/0.3.0#egg=kwimage --no-use-pep517
       - pip install git+ssh://git@gitlab.kitware.com/vigilant/kwimage.git@dev/0.3.0#egg=kwplot --no-use-pep517
       - pip install -r requirements.txt
-      - pip install -e . --no-use-pep517
+      - pip install . --no-use-pep517
       - ./run_tests.py
 
     volumes:
