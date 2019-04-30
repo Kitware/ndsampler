@@ -282,7 +282,7 @@ class Frames(object):
             from ndsampler.validate_cog import validate as _validate_cog
             warnings, errors, details = _validate_cog(gpath)
 
-            if 1:
+            if 0:
                 from multiprocessing import current_process
                 DEBUG = 0
                 if current_process().name == 'MainProcess':
@@ -296,10 +296,10 @@ class Frames(object):
                     print('details = ' + ub.repr2(details))
                     print('warnings = ' + ub.repr2(warnings))
                     print('errors (why we need to ensure) = ' + ub.repr2(errors))
-                import netharn as nh
                 print('BUILDING COG REPRESENTATION')
                 print('gpath = {!r}'.format(gpath))
                 if DEBUG > 1:
+                    import netharn as nh
                     print(' * info(gpath) = ' + ub.repr2(nh.util.get_file_info(gpath)))
 
             gpath_is_cog = not bool(errors)
@@ -312,6 +312,7 @@ class Frames(object):
             if DEBUG:
                 print('cog_gpath = {!r}'.format(cog_gpath))
                 if DEBUG > 1:
+                    import netharn as nh
                     print(' * info(cog_gpath) = ' + ub.repr2(nh.util.get_file_info(cog_gpath)))
                 print('</DEBUG INFO>')
 
@@ -562,6 +563,7 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, lossy=True):
         pip install gdal ---with special flags, forgot which though, sry
 
     Example:
+        >>> # DISABLE_DOCTEST
         >>> from ndsampler.abstract_frames import *
         >>> from ndsampler.abstract_frames import _imwrite_cloud_optimized_geotiff
         >>> data = (np.random.rand(1000, 1000, 3) * 255).astype(np.uint8)
