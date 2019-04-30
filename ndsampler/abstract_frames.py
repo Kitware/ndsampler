@@ -624,15 +624,15 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, lossy=True):
     else:
         raise TypeError(kindsize)
 
-    driver = gdal.GetDriverByName('MEM')
-    data_set = driver.Create('', x_size, y_size, num_bands,
+    driver = gdal.GetDriverByName(str('MEM'))
+    data_set = driver.Create(str(''), x_size, y_size, num_bands,
                              eType=eType)
 
     for i in range(num_bands):
         band_data = np.ascontiguousarray(data[:, :, i])
         data_set.GetRasterBand(i + 1).WriteArray(band_data)
 
-    data_set.BuildOverviews('NEAREST', [2, 4, 8, 16, 32, 64])
+    data_set.BuildOverviews(str('NEAREST'), [2, 4, 8, 16, 32, 64])
 
     if lossy:
         options = ['COPY_SRC_OVERVIEWS=YES', 'TILED=YES', 'COMPRESS=JPEG', 'PHOTOMETRIC=YCBCR']
@@ -640,7 +640,9 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, lossy=True):
     else:
         options = ['COPY_SRC_OVERVIEWS=YES', 'TILED=YES', 'COMPRESS=LZW']
 
-    driver2 = gdal.GetDriverByName('GTiff')
+    options = list(map(str, options))  # python2.7 support
+
+    driver2 = gdal.GetDriverByName(str('GTiff'))
     data_set2 = driver2.CreateCopy(fpath, data_set, options=options)
     # OK, so setting things to None turns out to be important. Gah!
     data_set2.FlushCache()

@@ -33,12 +33,17 @@ annotation that takes up the entire image.
 
 
 # NOTES:
-There (will be) a GDAL backend for FramesSampler
+There is a GDAL backend for FramesSampler
+
+Installing gdal is a pain though.
+
+https://gist.github.com/cspanring/5680334
 
 
 ```python
 # References:
 # https://gis.stackexchange.com/questions/28966/python-gdal-package-missing-header-file-when-installing-via-pip
+# https://gist.github.com/cspanring/5680334
 
 
 # Install GDAL system libs
