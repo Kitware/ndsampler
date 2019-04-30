@@ -31,7 +31,6 @@ import networkx as nx
 import ubelt as ub
 import torch.nn.functional as F
 import numpy as np
-import xdev
 
 
 class CategoryTree(ub.NiceRepr):
@@ -431,7 +430,6 @@ class CategoryTree(ub.NiceRepr):
         self.node_to_idx = node_to_idx
         self.idx_groups = idx_groups
 
-    @xdev.profile
     def conditional_log_softmax(self, class_energy, dim):
         """
         Computes conditional log probabilities of each class in the category tree
@@ -467,7 +465,6 @@ class CategoryTree(ub.NiceRepr):
             cond_logits.index_copy_(dim, index, logit_group)
         return cond_logits
 
-    @xdev.profile
     def _apply_logit_chain_rule(self, cond_logits, dim):
         """
         Applies the probability chain rule (in log space, which has better
@@ -516,7 +513,6 @@ class CategoryTree(ub.NiceRepr):
                     dest[:] = result  # 37% of the time
         return class_logits
 
-    @xdev.profile
     def source_log_softmax(self, class_energy, dim):
         """
         Top-down heirarchical softmax
@@ -561,7 +557,6 @@ class CategoryTree(ub.NiceRepr):
         class_logits = self._apply_logit_chain_rule(cond_logits, dim=dim)
         return class_logits
 
-    @xdev.profile
     def sink_log_softmax(self, class_energy, dim):
         """
         Bottom-up heirarchical softmax
