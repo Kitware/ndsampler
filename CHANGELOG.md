@@ -11,6 +11,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * `CocoDataset.remove_images`
 
 ### Changed
+* Removed redundant items from `CategoryTree` serialization in `__json__` and `__getstate__`.
 * COG format is now defaulted over memmap frames backend
 
 ### Fixed

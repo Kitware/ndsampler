@@ -245,6 +245,59 @@ class CategoryTree(ub.NiceRepr):
         """
         return self.__getstate__()
 
+    def __getstate__(self):
+        """
+        Serializes information in this class
+
+        Example:
+            >>> from ndsampler.category_tree import *
+            >>> import pickle
+            >>> self = CategoryTree.demo()
+            >>> state = self.__getstate__()
+            >>> serialization = pickle.dumps(self)
+            >>> recon = pickle.loads(serialization)
+            >>> assert recon.__json__() == self.__json__()
+        """
+        state = self.__dict__.copy()
+        for key in list(state.keys()):
+            if key.startswith('_cache'):
+                state.pop(key)
+        state['graph'] = to_directed_nested_tuples(self.graph)
+        if True:
+            # Remove reundant items
+            state.pop('node_to_idx')
+            state.pop('node_to_id')
+            state.pop('idx_groups')
+        return state
+
+    def __setstate__(self, state):
+        graph = from_directed_nested_tuples(state['graph'])
+
+        if True:
+            # Reconstruct redundant items
+            if 'node_to_idx' not in state:
+                state['node_to_idx'] = {node: idx for idx, node in
+                                        enumerate(state['idx_to_node'])}
+            if 'node_to_id' not in state:
+                state['node_to_id'] = {node: id for id, node in
+                                       state['id_to_node'].items()}
+
+            if 'idx_groups' not in state:
+                node_groups = list(traverse_siblings(graph))
+                node_to_idx = state['node_to_idx']
+                state['idx_groups'] = [sorted([node_to_idx[n] for n in group])
+                                       for group in node_groups]
+
+        self.__dict__.update(state)
+        self.graph = graph
+
+    def __nice__(self):
+        return 'nNodes={}, maxDepth={}, maxBreadth={}'.format(
+            self.num_classes,
+            tree_depth(self.graph),
+            max(it.chain([0], map(len, self.idx_groups))),
+        )
+
     def _demo_probs(self, num=5, rng=0, nonrandom=3, hackargmax=True):
         """ dummy probabilities for testing """
         rng = kwarray.ensure_rng(rng)
@@ -325,35 +378,6 @@ class CategoryTree(ub.NiceRepr):
                 if len(parents) > 1:
                     raise Exception('not a tree')
             yield cat
-
-    def __getstate__(self):
-        """
-        Example:
-            >>> from ndsampler.category_tree import *
-            >>> import pickle
-            >>> self = CategoryTree.demo()
-            >>> state = self.__getstate__()
-            >>> serialization = pickle.dumps(self)
-            >>> recon = pickle.loads(serialization)
-            >>> assert recon.__json__() == self.__json__()
-        """
-        state = self.__dict__.copy()
-        for key in list(state.keys()):
-            if key.startswith('_cache'):
-                state.pop(key)
-        state['graph'] = to_directed_nested_tuples(self.graph)
-        return state
-
-    def __setstate__(self, state):
-        self.__dict__.update(state)
-        self.graph = from_directed_nested_tuples(state['graph'])
-
-    def __nice__(self):
-        return 'nNodes={}, maxDepth={}, maxBreadth={}'.format(
-            self.num_classes,
-            tree_depth(self.graph),
-            max(it.chain([0], map(len, self.idx_groups))),
-        )
 
     def is_mutex(self):
         """
