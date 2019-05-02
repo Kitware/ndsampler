@@ -141,9 +141,8 @@ def time_ondisk_crop(size=512, dim=3, region='small_random', num=24):
     elif DATA == 'custom':
         print('USE CUSTOM data, size={}, dim={}, mode={}'.format(
             size, dim, region))
-        custom_fpath = '/home/joncrall/data/vigilant/lemon/images/3857_10_209_416_20170602_560138b4-dddd-48a0-bfd6-51b4c3602605.ptif'
-        # custom_fpath = '/home/joncrall/data/vigilant/lemon/images/3857_12_3230_1680_20170120_c8d3cbf2-7c63-4a98-b4e6-cbde7fb412c1.ptif'
-        # custom_fpath = '/home/joncrall/data/vigilant/lemon/images/3857_8_65_95_20170210_e4d6719d-f0c6-4343-bfdb-144378ce6395.ptif'
+        assert False
+        custom_fpath = '.ptif'
         import kwimage
         data = kwimage.imread(custom_fpath)
     else:

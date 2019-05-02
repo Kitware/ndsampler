@@ -509,8 +509,8 @@ class CategoryTree(ub.NiceRepr):
                     class_logits.select(dim, idx)[:] = log_prob(node)
                 else:
                     result = log_prob(node)  # 50% of the time
-                    dest = class_logits.select(dim, idx)  # 8% of the time
-                    dest[:] = result  # 37% of the time
+                    _dest = class_logits.select(dim, idx)  # 8% of the time
+                    _dest[:] = result  # 37% of the time
         return class_logits
 
     def source_log_softmax(self, class_energy, dim):

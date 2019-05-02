@@ -282,7 +282,7 @@ class Frames(object):
             from ndsampler.validate_cog import validate as _validate_cog
             warnings, errors, details = _validate_cog(gpath)
 
-            if 0:
+            if 1:
                 from multiprocessing import current_process
                 DEBUG = 0
                 if current_process().name == 'MainProcess':
@@ -356,12 +356,40 @@ def _cog_cache_write(gpath, cache_gpath):
     # TODO: THERE HAS TO BE A CORRECT WAY TO DO THIS.
     # However, I'm not sure what it is. I extend my appologies to whoever is
     # maintaining this code. Note: mode MUST be 'w'
+
+    DEBUG = 1
+    if DEBUG:
+        import multiprocessing
+        proc = multiprocessing.current_process()
+        def _debug(msg):
+            with open(cache_gpath + '.proxy.debug', 'a') as f:
+                f.write('[{}, {}, {}] '.format(ub.timestamp(), proc, proc.pid) + msg + '\n')
+        _debug('attempts aquire'.format())
+
     with atomicwrites.atomic_write(cache_gpath + '.proxy', mode='w', overwrite=True) as file:
-        text = 'begin: ' + ub.timestamp()
-        file.write(text)
-        _imwrite_cloud_optimized_geotiff(cache_gpath, raw_data, lossy=True)
-        text += '\nend: ' + ub.timestamp()
-        file.write(text)
+        if DEBUG:
+            _debug('begin')
+            _debug('gpath = {}'.format(gpath))
+            _debug('cache_gpath = {}'.format(cache_gpath))
+        try:
+            file.write('begin: {}\n'.format(ub.timestamp()))
+            file.write('gpath = {}\n'.format(gpath))
+            file.write('cache_gpath = {}\n'.format(cache_gpath))
+            if not exists(cache_gpath):
+                _imwrite_cloud_optimized_geotiff(cache_gpath, raw_data, lossy=True)
+                if DEBUG:
+                    _debug('finished write: {}\n'.format(ub.timestamp()))
+            else:
+                if DEBUG:
+                    _debug('ALREADY EXISTS did not write: {}\n'.format(ub.timestamp()))
+            file.write('end: {}\n'.format(ub.timestamp()))
+        except Exception as ex:
+            file.write('FAILED DUE TO EXCEPTION: {}: {}\n'.format(ex, ub.timestamp()))
+            if DEBUG:
+                _debug('FAILED DUE TO EXCEPTION: {}'.format(ex))
+        finally:
+            if DEBUG:
+                _debug('finally')
 
     RUN_CORRUPTION_CHECKS = True
     if RUN_CORRUPTION_CHECKS:
@@ -369,7 +397,14 @@ def _cog_cache_write(gpath, cache_gpath):
         file = LazyGDalFrameFile(cache_gpath)
         orig_sum = raw_data.sum()
         cache_sum = file[:].sum()
+        if DEBUG:
+            _debug('orig_sum = {}'.format(orig_sum))
+            _debug('cache_sum = {}'.format(cache_sum))
         if orig_sum > 0 and cache_sum == 0:
+            print('FAILED TO WRITE COG FILE')
+            if DEBUG:
+                _debug('FAILED TO WRITE COG FILE')
+            ub.delete(cache_gpath)
             raise Exception('FAILED TO WRITE COG FILE CORRECTLY')
 
 
@@ -391,69 +426,50 @@ def _locked_cache_write(_write_func, gpath, cache_gpath):
     """
     Ensures that mem_gpath exists in a multiprocessing-safe way
     """
-    import multiprocessing
-
     lock_fpath = cache_gpath + '.lock'
 
-    DEBUG = 0
+    DEBUG = 1
 
     if DEBUG:
-        procid = multiprocessing.current_process()
+        import multiprocessing
+        proc = multiprocessing.current_process()
         def _debug(msg):
             with open(lock_fpath + '.debug', 'a') as f:
-                f.write(msg + '\n')
-        _debug(lock_fpath)
-        _debug('{} attempts aquire'.format(procid))
+                f.write('[{}, {}, {}] '.format(ub.timestamp(), proc, proc.pid) + msg + '\n')
+        _debug('lock_fpath = {}'.format(lock_fpath))
+        _debug('attempt aquire')
 
-    # Ensure that another process doesn't write to the same image
-    # FIXME: lockfiles may not be cleaned up gracefully
-    # See: https://github.com/harlowja/fasteners/issues/26
-    lock_fpath = cache_gpath + '.lock'
-    with fasteners.InterProcessLock(lock_fpath):
-
-        if DEBUG:
-            _debug('{} aquires'.format(procid))
-
-        if not exists(cache_gpath):
-            _write_func(gpath, cache_gpath)
+    try:
+        # Ensure that another process doesn't write to the same image
+        # FIXME: lockfiles may not be cleaned up gracefully
+        # See: https://github.com/harlowja/fasteners/issues/26
+        with fasteners.InterProcessLock(lock_fpath):
 
             if DEBUG:
-                _debug('{} wrote'.format(procid))
-        else:
+                _debug('aquires')
+                _debug('will read {}'.format(gpath))
+                _debug('will write {}'.format(cache_gpath))
+
+            if not exists(cache_gpath):
+                _write_func(gpath, cache_gpath)
+
+                if DEBUG:
+                    _debug('wrote'.format())
+            else:
+                if DEBUG:
+                    _debug('does not need to write'.format())
+
             if DEBUG:
-                _debug('{} does not need to write'.format(procid))
+                _debug('releasing'.format())
 
         if DEBUG:
-            _debug('{} releasing'.format(procid))
-
-    if DEBUG:
-        _debug('{} released'.format(procid))
-
-
-# def _semi_atomic_numpy_save(fpath, data):
-#     """
-#     Save to a temporary file. Then move to `fpath` using an atomic operation.
-
-#     If the file that is being saved to is on the same file system the move
-#     operation is atomic, otherwise it may not be [1].
-
-#     References:
-#         ..[1] https://stackoverflow.com/questions/3716325/is-shutil-move-atomic
-#     """
-
-#     # TODO: use atomicwrites instead
-#     tmp = tempfile.NamedTemporaryFile(delete=False)
-#     try:
-#         # Use temporary files to avoid partially written data
-#         np.save(tmp, data)
-#         tmp.close()
-#         # Use an atomic operation (if possible) to move the temporary saved
-#         # file to the target location.
-#         shutil.move(tmp.name, fpath)
-#     finally:
-#         tmp.close()
-#         if exists(tmp.name):
-#             os.remove(tmp.name)
+            _debug('released'.format())
+    except Exception as ex:
+        if DEBUG:
+            _debug('GOT EXCEPTION: {}'.format(ex))
+    finally:
+        if DEBUG:
+            _debug('finally')
 
 
 class SimpleFrames(Frames):
@@ -598,20 +614,6 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, lossy=True):
         fpath3 = '/tmp/foo.jpg'
         kwimage.imwrite(fpath3, data)
         print(nh.util.get_file_info(fpath3))
-
-    Ignore:
-        du -sh ~/data/vigilant/lemon/images/3857_7_77_42_20190204_54e93edb-df59-4924-b8d6-0b2d451f77d9.ptif
-        du -sh ~/test.cog.tif
-        gdal_translate 3857_7_77_42_20190204_54e93edb-df59-4924-b8d6-0b2d451f77d9.ptif ~/test.cog.tif -co TILED=YES -co COMPRESS=LZW -co COPY_SRC_OVERVIEWS=YES
-        gdal_translate 3857_7_77_42_20190204_54e93edb-df59-4924-b8d6-0b2d451f77d9.ptif ~/test.cog.tif -co TILED=YES -co COMPRESS=JPEG -co COPY_SRC_OVERVIEWS=YES -co PHOTOMETRIC=YCBCR
-
-        gdal_translate foo.png test.cog.tif -co TILED=YES -co COMPRESS=JPEG -co COPY_SRC_OVERVIEWS=YES -co PHOTOMETRIC=YCBCR
-        gdal_translate foo.png test1.cog.tif -co TILED=YES -co COMPRESS=JPEG -co COPY_SRC_OVERVIEWS=YES
-        gdal_translate foo.png test2.cog.tif -co TILED=YES -co COMPRESS=LZW -co COPY_SRC_OVERVIEWS=YES
-
-        python -m ndsampler.validate_cog --verbose test.cog.tif
-        python -m ndsampler.validate_cog --verbose foo.png
-        python -m ndsampler.validate_cog --verbose /home/joncrall/work/lava/_cache/frames/cog/103307_image_00741_eb791c1d70a333627d376337f203554bf5e742b3.cog.tiff
     """
     import gdal
     y_size, x_size, num_bands = data.shape
@@ -648,8 +650,10 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, lossy=True):
     data_set2 = driver2.CreateCopy(fpath, data_set, options=options)
     # OK, so setting things to None turns out to be important. Gah!
     data_set2.FlushCache()
+
     data_set = None
     data_set2 = None
+    driver = driver2 = None
 
     # if False:
     #     z = gdal.Open(fpath, gdal.GA_ReadOnly)
