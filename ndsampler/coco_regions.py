@@ -568,7 +568,7 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
 
 def tabular_coco_targets(dset):
     """
-    Transforms COCO annotations into a tabular form
+    Transforms COCO box annotations into a tabular form
 
     _ = xdev.profile_now(tabular_coco_targets)(dset)
     """

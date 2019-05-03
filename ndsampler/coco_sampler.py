@@ -53,7 +53,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
     def demo(cls, key='shapes', workdir=None, **kw):
         from ndsampler import toydata
         if key == 'shapes':
-            dset = coco_dataset.CocoDataset(toydata.demodata_toy_dset(**kw))
+            shape_dataset = toydata.demodata_toy_dset(**kw)
+            dset = coco_dataset.CocoDataset(shape_dataset)
         elif key == 'photos':
             dset = coco_dataset.CocoDataset.demo(**kw)
             toremove = [ann for ann in dset.anns.values() if 'bbox' not in ann]
@@ -298,8 +299,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             pad (tuple): (height, width) extra context to add to window dims.
                 This helps prevent augmentation from producing boundary effects
 
-            window_dims (tuple): (height, width) overrides the height/width
-                in tr to determine the extracted window size
+            window_dims (tuple | str): (height, width) overrides the height/width
+                in tr to determine the extracted window size. Can also be
+                'extent' or 'square', which determines the final size using
+                target information.
 
             visible_thresh (float): does not return annotations with visibility
                 less than this threshold.
@@ -397,8 +400,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> kwplot.imshow(sample['im'], colorspace='rgb')
             >>> kwplot.show_if_requested()
         """
+        ndim = 2  # number of space-time dimensions (ignore channel)
         if pad is None:
-            pad = (0, 0)
+            pad = 0
+        pad = tuple(_ensure_iterablen(pad, ndim))
+
         gid = tr['gid']
         # Determine the image extent
         img = self.dset.imgs[gid]
@@ -416,15 +422,21 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             center = (tr['cy'], tr['cx'])
             # Determine the requested window size
             if window_dims is None:
-                window_dims = (tr['height'], tr['width'])
-                window_dims = np.ceil(np.array(window_dims)).astype(np.int)
-                window_dims = tuple(window_dims.tolist())
-            elif isinstance(window_dims, six.string_types) and window_dims == 'square':
-                window_dims = (tr['height'], tr['width'])
-                window_dims = np.ceil(np.array(window_dims)).astype(np.int)
-                window_dims = tuple(window_dims.tolist())
-                maxdim = max(window_dims)
-                window_dims = (maxdim, maxdim)
+                window_dims = 'extent'
+
+            if isinstance(window_dims, six.string_types):
+                if window_dims == 'extent':
+                    window_dims = (tr['height'], tr['width'])
+                    window_dims = np.ceil(np.array(window_dims)).astype(np.int)
+                    window_dims = tuple(window_dims.tolist())
+                elif window_dims == 'square':
+                    window_dims = (tr['height'], tr['width'])
+                    window_dims = np.ceil(np.array(window_dims)).astype(np.int)
+                    window_dims = tuple(window_dims.tolist())
+                    maxdim = max(window_dims)
+                    window_dims = (maxdim, maxdim)
+                else:
+                    raise KeyError(window_dims)
 
             data_slice, extra_padding = _get_slice(data_dims, center, window_dims, pad=pad)
 
@@ -435,7 +447,6 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
                 extra_padding = extra_padding + [(0, 0)]  # Handle channels
             im = np.pad(im, extra_padding, **padkw)
 
-        ndim = 2  # number of space-time dimensions (ignore channel)
         st_dims = [(sl.start, sl.stop) for sl in data_slice[0:ndim]]
 
         # Translations for real sub-pixel center positions
@@ -509,7 +520,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         ).params
 
         rel_ssegs = kwimage.PolygonList(sseg_list)
-        rel_kpts = kwimage.PolygonList(kpts_list)
+        rel_kpts = kwimage.PointsList(kpts_list)
         rel_kpts.meta['classes'] = self.kp_classes
 
         annots = {
@@ -526,6 +537,21 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
 
         # Note the center coordinates in the padded sample reference frame
         tr_ = tr.copy()
+
+        main_aid = tr_.get('aid', None)
+        if main_aid is not None:
+            # Determine which (if any) index in "annots" corresponds to the
+            # main aid (if we even have a main aid)
+            cand_idxs = np.where(annots['aids'] == main_aid)[0]
+            if len(cand_idxs) == 0:
+                tr_['annot_idx'] = None
+            elif len(cand_idxs) == 1:
+                tr_['annot_idx'] = cand_idxs[0]
+            else:
+                raise AssertionError('impossible state')
+        else:
+            tr_['annot_idx'] = None
+
         sample = {
             'im': im,
             'tr': tr_,
@@ -670,6 +696,14 @@ def _rectify_slice2(requested_slice, data_dims, pad=None):
     if sum(map(sum, extra_padding)) == 0:
         extra_padding = None
     return data_slice, extra_padding
+
+
+def _ensure_iterablen(scalar, n):
+    try:
+        iter(scalar)
+    except TypeError:
+        return [scalar] * n
+    return scalar
 
 
 if __name__ == '__main__':
