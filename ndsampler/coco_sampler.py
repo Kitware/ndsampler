@@ -73,7 +73,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         self.dset = dset
         self.regions = None
         self.frames = None
-        self.backend = backend
+        self._backend = backend  # save until we init the frames
         self.verbose = verbose
         self.BACKGROUND_CLASS_ID = None
 
@@ -90,7 +90,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         self.frames = coco_frames.CocoFrames(
             self.dset,
             workdir=self.workdir,
-            backend=self.backend,
+            backend=self._backend,
         )
 
         self.catgraph = self.regions.catgraph
