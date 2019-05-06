@@ -299,8 +299,11 @@ class Frames(object):
                 print('BUILDING COG REPRESENTATION')
                 print('gpath = {!r}'.format(gpath))
                 if DEBUG > 1:
-                    import netharn as nh
-                    print(' * info(gpath) = ' + ub.repr2(nh.util.get_file_info(gpath)))
+                    try:
+                        import netharn as nh
+                        print(' * info(gpath) = ' + ub.repr2(nh.util.get_file_info(gpath)))
+                    except ImportError:
+                        pass
 
             gpath_is_cog = not bool(errors)
             if gpath_is_cog:
@@ -312,8 +315,11 @@ class Frames(object):
             if DEBUG:
                 print('cog_gpath = {!r}'.format(cog_gpath))
                 if DEBUG > 1:
-                    import netharn as nh
-                    print(' * info(cog_gpath) = ' + ub.repr2(nh.util.get_file_info(cog_gpath)))
+                    try:
+                        import netharn as nh
+                        print(' * info(cog_gpath) = ' + ub.repr2(nh.util.get_file_info(cog_gpath)))
+                    except ImportError:
+                        pass
                 print('</DEBUG INFO>')
 
         file = LazyGDalFrameFile(cog_gpath)
