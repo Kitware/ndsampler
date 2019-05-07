@@ -569,7 +569,7 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5):
         'anchors': anchors,
         'gsize': gsize,
         'n_imgs': n_imgs,
-        'categories': catpats,
+        'categories': catpats.categories,
     }
     cacher = ub.Cacher('toy_dset_v3', dpath=ub.ensuredir(dpath, 'cache'),
                        cfgstr=ub.repr2(cfg), verbose=3, enabled=0)

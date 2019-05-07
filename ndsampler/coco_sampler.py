@@ -546,13 +546,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             # main aid (if we even have a main aid)
             cand_idxs = np.where(annots['aids'] == main_aid)[0]
             if len(cand_idxs) == 0:
-                tr_['annot_idx'] = None
+                tr_['annot_idx'] = -1
             elif len(cand_idxs) == 1:
                 tr_['annot_idx'] = cand_idxs[0]
             else:
                 raise AssertionError('impossible state')
         else:
-            tr_['annot_idx'] = None
+            tr_['annot_idx'] = -1
 
         sample = {
             'im': im,
