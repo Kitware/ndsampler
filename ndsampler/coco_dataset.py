@@ -943,6 +943,12 @@ class MixinCocoExtras(object):
         Ensuring `simple=True` should result in newer saner behavior that will
         likely be backwards compatible.
 
+        TODO:
+            - [X] Simple case where we relabel names with no conflicts
+            - [ ] Case where annotation labels need to change to be coarser
+                    - dev note: see internal libraries for work on this
+            - [ ] Other cases
+
         Args:
             mapper (dict or Function): maps old names to new names.
             strict (bool): if True, fails if mapper doesnt map all classes
