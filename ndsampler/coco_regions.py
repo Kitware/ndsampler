@@ -290,6 +290,8 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
 
     def get_negative(self, index=None, rng=None):
         """
+        Get localization information for a negative region
+
         Args:
             index (int or None): indexes into the current negative pool
                 or if None returns a random negative
@@ -352,6 +354,8 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
 
     def get_positive(self, index=None, rng=None):
         """
+        Get localization information for a positive region
+
         Args:
             index (int or None): indexes into the current positive pool
                 or if None returns a random negative
@@ -377,6 +381,21 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
 
         tr = self.targets.iloc[index]
         return tr
+
+    def get_item(self, index, rng=None):
+        """
+        Loads from positives and then negatives.
+        """
+        if index is None:
+            rng = kwarray.ensure_rng(rng)
+            index = rng.randint(0, self.n_samples)
+
+        if index < self.n_positives:
+            sample = self.get_positive(index, rng=rng)
+        else:
+            index = index - self.n_positives
+            sample = self.get_negative(index, rng=rng)
+        return sample
 
     def _random_negatives(self, num, exact=False, neg_anchors=None,
                           window_size=None, rng=None, thresh=0.0):
