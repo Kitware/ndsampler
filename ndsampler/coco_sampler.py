@@ -481,6 +481,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         sseg_list = []
         kpts_list = []
 
+        # TODO: make it optional to load these annotions (as it may be slow)
+
         coco_dset = self.dset
         kp_classes = self.kp_classes
         for aid in overlap_aids:
