@@ -791,6 +791,9 @@ class MixinCocoExtras(object):
     def _resolve_to_cid(self, id_or_name_or_dict):
         """
         Ensures output is an category id
+
+        Note: this does not resolve aliases (yet), for that see _alias_to_cat
+        Todo: we could maintain an alias index to make this fast
         """
         if isinstance(id_or_name_or_dict, INT_TYPES):
             resolved_id = id_or_name_or_dict
@@ -831,6 +834,60 @@ class MixinCocoExtras(object):
         else:
             resolved_ann = aid_or_ann
         return resolved_ann
+
+    def _alias_to_cat(self, alias_catname):
+        """
+        Lookup a coco-category via its name or an "alias" name.
+
+        Args:
+            alias_catname (str): category name or alias
+
+        Returns:
+            dict: coco category dictionary
+
+        Example:
+            >>> self = CocoDataset.demo()
+            >>> cat = self._alias_to_cat('human')
+            >>> import pytest
+            >>> with pytest.raises(KeyError):
+            >>>     self._alias_to_cat('person')
+            >>> cat['alias'] = ['person']
+            >>> self._alias_to_cat('person')
+            >>> cat['alias'] = 'person'
+            >>> self._alias_to_cat('person')
+        """
+        if alias_catname in self.name_to_cat:
+            fixed_catname = alias_catname
+        else:
+            # Try to find an alias
+            fixed_catname = None
+            for cat in self.cats.values():
+                alias_list = cat.get('alias', [])
+                if isinstance(alias_list, six.string_types):
+                    alias_list = [alias_list]
+                assert isinstance(alias_list, list)
+                alias_list = alias_list + [cat['name']]
+                for alias in alias_list:
+                    if alias_catname.lower() == alias.lower():
+                        fixed_catname = cat['name']
+                        break
+                if fixed_catname is not None:
+                    break
+            # if fixed_catname is None:
+            #     # one last try
+            #     for cat in dset.cats.values():
+            #         alias_list = cat.get('alias', []) + [cat['supercategory']]
+            #         assert isinstance(alias_list, list)
+            #         for alias in alias_list:
+            #             if alias_catname.lower() == alias.lower():
+            #                 fixed_catname = cat['supercategory']
+            #                 break
+            #         if fixed_catname is not None:
+            #             break
+
+            if fixed_catname is None:
+                raise KeyError('Unknown category: {}'.format(alias_catname))
+        return self.name_to_cat[fixed_catname]
 
     def category_graph(self):
         """
