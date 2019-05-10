@@ -13,7 +13,9 @@ Dataset Spec:
                 'name': <str:>,
                 'supercategory': str  # optional
 
-                # TODO: need more support for these
+                # Note: this is the original way to specify keypoint
+                # categories, but our implementation supports a more general
+                # alternative schema
                 "keypoints": [kpname_1, ..., kpname_K], # length <k> array of keypoint names
                 "skeleton": [(kx_a1, kx_b1), ..., (kx_aE, kx_bE)], # list of edge pairs (of keypoint indices), defining connectivity of keypoints.
             },
@@ -33,7 +35,7 @@ Dataset Spec:
                 "caption": str,  # an optional text caption for this annotation
                 "iscrowd" : <0 or 1>,  # denotes if the annotation covers a single object (0) or multiple objects (1)
                 "keypoints" : [x1,y1,v1,...,xk,yk,vk],
-                'segmentation': <RunLengthEncoding | Polygon>,  # todo: define formats
+                'segmentation': <RunLengthEncoding | Polygon>,  # formats are defined bellow
             },
             ...
         ],
@@ -50,6 +52,10 @@ Dataset Spec:
 
         Note: the original coco spec does not allow for holes in polygons.
 
+        (PENDING) We also allow a non-standard dictionary encoding of polygons
+            {'exterior': [(x1, y1)...],
+             'interiors': [[(x1, y1), ...], ...]}
+
     RunLengthEncoding:
         The RLE can be in a special bytes encoding or in a binary array
         encoding. We reuse the original C functions are in [2] in
@@ -64,6 +70,39 @@ Dataset Spec:
             For compatibility with the COCO specs ensure the binary flags
             for these functions are set to true.
 
+    Keypoints:
+        (PENDING)
+        Annotation keypoints may also be specified in this non-standard (but
+        ultimately more general) way:
+
+        'annotations': [
+            {
+                'keypoints': [
+                    {
+                        'xy': <x1, y1>,
+                        'visible': <0 or 1 or 2>,
+                        'keypoint_category_id': <kp_cid>,
+                    }, ...
+                ]
+            }, ...
+        ],
+        'keypoint_categories': [{
+            'name': <str>,
+            'id': <int>,  # an id for this keypoint category
+            'supercategory': <kp_name>  # name of coarser parent keypoint class (for heirarchical keypoints)
+            'reflection_id': <kp_cid>  # specify only if the keypoint id would be swapped with another keypoint type
+        },...
+        ]
+
+        In this scheme the "keypoints" property of each annotation (which used
+        to be a list of floats) is now specified as a list of dictionaries that
+        specify each keypoints location, id, and visibility explicitly. This
+        allows for things like non-unique keypoints, partial keypoint
+        annotations. This also removes the ordering requirement, which makes it
+        simpler to keep track of each keypoints class type.
+
+        We also have a new top-level dictionary to specify all the possible
+        keypoint categories.
 
 References:
     ..[1] http://cocodataset.org/#format-data
@@ -1281,6 +1320,12 @@ class MixinCocoDraw(object):
     """
     Matplotlib / display functionality
     """
+
+    def imread(self, gid):
+        """
+        Loads a particular image
+        """
+        pass
 
     def show_image(self, gid=None, aids=None, aid=None, **kwargs):
         """
