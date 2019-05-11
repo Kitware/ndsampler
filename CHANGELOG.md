@@ -7,6 +7,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## Version 0.2.0
 
 ### Added
+* Add `CocoDataset.load_annot_sample`, which helps load a chip for a specific annotation. (Note: this is less efficient than using the CocoSampler)
 * Add `Regions.get_item`
 * GDAL COG-backend for CocoFrames
 * `CocoDataset.remove_images`

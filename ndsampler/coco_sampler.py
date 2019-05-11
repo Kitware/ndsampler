@@ -568,6 +568,96 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         return sample
 
 
+def padded_slice(data, in_slice, ndim=None, pad_slice=None,
+                 pad_mode='constant', **padkw):
+    """
+    Allows slices with out-of-bound coordinates.  Any out of bounds coordinate
+    will be sampled via padding.
+
+    Note:
+        Negative slices have a different meaning here then they usually do.
+        Normally, they indicate a wrap-around or a reversed stride, but here
+        they index into out-of-bounds space (which depends on the pad mode).
+        For example a slice of -2:1 literally samples two pixels to the left of
+        the data and one pixel from the data, so you get two padded values and
+        one data value.
+
+    Args:
+        data (Sliceable[T]): data to slice into. Any channels must be the last dimension.
+        in_slice (Tuple[slice, ...]): slice for each dimensions
+        ndim (int): number of spatial dimensions
+        pad_slice (List[int|Tuple]): additional padding of the slice
+
+    Returns:
+        Tuple[Sliceable, Dict] :
+
+            data_sliced: subregion of the input data (possibly with padding,
+                depending on if the original slice went out of bounds)
+
+            transform : information on how to return to the original coordinates
+
+                Currently a dict containing:
+                    st_dims: a list indicating the low and high space-time
+                        coordinate values of the returned data slice.
+
+    Example:
+        >>> data = np.arange(5)
+        >>> in_slice = [slice(-2, 7)]
+
+        >>> data_sliced, transform = padded_slice(data, in_slice)
+        >>> print(ub.repr2(data_sliced, with_dtype=False))
+        np.array([0, 0, 0, 1, 2, 3, 4, 0, 0])
+
+        >>> data_sliced, transform = padded_slice(data, in_slice, pad_slice=(3, 3))
+        >>> print(ub.repr2(data_sliced, with_dtype=False))
+        np.array([0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 0, 0, 0, 0, 0])
+
+        >>> data_sliced, transform = padded_slice(data, slice(3, 4), pad_slice=[(1, 0)])
+        >>> print(ub.repr2(data_sliced, with_dtype=False))
+        np.array([2, 3])
+
+    """
+    if isinstance(in_slice, slice):
+        in_slice = [in_slice]
+
+    ndim = len(in_slice)
+
+    data_dims = data.shape[:ndim]
+
+    low_dims = [sl.start for sl in in_slice]
+    high_dims = [sl.stop for sl in in_slice]
+
+    data_slice, extra_padding = _rectify_slice(data_dims, low_dims, high_dims,
+                                               pad=pad_slice)
+
+    in_slice_clipped = tuple(slice(*d) for d in data_slice)
+    # Get the parts of the image that are in bounds
+    data_clipped = data[in_slice_clipped]
+
+    # Add any padding that is needed to behave like negative dims exist
+    if sum(map(sum, extra_padding)) == 0:
+        # The slice was completely in bounds
+        data_sliced = data_clipped
+    else:
+        if len(data.shape) != len(extra_padding):
+            extra_padding = extra_padding + [(0, 0)]
+        data_sliced = np.pad(data_clipped, extra_padding, mode=pad_mode,
+                             **padkw)
+
+    st_dims = data_slice[0:ndim]
+    pad_dims = extra_padding[0:ndim]
+
+    st_dims = [(s - pad[0], t + pad[1])
+               for (s, t), pad in zip(st_dims, pad_dims)]
+
+    # TODO: return a better transform back to the original space
+    transform = {
+        'st_dims': st_dims,
+        'st_offset': [d[0] for d in st_dims]
+    }
+    return data_sliced, transform
+
+
 def _get_slice(data_dims, center, window_dims, pad=None):
     """
     Finds the slice to sample data around a center in a particular image
@@ -628,7 +718,7 @@ def _get_slice(data_dims, center, window_dims, pad=None):
     return data_slice, extra_padding
 
 
-def _rectify_slice(data_dims, low_dims, high_dims, pad):
+def _rectify_slice(data_dims, low_dims, high_dims, pad=None):
     """
     Given image dimensions, bounding box dimensions, and a padding get the
     corresponding slice from the image and any extra padding needed to achieve
@@ -638,7 +728,8 @@ def _rectify_slice(data_dims, low_dims, high_dims, pad):
         data_dims (tuple): n-dimension data sizes (e.g. 2d height, width)
         low_dims (tuple): bounding box low values (e.g. 2d ymin, xmin)
         high_dims (tuple): bounding box high values (e.g. 2d ymax, xmax)
-        pad (tuple): padding applied to both sides of each dim
+        pad (tuple): (List[int|Tuple]):
+            pad applied to (left and right) / (both) sides of each slice dim
 
     Returns:
         Tuple:
@@ -666,12 +757,20 @@ def _rectify_slice(data_dims, low_dims, high_dims, pad):
     # Determine the real part of the image that can be sliced out
     data_slice = []
     extra_padding = []
-    for D_img, d_low, d_high, d_pad in zip(data_dims, low_dims, high_dims, pad):
+    if pad is None:
+        pad = 0
+    if isinstance(pad, int):
+        pad = [pad] * len(data_dims)
+    # Normalize to left/right pad value for each dim
+    pad_slice = [p if ub.iterable(p) else [p, p] for p in pad]
+
+    # Determine the real part of the image that can be sliced out
+    for D_img, d_low, d_high, d_pad in zip(data_dims, low_dims, high_dims, pad_slice):
         if d_low > d_high:
             raise ValueError('d_low > d_high: {} > {}'.format(d_low, d_high))
         # Determine where the bounds would be if the image size was inf
-        raw_low = d_low - d_pad
-        raw_high = d_high + d_pad
+        raw_low = d_low - d_pad[0]
+        raw_high = d_high + d_pad[1]
         # Clip the slice positions to the real part of the image
         sl_low = min(D_img, max(0, raw_low))
         sl_high = min(D_img, max(0, raw_high))

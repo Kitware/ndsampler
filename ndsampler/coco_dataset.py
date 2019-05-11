@@ -623,7 +623,7 @@ class MixinCocoExtras(object):
         Reads an image from disk and
 
         Args:
-            gid_or_img (gid or dict): image id or image dict
+            gid_or_img (int or dict): image id or image dict
 
         Returns:
             np.ndarray : the image
@@ -637,6 +637,44 @@ class MixinCocoExtras(object):
 
         np_img = kwimage.imread(gpath)
         return np_img
+
+    def load_annot_sample(self, aid_or_ann, image=None, pad=None):
+        """
+        Reads the chip of an annotation. Note this is much less efficient than
+        using a sampler, but it doesn't require disk cache.
+
+        Args:
+            aid_or_int (int or dict): annot id or dict
+            image (ArrayLike, default=None): preloaded image
+                (note: this process is inefficient unless image is specified)
+
+        Example:
+            >>> import ndsampler
+            >>> self = ndsampler.CocoDataset.demo()
+            >>> sample = self.load_annot_sample(2, pad=100)
+            >>> # xdoctest: +REQUIRES(--show)
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> kwplot.imshow(sample['im'])
+            >>> kwplot.show_if_requested()
+        """
+        from ndsampler.coco_sampler import padded_slice
+        ann = self._resolve_to_ann(aid_or_ann)
+        if image is None:
+            image = self.load_image(ann['image_id'])
+
+        x, y, w, h = ann['bbox']
+        in_slice = (
+            slice(int(y), int(np.ceil(y + h))),
+            slice(int(x), int(np.ceil(x + w))),
+        )
+        data_sliced, transform = padded_slice(image, in_slice, pad_slice=pad)
+
+        sample = {
+            'im': data_sliced,
+            'transform': transform,
+        }
+        return sample
 
     @classmethod
     def demo(cls):
