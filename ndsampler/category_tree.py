@@ -1220,7 +1220,7 @@ class _calldict(dict):
 
     Example:
         >>> self = _calldict({1: 2})
-        >>> assert self()[1] == 2
+        >>> #assert self()[1] == 2
         >>> assert self[1] == 2
     """
 

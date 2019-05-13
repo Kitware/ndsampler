@@ -112,9 +112,7 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
         self._negative_pool = None
         self._negative_idx = None
 
-        from ndsampler import category_tree
-        graph = self.dset.category_graph()
-        self.catgraph = category_tree.CategoryTree(graph)
+        self.catgraph = self.dset.object_categories()
         # currently hacked in
         self.BACKGROUND_CLASS_ID = self.catgraph.node_to_id.get('background', 0)
 

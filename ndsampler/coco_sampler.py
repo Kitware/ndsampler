@@ -97,7 +97,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         self.catgraph = self.regions.catgraph
 
         # === Hacked in attributes ===
-        self.kp_classes = self.dset._keypoint_category_names()
+        self.kp_classes = self.dset.keypoint_categories()
         self.BACKGROUND_CLASS_ID = self.regions.BACKGROUND_CLASS_ID  # currently hacked in
 
     @property
@@ -494,7 +494,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
                 if len(coco_kpts) and isinstance(ub.peek(coco_kpts), dict):
                     # new style encoding
                     raise NotImplementedError('new-style')
-                    abs_points = kwimage.Points._from_coco(coco_kpts)
+                    abs_points = kwimage.Points._from_coco(
+                        coco_kpts, classes=kp_classes)
                 else:
                     # using old style coco keypoint encoding, we need look up
                     # keypoint class from object classes and then pass in the

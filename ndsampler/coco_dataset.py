@@ -993,6 +993,49 @@ class MixinCocoExtras(object):
                 graph.add_edge(cat['supercategory'], cat['name'])
         return graph
 
+    def object_categories(self):
+        """
+        Construct a consistent ndsampler representation of object classes
+
+        Returns:
+            nsampler.CategoryTree:
+
+        Example:
+            >>> self = CocoDataset.demo()
+            >>> classes = self.object_categories()
+            >>> print('classes = {}'.format(classes))
+        """
+        import ndsampler
+        graph = self.category_graph()
+        classes = ndsampler.CategoryTree(graph)
+        return classes
+
+    def keypoint_categories(self):
+        """
+        Construct a consistent ndsampler representation of keypoint classes
+
+        Returns:
+            nsampler.CategoryTree:
+
+        Example:
+            >>> self = CocoDataset.demo()
+            >>> classes = self.keypoint_categories()
+            >>> print('classes = {}'.format(classes))
+        """
+        import ndsampler
+        if 'keypoint_categories' in self.dataset:
+            import networkx as nx
+            graph = nx.DiGraph()
+            for cat in self.dataset['keypoint_categories']:
+                graph.add_node(cat['name'], **cat)
+                if 'supercategory' in cat:
+                    graph.add_edge(cat['supercategory'], cat['name'])
+            classes = ndsampler.CategoryTree(graph)
+        else:
+            catnames = self._keypoint_category_names()
+            classes = ndsampler.CategoryTree.coerce(catnames)
+        return classes
+
     def _keypoint_category_names(self):
         """
         Construct keypoint categories names.
