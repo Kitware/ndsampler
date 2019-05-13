@@ -1226,7 +1226,7 @@ class _calldict(dict):
 
     def __call__(self):
         import warnings
-        warnings.warn('Calling as a method has been depricated. '
+        warnings.warn('Calling id_to_idx as a method has been depricated. '
                       'Use this dict as a property')
         return self
 
