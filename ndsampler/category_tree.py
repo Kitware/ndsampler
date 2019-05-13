@@ -164,10 +164,16 @@ class CategoryTree(ub.NiceRepr):
     def cast(cls, data):
         return cls.coerce(data)
 
-    @ub.memoize_method
+    @ub.memoize_property
     def id_to_idx(self):
-        return {cid: self.node_to_idx[node]
-                for cid, node in self.id_to_node.items()}
+        """
+        Example:
+            >>> import ndsampler
+            >>> self = ndsampler.CategoryTree.demo()
+            >>> self.id_to_idx[1]
+        """
+        return _calldict({cid: self.node_to_idx[node]
+                         for cid, node in self.id_to_node.items()})
 
     @ub.memoize_method
     def idx_to_ancestor_idxs(self, include_self=True):
@@ -1181,9 +1187,9 @@ def gini(probs, axis=1, impl=np):
         >>> rng = kwarray.ensure_rng(0)
         >>> probs = torch.softmax(torch.Tensor(rng.rand(3, 10)), 1)
         >>> gini(probs.numpy(), impl=kwarray.ArrayAPI.coerce('numpy'))
-        array([0.896..., 0.890..., 0.892...
+        array...0.896..., 0.890..., 0.892...
         >>> gini(probs, impl=kwarray.ArrayAPI.coerce('torch'))
-        tensor([0.896..., 0.890..., 0.892...
+        tensor...0.896..., 0.890..., 0.892...
     """
     return 1 - impl.sum(probs ** 2, axis=axis)
 
@@ -1196,15 +1202,33 @@ def entropy(probs, axis=1, impl=np):
         >>> rng = kwarray.ensure_rng(0)
         >>> probs = torch.softmax(torch.Tensor(rng.rand(3, 10)), 1)
         >>> entropy(probs.numpy(), impl=kwarray.ArrayAPI.coerce('numpy'))
-        array([3.295..., 3.251..., 3.265...
+        array...3.295..., 3.251..., 3.265...
         >>> entropy(probs, impl=kwarray.ArrayAPI.coerce('torch'))
-        tensor([3.295..., 3.251..., 3.265...
+        tensor...3.295..., 3.251..., 3.265...
     """
     with np.errstate(divide='ignore'):
         logprobs = impl.log2(probs)
         logprobs = impl.nan_to_num(logprobs, copy=False)
         h = -impl.sum(probs * logprobs, axis=axis)
         return h
+
+
+class _calldict(dict):
+    """
+    helper object to maintain backwards compatibility between new and old
+    id_to_idx methods.
+
+    Example:
+        >>> self = _calldict({1: 2})
+        >>> assert self()[1] == 2
+        >>> assert self[1] == 2
+    """
+
+    def __call__(self):
+        import warnings
+        warnings.warn('Calling as a method has been depricated. '
+                      'Use this dict as a property')
+        return self
 
 
 if __name__ == '__main__':

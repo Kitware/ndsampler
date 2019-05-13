@@ -34,7 +34,7 @@ Dataset Spec:
                 "score" : float,
                 "caption": str,  # an optional text caption for this annotation
                 "iscrowd" : <0 or 1>,  # denotes if the annotation covers a single object (0) or multiple objects (1)
-                "keypoints" : [x1,y1,v1,...,xk,yk,vk],
+                "keypoints" : [x1,y1,v1,...,xk,yk,vk], # or new dict-based format
                 'segmentation': <RunLengthEncoding | Polygon>,  # formats are defined bellow
             },
             ...
@@ -82,6 +82,7 @@ Dataset Spec:
                         'xy': <x1, y1>,
                         'visible': <0 or 1 or 2>,
                         'keypoint_category_id': <kp_cid>,
+                        'keypoint_category': <kp_name, optional>,  # this can be specified instead of an id
                     }, ...
                 ]
             }, ...
@@ -992,24 +993,29 @@ class MixinCocoExtras(object):
                 graph.add_edge(cat['supercategory'], cat['name'])
         return graph
 
-    def keypoint_categories(self):
+    def _keypoint_category_names(self):
         """
-        Construct keypoint categories
+        Construct keypoint categories names.
+
+        Uses new-style if possible, otherwise this falls back on old-style.
 
         Returns:
             List[str]: names: list of keypoint category names
 
         Example:
             >>> self = CocoDataset.demo()
-            >>> names = self.keypoint_categories()
+            >>> names = self._keypoint_category_names()
             >>> print(names)
         """
-        names = []
-        cats = sorted(self.dataset['categories'], key=lambda c: c['id'])
-        for cat in cats:
-            if 'keypoints' in cat:
-                names.extend(cat['keypoints'])
-        return names
+        if 'keypoint_categories' in self.dataset:
+            return [c['name'] for c in self.dataset['keypoint_categories']]
+        else:
+            names = []
+            cats = sorted(self.dataset['categories'], key=lambda c: c['id'])
+            for cat in cats:
+                if 'keypoints' in cat:
+                    names.extend(cat['keypoints'])
+            return names
 
     def _lookup_kpnames(self, cid):
         """ Get the keypoint categories for a certain class """

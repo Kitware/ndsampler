@@ -97,7 +97,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         self.catgraph = self.regions.catgraph
 
         # === Hacked in attributes ===
-        self.kp_classes = self.dset.keypoint_categories()
+        self.kp_classes = self.dset._keypoint_category_names()
         self.BACKGROUND_CLASS_ID = self.regions.BACKGROUND_CLASS_ID  # currently hacked in
 
     @property
@@ -490,16 +490,20 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             coco_sseg = ann.get('segmentation', None)
             coco_kpts = ann.get('keypoints', None)
             if coco_kpts is not None:
-                kpnames = coco_dset._lookup_kpnames(ann['category_id'])
-                coco_xyf = np.array(coco_kpts).reshape(-1, 3)
-                # TODO: use Points._from_coco
-                flags = (coco_xyf.T[2] > 0)
-                xy_pts = coco_xyf[flags, 0:2]
-                kpnames = list(ub.compress(kpnames, flags))
-                kp_class_idxs = np.array([kp_classes.index(n) for n in kpnames])
-                abs_points = kwimage.Points(xy=xy_pts,
-                                            class_idxs=kp_class_idxs,
-                                            classes=kp_classes)
+
+                if len(coco_kpts) and isinstance(ub.peek(coco_kpts), dict):
+                    # new style encoding
+                    raise NotImplementedError('new-style')
+                    abs_points = kwimage.Points._from_coco(coco_kpts)
+                else:
+                    # using old style coco keypoint encoding, we need look up
+                    # keypoint class from object classes and then pass in the
+                    # relevant info
+                    kpnames = coco_dset._lookup_kpnames(ann['category_id'])
+                    kp_class_idxs = np.array([kp_classes.index(n) for n in kpnames])
+                    abs_points = kwimage.Points._from_coco(
+                        coco_kpts, kp_class_idxs, kp_classes)
+
                 rel_points = abs_points.translate(offset)
             else:
                 rel_points = None
