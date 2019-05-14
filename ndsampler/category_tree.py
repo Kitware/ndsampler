@@ -63,7 +63,7 @@ class CategoryTree(ub.NiceRepr):
         >>> class_energy = torch.randn(3, len(self))
         >>> class_probs = self.heirarchical_softmax(class_energy, dim=1)
         >>> print(self)
-        <CategoryTree(nNodes=22, maxDepth=6, maxBreadth=4)>
+        <CategoryTree(nNodes=22, maxDepth=6, maxBreadth=4...)>
     """
     def __init__(self, graph=None):
         """
@@ -97,7 +97,7 @@ class CategoryTree(ub.NiceRepr):
 
         Example:
             >>> print(CategoryTree.from_mutex(['a', 'b', 'c']))
-            <CategoryTree(nNodes=3, maxDepth=1, maxBreadth=3)>
+            <CategoryTree(nNodes=3, maxDepth=1, maxBreadth=3...)>
         """
         nodes = list(nodes)
         graph = nx.DiGraph()
@@ -297,10 +297,11 @@ class CategoryTree(ub.NiceRepr):
         self.graph = graph
 
     def __nice__(self):
-        return 'nNodes={}, maxDepth={}, maxBreadth={}'.format(
+        return 'nNodes={}, maxDepth={}, maxBreadth={}, nodes={}'.format(
             self.num_classes,
             tree_depth(self.graph),
             max(it.chain([0], map(len, self.idx_groups))),
+            self.idx_to_node,
         )
 
     def _demo_probs(self, num=5, rng=0, nonrandom=3, hackargmax=True):
@@ -346,7 +347,7 @@ class CategoryTree(ub.NiceRepr):
             >>> from ndsampler.category_tree import *
             >>> self = CategoryTree.demo()
             >>> print('self = {}'.format(self))
-            self = <CategoryTree(nNodes=10, maxDepth=2, maxBreadth=4)>
+            self = <CategoryTree(nNodes=10, maxDepth=2, maxBreadth=4...)>
         """
         if key == 'coco':
             from ndsampler import coco_dataset

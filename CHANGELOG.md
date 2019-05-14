@@ -23,6 +23,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Fixed
 * Fixes for larger images (maybe need to do something else besides memmap)
 * Fixes for kwimage 0.4.0 api changes
+* Fixed issue in region caches when using python 2 and 3
 
 
 ## Version 0.1.0

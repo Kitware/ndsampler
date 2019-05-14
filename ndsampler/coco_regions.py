@@ -192,7 +192,7 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
     def isect_index(self):
         if self._isect_index is None:
             cacher = self._cacher('isect_index', enabled=True)
-            _isect_index = cacher.tryload()
+            _isect_index = cacher.tryload(on_error='clear')
             if _isect_index is None:
                 _isect_index = isect_indexer.FrameIntersectionIndex.from_coco(self.dset)
                 cacher.save(_isect_index)
@@ -219,7 +219,7 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
             if self.verbose:
                 print('Building targets from coco dataset')
             cacher = self._cacher('targets', enabled=True)
-            _targets = cacher.tryload()
+            _targets = cacher.tryload(on_error='clear')
             if _targets is None:
                 _targets = tabular_coco_targets(self.dset)
                 cacher.save(_targets)
@@ -230,7 +230,7 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
     def neg_anchors(self):
         if self._neg_anchors is None:
             cacher = self._cacher('neg_anchors', enabled=True)
-            neg_anchors = cacher.tryload()
+            neg_anchors = cacher.tryload(on_error='clear')
             if neg_anchors is None:
                 neg_anchors = np.vstack([
                     self.targets['width'] / self.targets['img_width'],
