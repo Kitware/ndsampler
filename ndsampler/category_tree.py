@@ -175,6 +175,17 @@ class CategoryTree(ub.NiceRepr):
         return _calldict({cid: self.node_to_idx[node]
                          for cid, node in self.id_to_node.items()})
 
+    @ub.memoize_property
+    def idx_to_id(self):
+        """
+        Example:
+            >>> import ndsampler
+            >>> self = ndsampler.CategoryTree.demo()
+            >>> self.idx_to_id[0]
+        """
+        return [self.node_to_id[node]
+                for node in self.idx_to_node]
+
     @ub.memoize_method
     def idx_to_ancestor_idxs(self, include_self=True):
         """
