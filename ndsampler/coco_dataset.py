@@ -1151,17 +1151,33 @@ class MixinCocoExtras(object):
         old_cats = self.dataset['categories']
 
         if simple:
-            # In the simple case we are just changing the labels, so nothing
-            # special needs to happen.
-            old_cat_names = {cat['name'] for cat in old_cats}
-            assert set(mapper.keys()).issubset(set(old_cat_names))
-            assert not set(mapper.values()).intersection(set(old_cat_names))
-            assert not set(mapper.values()).intersection(set(mapper.keys()))
 
-            for key, value in mapper.items():
-                for cat in self.dataset['categories']:
-                    if cat['name'] == key:
-                        cat['name'] = value
+            # Perform checks to determine what bookkeeping needs to be done
+            orig_names = {cat['name'] for cat in old_cats}
+            src_names = set(mapper.keys())
+            dst_names = set(mapper.values())
+
+            bad_names = src_names - orig_names
+            if bad_names:
+                raise ValueError(
+                    'The following categories to not exist: {}'.format(bad_names))
+
+            has_orig_merges = dst_names.intersection(orig_names)
+            has_src_merges = dst_names.intersection(src_names)
+
+            has_merges = has_orig_merges or has_src_merges
+
+            if not has_merges:
+                # In the simple case we are just changing the labels, so
+                # nothing special needs to happen.
+                for key, value in mapper.items():
+                    for cat in self.dataset['categories']:
+                        if cat['name'] == key:
+                            cat['name'] = value
+            else:
+                raise NotImplementedError(
+                    'Cannot yet handle the case where categories are being merged')
+
         else:
             new_cats = []
             old_cats = self.dataset['categories']
