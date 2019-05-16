@@ -74,11 +74,14 @@ class CategoryTree(ub.NiceRepr):
         if graph is None:
             graph = nx.DiGraph()
         else:
-            if not nx.is_directed_acyclic_graph(graph):
-                raise ValueError('The category graph must a DAG')
-            if not nx.is_forest(graph):
-                raise ValueError('The category graph must be a forest')
-        self.graph = graph
+            if len(graph) > 0:
+                if not nx.is_directed_acyclic_graph(graph):
+                    raise ValueError('The category graph must a DAG')
+                if not nx.is_forest(graph):
+                    raise ValueError('The category graph must be a forest')
+            if not isinstance(graph, nx.Graph):
+                raise TypeError('Input to CategoryTree must be a networkx graph not {}'.format(type(graph)))
+        self.graph = graph  # :type: nx.Graph
         # Note: nodes are class names
         self.id_to_node = None
         self.node_to_id = None
