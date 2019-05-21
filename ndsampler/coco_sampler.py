@@ -400,6 +400,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> kwplot.imshow(sample['im'], colorspace='rgb')
             >>> kwplot.show_if_requested()
         """
+        import skimage
         ndim = 2  # number of space-time dimensions (ignore channel)
         if pad is None:
             pad = 0
@@ -459,88 +460,96 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
 
         # tlbr box in original image space around this sampled patch
         sample_tlbr = kwimage.Boxes([x_start, y_start, x_stop, y_stop], 'tlbr')
-        # Find which bounding boxes are visible in this region
-        overlap_aids = self.regions.overlapping_aids(
-            gid, sample_tlbr, visible_thresh=visible_thresh)
-
-        # Get info about all annotations inside this window
-        overlap_annots = self.dset.annots(overlap_aids)
-        overlap_cids = overlap_annots.cids
-
-        abs_boxes = overlap_annots.boxes
-
-        # overlap_keypoints = [
-        #     for aid in overlap_aids
-        # ]
-        # Transform spatial information to be relative to the sample
 
         offset = np.array([-x_start, -y_start])
-        rel_boxes = abs_boxes.translate(offset)
-
-        # Handle segmentations and keypoints if they exist
-        sseg_list = []
-        kpts_list = []
-
-        # TODO: make it optional to load these annotions (as it may be slow)
-
-        coco_dset = self.dset
-        kp_classes = self.kp_classes
-        for aid in overlap_aids:
-            ann = coco_dset.anns[aid]
-            coco_sseg = ann.get('segmentation', None)
-            coco_kpts = ann.get('keypoints', None)
-            if coco_kpts is not None:
-
-                if len(coco_kpts) and isinstance(ub.peek(coco_kpts), dict):
-                    # new style encoding
-                    raise NotImplementedError('new-style')
-                    abs_points = kwimage.Points._from_coco(
-                        coco_kpts, classes=kp_classes)
-                else:
-                    # using old style coco keypoint encoding, we need look up
-                    # keypoint class from object classes and then pass in the
-                    # relevant info
-                    kpnames = coco_dset._lookup_kpnames(ann['category_id'])
-                    kp_class_idxs = np.array([kp_classes.index(n) for n in kpnames])
-                    abs_points = kwimage.Points._from_coco(
-                        coco_kpts, kp_class_idxs, kp_classes)
-
-                rel_points = abs_points.translate(offset)
-            else:
-                rel_points = None
-
-            if coco_sseg is not None:
-                # x = _coerce_coco_segmentation(coco_sseg, data_dims)
-                # abs_sseg = kwimage.Mask.coerce(coco_sseg, dims=data_dims)
-                abs_sseg = kwimage.MultiPolygon.coerce(coco_sseg, dims=data_dims)
-                # abs_sseg = abs_sseg.to_multi_polygon()
-                rel_sseg = abs_sseg.translate(offset)
-            else:
-                rel_sseg = None
-
-            kpts_list.append(rel_points)
-            sseg_list.append(rel_sseg)
-
-        import skimage
         tf_rel_to_abs = skimage.transform.AffineTransform(
             translation=-offset
         ).params
 
-        rel_ssegs = kwimage.PolygonList(sseg_list)
-        rel_kpts = kwimage.PointsList(kpts_list)
-        rel_kpts.meta['classes'] = self.kp_classes
+        def _populate_overlap():
+            # Find which bounding boxes are visible in this region
+            overlap_aids = self.regions.overlapping_aids(
+                gid, sample_tlbr, visible_thresh=visible_thresh)
 
-        annots = {
-            'aids': np.array(overlap_aids),
-            'cids': np.array(overlap_cids),
+            # Get info about all annotations inside this window
+            overlap_annots = self.dset.annots(overlap_aids)
+            overlap_cids = overlap_annots.cids
 
-            'rel_cxywh': rel_boxes.to_cxywh().data,
-            'abs_cxywh': abs_boxes.to_cxywh().data,
+            abs_boxes = overlap_annots.boxes
 
-            'rel_boxes': rel_boxes,
-            'rel_ssegs': rel_ssegs,
-            'rel_kpts': rel_kpts,
-        }
+            # overlap_keypoints = [
+            #     for aid in overlap_aids
+            # ]
+            # Transform spatial information to be relative to the sample
+
+            rel_boxes = abs_boxes.translate(offset)
+
+            # Handle segmentations and keypoints if they exist
+            sseg_list = []
+            kpts_list = []
+
+            # TODO: make it optional to load these annotions (as it may be slow)
+
+            coco_dset = self.dset
+            kp_classes = self.kp_classes
+            for aid in overlap_aids:
+                ann = coco_dset.anns[aid]
+                coco_sseg = ann.get('segmentation', None)
+                coco_kpts = ann.get('keypoints', None)
+                if coco_kpts is not None:
+
+                    if len(coco_kpts) and isinstance(ub.peek(coco_kpts), dict):
+                        # new style encoding
+                        raise NotImplementedError('new-style')
+                        abs_points = kwimage.Points._from_coco(
+                            coco_kpts, classes=kp_classes)
+                    else:
+                        # using old style coco keypoint encoding, we need look up
+                        # keypoint class from object classes and then pass in the
+                        # relevant info
+                        kpnames = coco_dset._lookup_kpnames(ann['category_id'])
+                        kp_class_idxs = np.array([kp_classes.index(n) for n in kpnames])
+                        abs_points = kwimage.Points._from_coco(
+                            coco_kpts, kp_class_idxs, kp_classes)
+
+                    rel_points = abs_points.translate(offset)
+                else:
+                    rel_points = None
+
+                if coco_sseg is not None:
+                    # x = _coerce_coco_segmentation(coco_sseg, data_dims)
+                    # abs_sseg = kwimage.Mask.coerce(coco_sseg, dims=data_dims)
+                    abs_sseg = kwimage.MultiPolygon.coerce(coco_sseg, dims=data_dims)
+                    # abs_sseg = abs_sseg.to_multi_polygon()
+                    rel_sseg = abs_sseg.translate(offset)
+                else:
+                    rel_sseg = None
+
+                kpts_list.append(rel_points)
+                sseg_list.append(rel_sseg)
+
+            rel_ssegs = kwimage.PolygonList(sseg_list)
+            rel_kpts = kwimage.PointsList(kpts_list)
+            rel_kpts.meta['classes'] = self.kp_classes
+
+            annots = {
+                'aids': np.array(overlap_aids),
+                'cids': np.array(overlap_cids),
+
+                'rel_cxywh': rel_boxes.to_cxywh().data,
+                'abs_cxywh': abs_boxes.to_cxywh().data,
+
+                'rel_boxes': rel_boxes,
+                'rel_ssegs': rel_ssegs,
+                'rel_kpts': rel_kpts,
+            }
+            return annots
+
+        OVERLAP = True
+        if OVERLAP:
+            annots = _populate_overlap()
+        else:
+            annots = None
 
         # Note the center coordinates in the padded sample reference frame
         tr_ = tr.copy()
@@ -555,7 +564,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             elif len(cand_idxs) == 1:
                 tr_['annot_idx'] = cand_idxs[0]
             else:
-                raise AssertionError('impossible state')
+                raise AssertionError('impossible state: len(cand_idxs)={}'.format(len(cand_idxs)))
         else:
             tr_['annot_idx'] = -1
 
