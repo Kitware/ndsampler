@@ -8,6 +8,7 @@ import ndsampler
 
 def access_cache():
     """
+    0.24
     """
     print('Access regions in {}'.format(sys.executable))
     self = ndsampler.CocoSampler.demo(verbose=0).regions
@@ -21,6 +22,19 @@ def access_cache():
     isect_index = self.isect_index
 
     for gid, qtree in isect_index.qtrees.items():
+
+        box = [0, 0, qtree.width, qtree.height]
+        isect_aids = qtree.intersect(box)
+        print('isect_aids = {!r}'.format(isect_aids))
+        if ub.find_duplicates(isect_aids):
+            raise Exception('DUPLICATE AIDS')
+
+        for aid, box in qtree.aid_to_tlbr.items():
+            isect_aids = qtree.intersect(box)
+            if ub.find_duplicates(isect_aids):
+                raise Exception('DUPLICATE AIDS')
+            # print('isect_aids = {!r}'.format(isect_aids))
+
         print('----')
         print('gid = {!r}'.format(gid))
         print('qtree = {!r}'.format(qtree))
@@ -44,16 +58,26 @@ def main():
     # Register scripts for activating python 2/3 virtual envs that have
     # ndsampler installed
 
-    # Hack for Jon's computer
-    activate_cmds = {
-        'python2': 'we py2.7',
-        'python3': 'we venv3.6',
-    }
+    import getpass
+    username = getpass.getuser()
+
+    if username in ['joncrall', 'jon.crall']:
+        # Hack for Jon's computer
+        activate_cmds = {
+            'python2': 'we py2.7',
+            'python3': 'we venv3.6',
+        }
+    else:
+        assert False, 'need to customize activation scripts for your machine'
+        activate_cmds = {
+            'python2': 'source ~/venv27/bin/activate',
+            'python3': 'conda activate py36',
+        }
 
     def run(py):
         bash_cmd = ' && '.join([
             'source $HOME/.bashrc',
-            activate_cmds['python3'],
+            activate_cmds[py],
             'python {} access_cache'.format(script),
         ])
         sh_cmd = 'bash -c "{}"'.format(bash_cmd)
