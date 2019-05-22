@@ -68,6 +68,15 @@ class FrameIntersectionIndex(object):
         qtree = self.qtrees[gid]
         query = box.to_tlbr().data
         isect_aids = sorted(qtree.intersect(query))
+        isect_aids_ = set(isect_aids)
+        if len(isect_aids_) != len(isect_aids):
+            if True:
+                # Hack in a fix
+                import warnings
+                warnings.warn('Is pyqtree bugged. Got duplicate aids. Hacking in a fix.')
+                isect_aids = sorted(isect_aids_)
+            else:
+                raise RuntimeError('Got duplicate aids')
         return isect_aids
 
     def ious(self, gid, box):
