@@ -10,6 +10,15 @@ def access_cache():
     """
     0.24
     """
+
+    def _walk(parent):
+        for node in parent.nodes:
+            item = (node.item, id(parent))
+            yield item
+        for child in parent.children:
+            for item in _walk(child):
+                yield item
+
     print('Access regions in {}'.format(sys.executable))
     self = ndsampler.CocoSampler.demo(verbose=0).regions
 
@@ -22,6 +31,11 @@ def access_cache():
     isect_index = self.isect_index
 
     for gid, qtree in isect_index.qtrees.items():
+
+        # items = sorted([item for item in _walk(qtree)])
+        # print('items = {!r}'.format(items))
+        # if ub.find_duplicates(items):
+        #     raise Exception('DUPLICATE ITEM AIDS')
 
         box = [0, 0, qtree.width, qtree.height]
         isect_aids = qtree.intersect(box)
@@ -89,13 +103,17 @@ def main():
     # Save in python3, load in python2
     print('\n\n--- SAVE Python3, LOAD Python2 ---')
     ub.delete(workdir, verbose=1)
-    py3_info = run('python3')  # NOQA
-    py2_info = run('python2')  # NOQA
+    info = run('python3')  # NOQA
+    assert info['ret'] == 0
+    info = run('python2')  # NOQA
+    assert info['ret'] == 0
 
     print('\n\n--- SAVE Python2, LOAD Python3 ---')
     ub.delete(workdir, verbose=1)  # Clear the cache
-    py2_info = run('python2')  # NOQA
-    py3_info = run('python3')  # NOQA
+    info = run('python2')  # NOQA
+    assert info['ret'] == 0
+    info = run('python3')  # NOQA
+    assert info['ret'] == 0
 
 
 if __name__ == '__main__':
