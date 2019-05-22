@@ -403,9 +403,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         sample = self._load_slice(tr, window_dims, pad, padkw)
 
         if True:
-            annots = self._populate_overlap(tr, sample, visible_thresh)
-
-
+            self._populate_overlap(sample, visible_thresh)
         return sample
 
     def _load_slice(self, tr, window_dims=None, pad=None,
