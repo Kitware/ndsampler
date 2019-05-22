@@ -515,7 +515,7 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
     return img, anns
 
 
-def demodata_toy_dset(gsize=(600, 600), n_imgs=5):
+def demodata_toy_dset(gsize=(600, 600), n_imgs=5, verbose=3):
     """
     Create a toy detection problem
 
@@ -572,7 +572,7 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5):
         'categories': catpats.categories,
     }
     cacher = ub.Cacher('toy_dset_v3', dpath=ub.ensuredir(dpath, 'cache'),
-                       cfgstr=ub.repr2(cfg), verbose=3, enabled=0)
+                       cfgstr=ub.repr2(cfg), verbose=verbose, enabled=0)
 
     img_dpath = ub.ensuredir((dpath, 'imgs_{}_{}'.format(
         cfg['n_imgs'], cacher._condense_cfgstr())))
@@ -585,7 +585,7 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5):
     fg_scale = 0.5
     bg_scale = 0.8
 
-    dataset = cacher.tryload()
+    dataset = cacher.tryload(on_error='clear')
     if dataset is None:
         ub.delete(img_dpath)
         ub.ensuredir(img_dpath)

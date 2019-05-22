@@ -14,7 +14,6 @@ class FrameIntersectionIndex(object):
     Build spatial tree for each frame so we can quickly determine if a random
     negative is too close to a positive. For each frame/image we built a qtree.
 
-
     Example:
         >>> from ndsampler.isect_indexer import *
         >>> import ndsampler
@@ -65,6 +64,17 @@ class FrameIntersectionIndex(object):
         return qtrees
 
     def overlapping_aids(self, gid, box):
+        """
+        Find all annotation-ids within an image that have some overlap with a
+        bounding box.
+
+        Args:
+            gid (int): an image id
+            box (kwimage.Boxes): the specified region
+
+        Returns:
+            List[int]: list of annotation ids
+        """
         qtree = self.qtrees[gid]
         query = box.to_tlbr().data
         isect_aids = sorted(qtree.intersect(query))
@@ -80,6 +90,19 @@ class FrameIntersectionIndex(object):
         return isect_aids
 
     def ious(self, gid, box):
+        """
+        Find overlaping annotations in a specific image and their intersection
+        over union with a a query box.
+
+        Args:
+            gid (int): an image id
+            box (kwimage.Boxes): the specified region
+
+        Returns:
+            Tuple[List[int], ndarray]:
+                isect_aids: list of annotation ids
+                ious: jaccard score for each returned annotation id
+        """
         isect_aids = self.overlapping_aids(gid, box)
         if len(isect_aids):
             boxes1 = box[None, :]

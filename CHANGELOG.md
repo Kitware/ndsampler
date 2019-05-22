@@ -19,6 +19,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * COG format is now defaulted over memmap frames backend
 * Using scalars for `load_sample`'s pad, will now broadcast to appropriate dimensions.
 * Can now poss `window_dims='extent'` to `load_sample`.
+* The on-disk caches in `CocoRegions` can now be explicitly disabled.
+* The on-disk caches in `CocoRegions` now write to `<workdir>/_cache/_coco_regions`
 
 ### Fixed
 * Fixes for larger images (maybe need to do something else besides memmap)

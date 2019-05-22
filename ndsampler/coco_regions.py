@@ -116,6 +116,17 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
         # currently hacked in
         self.BACKGROUND_CLASS_ID = self.catgraph.node_to_id.get('background', 0)
 
+        # A dictionary specifying which on-disk caches are enabled.  By default
+        # all are enabled, but the user can turn these off if they are causing
+        # issues.
+        self._enabled_caches = {
+            'isect_index': True,
+            'targets': True,
+            'neg_anchors': True,
+            '_negative_pool': True,
+            '_pos_select_idxs': True,
+        }
+
     @property
     def classes(self):
         return self.catgraph
@@ -191,7 +202,7 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
     @property
     def isect_index(self):
         if self._isect_index is None:
-            cacher = self._cacher('isect_index', enabled=True)
+            cacher = self._cacher('isect_index')
             _isect_index = cacher.tryload(on_error='clear')
             if _isect_index is None:
                 _isect_index = isect_indexer.FrameIntersectionIndex.from_coco(self.dset)
@@ -218,7 +229,7 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
         if self._targets is None:
             if self.verbose:
                 print('Building targets from coco dataset')
-            cacher = self._cacher('targets', enabled=True)
+            cacher = self._cacher('targets')
             _targets = cacher.tryload(on_error='clear')
             if _targets is None:
                 _targets = tabular_coco_targets(self.dset)
@@ -229,7 +240,7 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
     @property
     def neg_anchors(self):
         if self._neg_anchors is None:
-            cacher = self._cacher('neg_anchors', enabled=True)
+            cacher = self._cacher('neg_anchors')
             neg_anchors = cacher.tryload(on_error='clear')
             if neg_anchors is None:
                 neg_anchors = np.vstack([
@@ -460,57 +471,46 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
             >>> window_dims = (64, 64)
             >>> self._preselect_positives(window_dims=window_dims, verbose=4)
         """
+        if verbose is None:
+            verbose = self.verbose
+
         # HACK: USE A MONKEY PATCHED CUSTOM SAMPLER
         if hasattr(self, 'custom_preselect_positives'):
             self._pos_select_idxs = self.custom_preselect_positives(
                 self, window_dims, rng=rng)
         else:
-            self._pos_select_idxs = np.arange(len(self.targets))
+            if True:
+                self._pos_select_idxs = np.arange(len(self.targets))
+            else:
+                # OLD: NMS-based positive selection
+                # TODO: get a more varied positive sample
+                # TODO: generalize the type of positive sampling.  The setcover
+                # approach with window_dims, only makes sense in the context of
+                # detection.
+                disable = rng is None
+                extra_deps = ub.odict()
+                extra_deps['window_size'] = window_dims
+                extra_deps['num'] = num
+                extra_deps['rng'] = rng
+                cacher = self._cacher('_pos_select_idxs',
+                                      extra_deps=extra_deps, disable=disable,
+                                      verbose=verbose)
+                _pos_select_idxs = cacher.tryload(on_error='clear')
+                if _pos_select_idxs is None:
+                    _pos_select_idxs = select_positive_regions(
+                        self.targets, window_dims=window_dims, rng=rng
+                    )
+                    cacher.save(_pos_select_idxs)
+                self._pos_select_idxs = _pos_select_idxs
+
         n_pos = len(self._pos_select_idxs)
         if verbose:
             print('Preselected {} positives'.format(n_pos))
 
         return n_pos
 
-        # TODO: get a more varied positive sample
-
-        # TODO: generalize the type of positive sampling.  The setcover
-        # approach with window_dims, only makes sense in the context of
-        # detection.
-        if True:
-            if verbose is None:
-                verbose = self.verbose
-            enabled = bool(self.hashid and self.workdir)
-            cfgstr = ''
-            cache_dpath = None
-            if enabled:
-                cfg_parts = ub.odict()
-                cfg_parts['self_hashid'] = self.hashid
-                cfg_parts['window_size'] = window_dims
-                cfg_parts['num'] = num
-                cfgstr = ub.hash_data(cfg_parts)
-                cache_dpath = ub.ensuredir(join(
-                    self.workdir, '_cache', '_targets_v1', '_positives'))
-
-            # TODO: Need to vary the positive selection per-epoch
-            cacher = ub.Cacher('_pos_select_idxs', dpath=cache_dpath,
-                               cfgstr=cfgstr, verbose=verbose,
-                               enabled=enabled)
-
-            _pos_select_idxs = cacher.tryload(on_error='clear')
-            if _pos_select_idxs is None:
-                _pos_select_idxs = select_positive_regions(
-                    self.targets, window_dims=window_dims, rng=rng
-                )
-                cacher.save(_pos_select_idxs)
-            self._pos_select_idxs = _pos_select_idxs
-        else:
-            self._pos_select_idxs = np.arange(self.targets)
-        n_pos = len(self._pos_select_idxs)
-        return n_pos
-
     def _preselect_negatives(self, num, window_dims=None, rng=None,
-                             verbose=None):
+                             thresh=0.3, verbose=None):
         """"
         preload a bunch of negatives
 
@@ -527,12 +527,10 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
         if verbose > 2:
             print('Preselect {} negatives'.format(num))
 
-        enabled = bool(self.hashid and self.workdir and rng is not None)
-        rng = kwarray.ensure_rng(rng)
-        thresh = 0.3
-        cfgstr = ''
-        cache_dpath = None
+        # Explicitly disable caching if rng is not seeded
+        disable = rng is None
 
+        rng = kwarray.ensure_rng(rng)
         if window_dims is not None:
             # TODO: neg_anchors are supposed to be in normalized coordinates IT
             # IS NOT POSSIBLE TO GET NORMALIZE COORDS FROM ABS WINDOW_DIMS HOW
@@ -545,19 +543,16 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
             window_size = None
             neg_anchors = self.neg_anchors
 
-        if enabled:
-            cfg_parts = ub.odict()
-            cfg_parts['self_hashid'] = self.hashid
-            cfg_parts['window_size'] = window_size
-            cfg_parts['neg_anchors'] = ub.hash_data(neg_anchors)
-            cfg_parts['num'] = num
-            cfg_parts['rng'] = ub.hash_data(rng)
-            cfg_parts['thresh'] = ub.hash_data(thresh)
-            cfgstr = ub.hash_data(cfg_parts)
-            cache_dpath = ub.ensuredir(join(
-                self.workdir, '_cache', '_targets_v1', '_negatives'))
-        cacher = ub.Cacher('_negative_pool', dpath=cache_dpath, cfgstr=cfgstr,
-                           verbose=verbose, enabled=enabled)
+        # Setup extra dependencies
+        extra_deps = ub.odict()
+        extra_deps['window_size'] = window_size
+        extra_deps['neg_anchors'] = neg_anchors
+        extra_deps['num'] = num
+        extra_deps['rng'] = rng
+        extra_deps['thresh'] = thresh
+
+        cacher = self._cacher('_negative_pool', extra_deps=extra_deps,
+                              verbose=verbose, disable=disable)
         _negative_pool = cacher.tryload(on_error='clear')
         if _negative_pool is None:
             _negative_pool = self._random_negatives(
@@ -571,15 +566,48 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
             print('Preselected {} negatives'.format(num_neg))
         return num_neg
 
-    def _cacher(self, fname, enabled=True):
-        # common ub.Cacher used for lazy properties
-        enabled = enabled and self.hashid and self.workdir
-        dpath = None
+    def _cacher(self, fname, extra_deps=None, disable=False, verbose=None):
+        """
+        Create a cacher for a known lazy computation using a common hashid.
+
+        If `self.workdir` or `self.hashid` is None, then caches are disabled by
+        default. Caches can be explicitly disabled by setting the appropriate
+        value in the `self._enabled_caches` dictionary.
+
+        Args:
+            fname (str): name of the property we are caching
+            extra_deps (OrderedDict): extra data to contribute to the hashid
+            disable (bool): explicitly disable cache if True, otherwise do
+                normal checks to see if enabled.
+            verbose (bool, default=None): if specified overrides `self.verbose`.
+
+        Returns:
+            ub.Cacher: cacher - if enabled this cacher will minimally depend
+                on the `self.hashid`, but may also depend on extra info.
+        """
+        if verbose is None:
+            verbose = self.verbose
+
+        if not disable and self.hashid and self.workdir:
+            enabled = self._enabled_caches[fname]
+            dpath = join(self.workdir, '_cache', fname)
+        else:
+            dpath = None
+            enabled = False  # forced disable
+
+        cfgstr = None
+
         if enabled:
-            dpath = join(self.workdir, '_cache', '_targets_v1')
-        cacher = ub.Cacher(fname, cfgstr=self.hashid,
-                           dpath=dpath, verbose=self.verbose,
-                           enabled=enabled)
+            if extra_deps is None:
+                extra_deps = ub.odict()
+            elif not isinstance(extra_deps, ub.odict):
+                raise TypeError('Extra dependencies must be an OrderedDict')
+            # always include `self.hashid`
+            extra_deps['self_hashid'] = self.hashid
+            cfgstr = ub.hash_data(extra_deps)
+
+        cacher = ub.Cacher(fname, cfgstr=cfgstr, dpath=dpath,
+                           verbose=self.verbose, protocol=2, enabled=enabled)
         return cacher
 
 

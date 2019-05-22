@@ -1151,6 +1151,10 @@ class MixinCocoExtras(object):
         old_cats = self.dataset['categories']
 
         if simple:
+            # orig_mapper = mapper
+
+            # Ignore identity mappings
+            mapper = {k: v for k, v in mapper.items() if k != v}
 
             # Perform checks to determine what bookkeeping needs to be done
             orig_names = {cat['name'] for cat in old_cats}
