@@ -549,7 +549,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
 
                 if len(coco_kpts) and isinstance(ub.peek(coco_kpts), dict):
                     # new style encoding
-                    raise NotImplementedError('new-style')
+                    # raise NotImplementedError('new-style')
                     abs_points = kwimage.Points._from_coco(
                         coco_kpts, classes=kp_classes)
                 else:

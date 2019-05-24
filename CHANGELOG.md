@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * GDAL COG-backend for CocoFrames
 * `CocoDataset.remove_images`
 * `CocoDataset._alias_to_cat` looks up categories via the alias foreign key
+* Sampler has support for new coco json keypoint structure. 
 
 ### Changed
 * `id_to_idx` now behaves as a property.

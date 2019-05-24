@@ -25,6 +25,7 @@ import six
 import warnings
 from os.path import exists
 from os.path import join
+from ndsampler.utils import util_gdal
 
 if six.PY2:
     from backports.functools_lru_cache import lru_cache
@@ -279,7 +280,7 @@ class Frames(object):
                 raise OSError('Source image gpath={!r} for image_id={!r} does not exist!'.format(gpath, image_id))
 
             # If the file already is a cog, just use it
-            from ndsampler.validate_cog import validate as _validate_cog
+            from ndsampler.utils.validate_cog import validate as _validate_cog
             warnings, errors, details = _validate_cog(gpath)
 
             if 1:
@@ -290,26 +291,28 @@ class Frames(object):
             else:
                 DEBUG = 0
 
-            if DEBUG:
-                print('<DEBUG INFO>')
-                if DEBUG > 2:
-                    print('details = ' + ub.repr2(details))
-                    print('warnings = ' + ub.repr2(warnings))
-                    print('errors (why we need to ensure) = ' + ub.repr2(errors))
-                print('BUILDING COG REPRESENTATION')
-                print('gpath = {!r}'.format(gpath))
-                if DEBUG > 1:
-                    try:
-                        import netharn as nh
-                        print(' * info(gpath) = ' + ub.repr2(nh.util.get_file_info(gpath)))
-                    except ImportError:
-                        pass
-
             gpath_is_cog = not bool(errors)
             if gpath_is_cog:
                 # If we already are a cog, then just use it
+                if DEBUG:
+                    print('<DEBUG INFO>')
+                    print('Coco Image is already a cog, symlinking to cache')
                 ub.symlink(gpath, cog_gpath)
             else:
+                if DEBUG:
+                    print('<DEBUG INFO>')
+                    if DEBUG > 2:
+                        print('details = ' + ub.repr2(details))
+                        print('warnings = ' + ub.repr2(warnings))
+                        print('errors (why we need to ensure) = ' + ub.repr2(errors))
+                    print('BUILDING COG REPRESENTATION')
+                    print('gpath = {!r}'.format(gpath))
+                    if DEBUG > 1:
+                        try:
+                            import netharn as nh
+                            print(' * info(gpath) = ' + ub.repr2(nh.util.get_file_info(gpath)))
+                        except ImportError:
+                            pass
                 self._ensure_cog_representation(gpath, cog_gpath)
 
             if DEBUG:
@@ -322,7 +325,7 @@ class Frames(object):
                         pass
                 print('</DEBUG INFO>')
 
-        file = LazyGDalFrameFile(cog_gpath)
+        file = util_gdal.LazyGDalFrameFile(cog_gpath)
         return file
 
     @staticmethod
@@ -382,7 +385,7 @@ def _cog_cache_write(gpath, cache_gpath):
             file.write('gpath = {}\n'.format(gpath))
             file.write('cache_gpath = {}\n'.format(cache_gpath))
             if not exists(cache_gpath):
-                _imwrite_cloud_optimized_geotiff(cache_gpath, raw_data, lossy=True)
+                util_gdal._imwrite_cloud_optimized_geotiff(cache_gpath, raw_data, lossy=True)
                 if DEBUG:
                     _debug('finished write: {}\n'.format(ub.timestamp()))
             else:
@@ -400,7 +403,7 @@ def _cog_cache_write(gpath, cache_gpath):
     RUN_CORRUPTION_CHECKS = True
     if RUN_CORRUPTION_CHECKS:
         # CHECK THAT THE DATA WAS WRITTEN CORRECTLY
-        file = LazyGDalFrameFile(cache_gpath)
+        file = util_gdal.LazyGDalFrameFile(cache_gpath)
         orig_sum = raw_data.sum()
         cache_sum = file[:].sum()
         if DEBUG:
@@ -563,228 +566,3 @@ def __notes__():
         file = np.memmap(mem_gpath, dtype=img_dtype, shape=img_shape,
                          offset=128, mode='r')
         return file
-
-
-def _imwrite_cloud_optimized_geotiff(fpath, data, lossy=True):
-    """
-    Args:
-        fpath (PathLike):
-        data (ndarray):
-        lossy (bool, default=True): Use lossy compression if True
-
-    References:
-        https://geoexamples.com/other/2019/02/08/cog-tutorial.html#create-a-cog-using-gdal-python
-        http://osgeo-org.1560.x6.nabble.com/gdal-dev-Creating-Cloud-Optimized-GeoTIFFs-td5320101.html
-
-    Notes:
-        conda install gdal
-
-        OR
-
-        sudo apt install gdal-dev
-        pip install gdal ---with special flags, forgot which though, sry
-
-    Example:
-        >>> # DISABLE_DOCTEST
-        >>> from ndsampler.abstract_frames import *
-        >>> from ndsampler.abstract_frames import _imwrite_cloud_optimized_geotiff
-        >>> data = (np.random.rand(1000, 1000, 3) * 255).astype(np.uint8)
-        >>> fpath = '/tmp/foo.cog.tiff'
-
-        >>> _imwrite_cloud_optimized_geotiff(fpath, data, lossy=False)
-        >>> import netharn as nh
-        >>> print(ub.repr2(nh.util.get_file_info(fpath)))
-        >>> from ndsampler.validate_cog import validate as _validate_cog
-        >>> errors = _validate_cog(fpath)
-        >>> warnings, errors, details = _validate_cog(fpath)
-        >>> print('details = ' + ub.repr2(details))
-        >>> print('warnings = ' + ub.repr2(warnings))
-        >>> print('errors = ' + ub.repr2(errors))
-        >>> assert not errors
-
-        >>> _imwrite_cloud_optimized_geotiff(fpath, data, lossy=True)
-        >>> import netharn as nh
-        >>> print(ub.repr2(nh.util.get_file_info(fpath)))
-        >>> from ndsampler.validate_cog import validate as _validate_cog
-        >>> errors = _validate_cog(fpath)
-        >>> warnings, errors, details = _validate_cog(fpath)
-        >>> print('details = ' + ub.repr2(details))
-        >>> print('warnings = ' + ub.repr2(warnings))
-        >>> print('errors = ' + ub.repr2(errors))
-        >>> assert not errors
-
-        fpath2 = '/tmp/foo.png'
-        kwimage.imwrite(fpath2, data)
-        print(nh.util.get_file_info(fpath2))
-
-        fpath3 = '/tmp/foo.jpg'
-        kwimage.imwrite(fpath3, data)
-        print(nh.util.get_file_info(fpath3))
-    """
-    import gdal
-    y_size, x_size, num_bands = data.shape
-
-    if num_bands == 4:
-        # Silently discarding the alpha channel
-        num_bands = 3
-
-    kindsize = (data.dtype.kind, data.dtype.itemsize)
-    if kindsize == ('u', 1):
-        eType = gdal.GDT_Byte
-    else:
-        raise TypeError(kindsize)
-
-    driver = gdal.GetDriverByName(str('MEM'))
-    data_set = driver.Create(str(''), x_size, y_size, num_bands,
-                             eType=eType)
-
-    for i in range(num_bands):
-        band_data = np.ascontiguousarray(data[:, :, i])
-        data_set.GetRasterBand(i + 1).WriteArray(band_data)
-
-    data_set.BuildOverviews(str('NEAREST'), [2, 4, 8, 16, 32, 64])
-
-    if lossy:
-        options = ['COPY_SRC_OVERVIEWS=YES', 'TILED=YES', 'COMPRESS=JPEG', 'PHOTOMETRIC=YCBCR']
-        # options = ['COPY_SRC_OVERVIEWS=YES', 'TILED=YES', 'COMPRESS=JPEG']
-    else:
-        options = ['COPY_SRC_OVERVIEWS=YES', 'TILED=YES', 'COMPRESS=LZW']
-
-    options = list(map(str, options))  # python2.7 support
-
-    driver2 = gdal.GetDriverByName(str('GTiff'))
-    data_set2 = driver2.CreateCopy(fpath, data_set, options=options)
-    # OK, so setting things to None turns out to be important. Gah!
-    data_set2.FlushCache()
-
-    data_set = None
-    data_set2 = None
-    driver = driver2 = None
-
-    # if False:
-    #     z = gdal.Open(fpath, gdal.GA_ReadOnly)
-    #     z.GetRasterBand(1).GetMetadataItem('BLOCK_OFFSET_0_0', 'TIFF')
-    return fpath
-
-
-class LazyGDalFrameFile(ub.NiceRepr):
-    """
-    TODO:
-        - [ ] Move to its own backend module
-        - [ ] When used with COCO, allow the image metadata to populate the
-              height, width, and channels if possible.
-
-    Example:
-        >>> from ndsampler.abstract_frames import *
-        >>> self = LazyGDalFrameFile.demo()
-        >>> cog_fpath = self.cog_fpath
-        >>> print('self = {!r}'.format(self))
-        >>> self[0:3, 0:3]
-        >>> self[:, :, 0]
-        >>> self[0]
-        >>> self[0, 3]
-
-        >>> # import kwplot
-        >>> # kwplot.imshow(self[:])
-    """
-    def __init__(self, cog_fpath):
-        self.cog_fpath = cog_fpath
-
-    @ub.memoize_property
-    def _ds(self):
-        import gdal
-        ds = gdal.Open(self.cog_fpath, gdal.GA_ReadOnly)
-        return ds
-
-    @classmethod
-    def demo(cls):
-        self = SimpleFrames.demo()
-        self = self._load_image_cog(1)
-        return self
-
-    @property
-    def ndim(self):
-        return len(self.shape)
-
-    @property
-    def shape(self):
-        ds = self._ds
-        width = ds.RasterXSize
-        height = ds.RasterYSize
-        C = ds.RasterCount
-        return (height, width, C)
-
-    @property
-    def dtype(self):
-        return np.dtype('uint8')
-
-    def __nice__(self):
-        from os.path import basename
-        return '.../' + basename(self.cog_fpath)
-
-    def __getitem__(self, index):
-        """
-        References:
-            https://gis.stackexchange.com/questions/162095/gdal-driver-create-typeerror
-        """
-        ds = self._ds
-        width = ds.RasterXSize
-        height = ds.RasterYSize
-        C = ds.RasterCount
-
-        if not ub.iterable(index):
-            index = [index]
-
-        index = list(index)
-        if len(index) < 3:
-            n = (3 - len(index))
-            index = index + [None] * n
-
-        ypart = _rectify_slice_dim(index[0], height)
-        xpart = _rectify_slice_dim(index[1], width)
-        channel_part = _rectify_slice_dim(index[2], C)
-        trailing_part = [channel_part]
-
-        if len(trailing_part) == 1:
-            channel_part = trailing_part[0]
-            rb_indices = range(*channel_part.indices(C))
-        else:
-            rb_indices = range(C)
-            assert len(trailing_part) <= 1
-
-        channels = []
-        for i in rb_indices:
-            rb = ds.GetRasterBand(1 + i)
-            xsize = rb.XSize
-            ysize = rb.YSize
-
-            ystart, ystop = map(int, [ypart.start, ypart.stop])
-            ysize = ystop - ystart
-
-            xstart, xstop = map(int, [xpart.start, xpart.stop])
-            xsize = xstop - xstart
-
-            gdalkw = dict(xoff=xstart, yoff=ystart, win_xsize=xsize, win_ysize=ysize)
-            channel = rb.ReadAsArray(**gdalkw)
-            channels.append(channel)
-
-        img_part = np.dstack(channels)
-        return img_part
-
-
-def _rectify_slice_dim(part, D):
-    if part is None:
-        return slice(0, D)
-    elif isinstance(part, slice):
-        start = 0 if part.start is None else max(0, part.start)
-        stop = D if part.stop is None else min(D, part.stop)
-        if stop < 0:
-            stop = D + stop
-        assert part.step is None
-        part = slice(start, stop)
-        return part
-    elif isinstance(part, int):
-        part = slice(part, part + 1)
-    else:
-        raise TypeError(part)
-    return part
