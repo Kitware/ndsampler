@@ -51,17 +51,17 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
 
     @classmethod
     def demo(cls, key='shapes', workdir=None, **kw):
-        from ndsampler import toydata
-        if key == 'shapes':
-            shape_dataset = toydata.demodata_toy_dset(**kw)
-            dset = coco_dataset.CocoDataset(shape_dataset)
-        elif key == 'photos':
-            dset = coco_dataset.CocoDataset.demo(**kw)
+        """
+        Create a toy coco sampler for testing and demo puposes
+
+        SeeAlso:
+            * ndsampler.CocoDataset.demo
+        """
+        dset = coco_dataset.CocoDataset.demo(key=key, **kw)
+        if key == 'photos':
             toremove = [ann for ann in dset.anns.values() if 'bbox' not in ann]
             dset.remove_annotations(toremove)
             dset.add_category('background', id=0)
-        else:
-            raise KeyError(key)
         if workdir is None:
             workdir = ub.ensure_app_cache_dir('ndsampler')
         self = CocoSampler(dset, workdir=workdir)

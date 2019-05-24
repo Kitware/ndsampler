@@ -678,9 +678,26 @@ class MixinCocoExtras(object):
         return sample
 
     @classmethod
-    def demo(cls):
-        dataset = demo_coco_data()
-        self = cls(dataset, tag='demo')
+    def demo(cls, key='photos', **kw):
+        """
+        Create a toy coco dataset for testing and demo puposes
+
+        Args:
+            key (str): either photos or shapes
+
+        Example:
+            >>> print(CocoDataset.demo('photos'))
+            >>> print(CocoDataset.demo('shapes', verbose=0))
+        """
+        if key == 'shapes':
+            from ndsampler import toydata
+            dataset = toydata.demodata_toy_dset(**kw)
+            self = cls(dataset, tag='shapes')
+        elif key == 'photos':
+            dataset = demo_coco_data()
+            self = cls(dataset, tag='demo')
+        else:
+            raise KeyError(key)
         return self
 
     def _build_hashid(self, hash_pixels=True, verbose=0):

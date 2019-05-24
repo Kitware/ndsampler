@@ -339,6 +339,9 @@ class Frames(object):
         """
         _locked_cache_write(_npy_cache_write, gpath, cache_gpath=mem_gpath)
 
+    def precompute(self):
+        raise NotImplementedError()
+
 
 def _cog_cache_write(gpath, cache_gpath):
     """

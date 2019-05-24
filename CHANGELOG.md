@@ -22,6 +22,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Can now poss `window_dims='extent'` to `load_sample`.
 * The on-disk caches in `CocoRegions` can now be explicitly disabled.
 * The on-disk caches in `CocoRegions` now write to `<workdir>/_cache/_coco_regions`
+* `CocoDataset.demo` now can accept 'shapes' or 'photos' as a key
 
 ### Fixed
 * Fixes for larger images (maybe need to do something else besides memmap)
