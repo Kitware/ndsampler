@@ -2514,8 +2514,8 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
             if isinstance(indent, int):
                 indent = ' ' * indent
             dict_lines = []
-            main_keys = ['info', 'licenses', 'categories', 'images',
-                         'annotations']
+            main_keys = ['info', 'licenses', 'categories',
+                         'keypoint_categories', 'images', 'annotations']
             other_keys = sorted(set(self.dataset.keys()) - set(main_keys))
             for key in main_keys:
                 if key not in self.dataset:
@@ -2775,6 +2775,9 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
         new_dataset['categories'] = self.dataset['categories']
         new_dataset['info'] = self.dataset.get('info', [])
         new_dataset['licenses'] = self.dataset.get('licenses', [])
+
+        if 'keypoint_categories' in self.dataset:
+            new_dataset['keypoint_categories'] = self.dataset['keypoint_categories']
 
         gids = sorted(set(gids))
         sub_aids = sorted([aid for gid in gids
