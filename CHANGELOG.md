@@ -48,9 +48,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 * Add a hacky fix for a race condition in AbstractFrames. We should try to fix this more robustly.
-* added `index` to CategoryTree
-* Add ignore_class_idxs to CategoryTree.decision
-* Add always_refine_idxs to CategoryTree.decision
+* Add `index` to CategoryTree
+* Add `ignore_class_idxs` to CategoryTree.decision
+* Add `always_refine_idxs` to CategoryTree.decision
 
 ### Changed
 * Rework construction of CocoDataset.hashid
