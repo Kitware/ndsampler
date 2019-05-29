@@ -40,6 +40,16 @@ Installing gdal is a pain though.
 https://gist.github.com/cspanring/5680334
 
 
+Using conda is relatively simple
+```python
+conda install gdal
+
+# Test that this works
+python -c "from osgeo import gdal; print(gdal)"
+```
+
+
+Also possible to use system packages
 ```python
 # References:
 # https://gis.stackexchange.com/questions/28966/python-gdal-package-missing-header-file-when-installing-via-pip

@@ -2665,6 +2665,8 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
                 ('annotations', []),
             ])
 
+            # TODO: need to handle keypoint_categories
+
             merged_cat_name_to_id = {}
 
             def update_ifnotin(d1, d2):

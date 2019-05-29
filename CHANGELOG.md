@@ -15,6 +15,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Sampler has support for new coco json keypoint structure. 
 
 ### Changed
+* Sampler `load` methods now accept `with_annots` flag.
 * `id_to_idx` now behaves as a property.
 * Removed redundant items from `CategoryTree` serialization in `__json__` and `__getstate__`.
 * COG format is now defaulted over memmap frames backend

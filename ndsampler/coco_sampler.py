@@ -186,27 +186,36 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         full_image = self.frames.load_image(image_id)
         return full_image
 
-    def load_item(self, index, pad=None, window_dims=None):
+    def load_item(self, index, pad=None, window_dims=None, with_annots=True):
         """
         Loads from positives and then negatives.
         """
         if index < self.n_positives:
-            sample = self.load_positive(index, pad=pad, window_dims=window_dims)
+            sample = self.load_positive(index, pad=pad,
+                                        window_dims=window_dims,
+                                        with_annots=with_annots)
         else:
             index = index - self.n_positives
-            sample = self.load_negative(index, pad=pad, window_dims=window_dims)
+            sample = self.load_negative(index, pad=pad,
+                                        window_dims=window_dims,
+                                        with_annots=with_annots)
         return sample
 
-    def load_positive(self, index=None, pad=None, window_dims=None, rng=None):
+    def load_positive(self, index=None, pad=None, window_dims=None,
+                      with_annots=True, rng=None):
         """
         Args:
             index (int): index of positive target
             pad (tuple): (height, width) extra context to add to each size.
                 This helps prevent augmentation from producing boundary effects
-            window_dims (tuple): (height, width).  overwrite the height/width
-                in tr and extract a window around the center of the object
             window_dims (tuple): (height, width) area around the center
                 of the target object to sample.
+            with_annots (bool | str, default=True):
+                if True, also extracts information about any annotation that
+                overlaps the region of interest (subject to visibility_thresh).
+                Can also be a List[str] that specifies which specific subinfo
+                should be extracted. Valid strings in this list are: keypoints
+                and segmenation.
 
         Returns:
             Dict: sample: dict containing keys
@@ -229,10 +238,12 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> kwplot.show_if_requested()
         """
         tr = self.regions.get_positive(index, rng=rng)
-        sample = self.load_sample(tr, pad=pad, window_dims=window_dims)
+        sample = self.load_sample(tr, pad=pad, window_dims=window_dims,
+                                  with_annots=with_annots)
         return sample
 
-    def load_negative(self, index=None, pad=None, window_dims=None, rng=None):
+    def load_negative(self, index=None, pad=None, window_dims=None,
+                      with_annots=True, rng=None):
         """
         Args:
             index (int): if specified loads a specific negative from the
@@ -242,6 +253,12 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
                 This helps prevent augmentation from producing boundary effects
             window_dims (tuple): (height, width) area around the center
                 of the target negative region to sample.
+            with_annots (bool | str, default=True):
+                if True, also extracts information about any annotation that
+                overlaps the region of interest (subject to visibility_thresh).
+                Can also be a List[str] that specifies which specific subinfo
+                should be extracted. Valid strings in this list are: keypoints
+                and segmenation.
 
         Returns:
             Dict: sample: dict containing keys
@@ -278,11 +295,12 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> kwplot.show_if_requested()
         """
         tr = self.regions.get_negative(index, rng=rng)
-        sample = self.load_sample(tr, pad=pad, window_dims=window_dims)
+        sample = self.load_sample(tr, pad=pad, window_dims=window_dims,
+                                  with_annots=with_annots)
         return sample
 
     def load_sample(self, tr, pad=None, window_dims=None, visible_thresh=0.1,
-                    padkw={'mode': 'constant'}):
+                    with_annots=True, padkw={'mode': 'constant'}):
         """
         Loads the volume data associated with the bbox and frame of a target
 
@@ -308,6 +326,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
                 less than this threshold.
 
             padkw (dict): kwargs for `numpy.pad`
+
+            with_annots (bool | str, default=True):
+                if True, also extracts information about any annotation that
+                overlaps the region of interest (subject to visibility_thresh).
+                Can also be a List[str] that specifies which specific subinfo
+                should be extracted. Valid strings in this list are: keypoints
+                and segmenation.
 
         Returns:
             Dict: sample: dict containing keys
@@ -402,8 +427,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         """
         sample = self._load_slice(tr, window_dims, pad, padkw)
 
-        if True:
-            self._populate_overlap(sample, visible_thresh)
+        if with_annots or ub.iterable(with_annots):
+            self._populate_overlap(sample, visible_thresh, with_annots)
         return sample
 
     def _load_slice(self, tr, window_dims=None, pad=None,
@@ -496,8 +521,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         }
         return sample
 
-    def _populate_overlap(self, sample, visible_thresh=0.1):
+    def _populate_overlap(self, sample, visible_thresh=0.1, with_annots=True):
         """
+        Add information about annotations overlapping the sample.
+
+        with_annots can be a + separated string or list of the the special keys:
+            'segmentation' and 'keypoints'.
+
         Example:
             >>> # sample an out of bounds target
             >>> from ndsampler.coco_sampler import *
@@ -507,6 +537,16 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> sample = self._populate_overlap(sample)
             >>> print('sample = {}'.format(ub.repr2(ub.util_dict.dict_diff(sample, ['im']), nl=-1)))
         """
+
+        if with_annots is True:
+            with_annots = ['segmentation', 'keypoints']
+        elif isinstance(with_annots, six.string_types):
+            with_annots = with_annots.split('+')
+
+        if __debug__:
+            for k in with_annots:
+                assert k in ['segmentation', 'keypoints'], 'k={!r}'.format(k)
+
         tr = sample['tr']
         gid = tr['gid']
 
@@ -543,36 +583,35 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         kp_classes = self.kp_classes
         for aid in overlap_aids:
             ann = coco_dset.anns[aid]
-            coco_sseg = ann.get('segmentation', None)
-            coco_kpts = ann.get('keypoints', None)
-            if coco_kpts is not None:
 
-                if len(coco_kpts) and isinstance(ub.peek(coco_kpts), dict):
-                    # new style encoding
-                    # raise NotImplementedError('new-style')
-                    abs_points = kwimage.Points._from_coco(
-                        coco_kpts, classes=kp_classes)
-                else:
-                    # using old style coco keypoint encoding, we need look up
-                    # keypoint class from object classes and then pass in the
-                    # relevant info
-                    kpnames = coco_dset._lookup_kpnames(ann['category_id'])
-                    kp_class_idxs = np.array([kp_classes.index(n) for n in kpnames])
-                    abs_points = kwimage.Points._from_coco(
-                        coco_kpts, kp_class_idxs, kp_classes)
+            rel_points = None
+            if 'keypoints' in with_annots:
+                coco_kpts = ann.get('keypoints', None)
+                if coco_kpts is not None:
+                    if len(coco_kpts) and isinstance(ub.peek(coco_kpts), dict):
+                        # new style encoding
+                        # raise NotImplementedError('new-style')
+                        abs_points = kwimage.Points._from_coco(
+                            coco_kpts, classes=kp_classes)
+                    else:
+                        # using old style coco keypoint encoding, we need look up
+                        # keypoint class from object classes and then pass in the
+                        # relevant info
+                        kpnames = coco_dset._lookup_kpnames(ann['category_id'])
+                        kp_class_idxs = np.array([kp_classes.index(n) for n in kpnames])
+                        abs_points = kwimage.Points._from_coco(
+                            coco_kpts, kp_class_idxs, kp_classes)
+                    rel_points = abs_points.translate(offset)
 
-                rel_points = abs_points.translate(offset)
-            else:
-                rel_points = None
-
-            if coco_sseg is not None:
-                # x = _coerce_coco_segmentation(coco_sseg, data_dims)
-                # abs_sseg = kwimage.Mask.coerce(coco_sseg, dims=data_dims)
-                abs_sseg = kwimage.MultiPolygon.coerce(coco_sseg, dims=data_dims)
-                # abs_sseg = abs_sseg.to_multi_polygon()
-                rel_sseg = abs_sseg.translate(offset)
-            else:
-                rel_sseg = None
+            rel_sseg = None
+            if 'segmentation' in with_annots:
+                coco_sseg = ann.get('segmentation', None)
+                if coco_sseg is not None:
+                    # x = _coerce_coco_segmentation(coco_sseg, data_dims)
+                    # abs_sseg = kwimage.Mask.coerce(coco_sseg, dims=data_dims)
+                    abs_sseg = kwimage.MultiPolygon.coerce(coco_sseg, dims=data_dims)
+                    # abs_sseg = abs_sseg.to_multi_polygon()
+                    rel_sseg = abs_sseg.translate(offset)
 
             kpts_list.append(rel_points)
             sseg_list.append(rel_sseg)
