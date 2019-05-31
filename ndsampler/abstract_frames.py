@@ -350,12 +350,13 @@ class Frames(object):
         """
         _locked_cache_write(_npy_cache_write, gpath, cache_gpath=mem_gpath)
 
-    def prepare(self, workers=0, cache=False):
+    def prepare(self, workers=0):
         """
         Precompute the cached frame conversions
 
         Args:
-            cache (bool): set to true to make this fast
+            workers (int, default=0): number of parallel threads for this
+                io-bound task
 
         Example:
             >>> from ndsampler.abstract_frames import *
@@ -370,21 +371,47 @@ class Frames(object):
             >>> self.prepare()
             >>> self.prepare()
             >>> _ = ub.cmd('tree ' + workdir, verbose=3)
-            >>> _ = ub.cmd('ls ' + self._cache_dpath, verbose=3)
+            >>> _ = ub.cmd('ls ' + self.cache_dpath, verbose=3)
 
         Example:
             >>> from ndsampler.abstract_frames import *
             >>> import ndsampler
             >>> workdir = ub.get_app_cache_dir('ndsampler/tests/test_cog_precomp2')
             >>> ub.delete(workdir)
-            >>> ub.ensuredir(workdir)
+            >>> #
+            >>> ## TEST COG
             >>> sampler = ndsampler.CocoSampler.demo(workdir=workdir, backend='cog')
             >>> self = sampler.frames
+            >>> verify_prepare(self)
+            >>> #### serial, miss
+            >>> ub.delete(self.cache_dpath)
             >>> self.prepare()
+            >>> #### serial, hit
             >>> self.prepare()
+            >>> #### parallel, miss
+            >>> ub.delete(self.cache_dpath)
+            >>> self.prepare(workers=0)
+            >>> #### parallel, hit
+            >>> self.prepare(workers=0)
+            >>> # TEST NPY
+            >>> #
+            >>> sampler = ndsampler.CocoSampler.demo(workdir=workdir, backend='npy')
+            >>> self = sampler.frames
+            >>> verify_prepare(self)
+            >>> #### serial, miss
+            >>> ub.delete(self.cache_dpath)
+            >>> self.prepare()
+            >>> #### serial, hit
+            >>> self.prepare()
+            >>> #### parallel, miss
+            >>> ub.delete(self.cache_dpath)
+            >>> self.prepare(workers=0)
+            >>> #### parallel, hit
+            >>> self.prepare(workers=0)
         """
+        ub.ensuredir(self.cache_dpath)
         hashid = getattr(self, 'hashid', None)
-        stamp = ub.CacheStamp('prep_frames_step_stamp', dpath=self.workdir,
+        stamp = ub.CacheStamp('prep_frames_step_stamp', dpath=self.cache_dpath,
                               cfgstr=hashid)
         stamp.cacher.enabled = bool(hashid)
         if stamp.expired():
