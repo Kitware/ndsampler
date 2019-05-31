@@ -18,6 +18,8 @@ class CocoFrames(abstract_frames.Frames, util.HashIdentifiable):
         >>> import ndsampler
         >>> import ubelt as ub
         >>> workdir = ub.ensure_app_cache_dir('ndsampler')
+        >>> dset = ndsampler.CocoDataset.demo(workdir=workdir)
+        >>> dset._ensure_imgsize()
         >>> self = CocoFrames(dset, workdir=workdir)
         >>> assert self.load_image(1).shape == (512, 512, 3)
         >>> assert self.load_image(1)[:-20, :-10].shape == (492, 502, 3)
