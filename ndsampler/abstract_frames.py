@@ -123,6 +123,17 @@ class Frames(object):
     def _lookup_gpath(self, image_id):
         raise NotImplementedError
 
+    @property
+    def image_ids(self):
+        raise NotImplementedError
+
+    def __len__(self):
+        return len(self.image_ids)
+
+    def __getitem__(self, index):
+        image_id = self.image_ids[index]
+        return self.load_image(image_id)
+
     def _lookup_hashid(self, image_id):
         """
         Get the hashid of a particular image
@@ -339,8 +350,59 @@ class Frames(object):
         """
         _locked_cache_write(_npy_cache_write, gpath, cache_gpath=mem_gpath)
 
-    def precompute(self):
-        raise NotImplementedError()
+    def prepare(self, workers=0, cache=False):
+        """
+        Precompute the cached frame conversions
+
+        Args:
+            cache (bool): set to true to make this fast
+
+        Example:
+            >>> from ndsampler.abstract_frames import *
+            >>> workdir = ub.ensure_app_cache_dir('ndsampler/tests/test_cog_precomp')
+            >>> print('workdir = {!r}'.format(workdir))
+            >>> ub.delete(workdir)
+            >>> ub.ensuredir(workdir)
+            >>> self = SimpleFrames.demo(backend='npy', workdir=workdir)
+            >>> print('self = {!r}'.format(self))
+            >>> print('self.cache_dpath = {!r}'.format(self.cache_dpath))
+            >>> _ = ub.cmd('tree ' + workdir, verbose=3)
+            >>> self.prepare()
+            >>> self.prepare()
+            >>> _ = ub.cmd('tree ' + workdir, verbose=3)
+            >>> _ = ub.cmd('ls ' + self._cache_dpath, verbose=3)
+
+        Example:
+            >>> from ndsampler.abstract_frames import *
+            >>> import ndsampler
+            >>> workdir = ub.get_app_cache_dir('ndsampler/tests/test_cog_precomp2')
+            >>> ub.delete(workdir)
+            >>> ub.ensuredir(workdir)
+            >>> sampler = ndsampler.CocoSampler.demo(workdir=workdir, backend='cog')
+            >>> self = sampler.frames
+            >>> self.prepare()
+            >>> self.prepare()
+        """
+        hashid = getattr(self, 'hashid', None)
+        stamp = ub.CacheStamp('prep_frames_step_stamp', dpath=self.workdir,
+                              cfgstr=hashid)
+        stamp.cacher.enabled = bool(hashid)
+        if stamp.expired():
+            from ndsampler import util_futures
+            from concurrent import futures
+            # Use thread mode, because we are mostly in doing io.
+            executor = util_futures.Executor(mode='thread', max_workers=workers)
+            with executor as executor:
+                job_list = []
+                gids = self.image_ids
+                for image_id in ub.ProgIter(gids, desc='Frames: submit prepare jobs'):
+                    job = executor.submit(self.load_image, image_id, cache=True)
+                    job_list.append(job)
+
+                for job in ub.ProgIter(futures.as_completed(job_list), total=len(gids),
+                                       desc='Frames: collect prepare jobs'):
+                    job.result()
+            stamp.renew()
 
 
 def _cog_cache_write(gpath, cache_gpath):
@@ -499,25 +561,33 @@ class SimpleFrames(Frames):
         >>> assert self.load_region(1, (slice(-20), slice(-10))).shape == (492, 502, 3)
     """
     def __init__(self, id_to_path, id_to_hashid=None, hashid_mode='PATH',
-                 workdir=None):
+                 workdir=None, **kw):
         super(SimpleFrames, self).__init__(id_to_hashid=id_to_hashid,
                                            hashid_mode=hashid_mode,
-                                           workdir=workdir)
+                                           workdir=workdir, **kw)
         self.id_to_path = id_to_path
 
     def _lookup_gpath(self, image_id):
         return self.id_to_path[image_id]
 
+    @ub.memoize_property
+    def image_ids(self):
+        return list(self.id_to_path.keys())
+
     @classmethod
-    def demo(self):
+    def demo(self, **kw):
+        """
+        Get a smple frames object
+        """
         import ndsampler
-        workdir = ub.ensure_app_cache_dir('ndsampler')
         dset = ndsampler.CocoDataset.demo()
         imgs = dset.images()
         id_to_name = imgs.lookup('file_name', keepid=True)
         id_to_path = {gid: join(dset.img_root, name)
                       for gid, name in id_to_name.items()}
-        self = SimpleFrames(id_to_path, workdir=workdir)
+        if kw.get('workdir', None) is None:
+            kw['workdir'] = ub.ensure_app_cache_dir('ndsampler')
+        self = SimpleFrames(id_to_path, **kw)
         return self
 
 

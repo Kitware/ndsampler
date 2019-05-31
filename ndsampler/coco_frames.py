@@ -3,6 +3,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 from . import abstract_frames
 from . import util
 from os.path import join
+import ubelt as ub
 
 
 class CocoFrames(abstract_frames.Frames, util.HashIdentifiable):
@@ -17,8 +18,6 @@ class CocoFrames(abstract_frames.Frames, util.HashIdentifiable):
         >>> import ndsampler
         >>> import ubelt as ub
         >>> workdir = ub.ensure_app_cache_dir('ndsampler')
-        >>> dset = ndsampler.CocoDataset.demo()
-        >>> dset._ensure_imgsize()
         >>> self = CocoFrames(dset, workdir=workdir)
         >>> assert self.load_image(1).shape == (512, 512, 3)
         >>> assert self.load_image(1)[:-20, :-10].shape == (492, 502, 3)
@@ -43,6 +42,10 @@ class CocoFrames(abstract_frames.Frames, util.HashIdentifiable):
         else:
             gpath = img['file_name']
         return gpath
+
+    @ub.memoize_property
+    def image_ids(self):
+        return list(self.dset.imgs.keys())
 
     def _make_hashid(self):
         _hashid = getattr(self.dset, 'hashid', None)

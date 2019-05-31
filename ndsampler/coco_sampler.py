@@ -50,7 +50,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
     """
 
     @classmethod
-    def demo(cls, key='shapes', workdir=None, **kw):
+    def demo(cls, key='shapes', workdir=None, backend=None, **kw):
         """
         Create a toy coco sampler for testing and demo puposes
 
@@ -64,7 +64,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             dset.add_category('background', id=0)
         if workdir is None:
             workdir = ub.ensure_app_cache_dir('ndsampler')
-        self = CocoSampler(dset, workdir=workdir)
+        self = CocoSampler(dset, workdir=workdir, backend=backend)
         return self
 
     def __init__(self, dset, workdir=None, autoinit=True, backend='cog',

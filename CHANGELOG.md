@@ -13,6 +13,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * `CocoDataset.remove_images`
 * `CocoDataset._alias_to_cat` looks up categories via the alias foreign key
 * Sampler has support for new coco json keypoint structure. 
+* Frames now has `prepare` method which safely and quickly prepares the cached representation if needed.
 
 ### Changed
 * Sampler `load` methods now accept `with_annots` flag.
