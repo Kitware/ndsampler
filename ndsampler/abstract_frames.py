@@ -378,41 +378,35 @@ class Frames(object):
             >>> import ndsampler
             >>> workdir = ub.get_app_cache_dir('ndsampler/tests/test_cog_precomp2')
             >>> ub.delete(workdir)
-            >>> #
-            >>> ## TEST COG
-            >>> sampler = ndsampler.CocoSampler.demo(workdir=workdir, backend='cog')
-            >>> self = sampler.frames
-            >>> verify_prepare(self)
-            >>> #### serial, miss
-            >>> ub.delete(self.cache_dpath)
-            >>> self.prepare()
-            >>> #### serial, hit
-            >>> self.prepare()
-            >>> #### parallel, miss
-            >>> ub.delete(self.cache_dpath)
-            >>> self.prepare(workers=0)
-            >>> #### parallel, hit
-            >>> self.prepare(workers=0)
             >>> # TEST NPY
             >>> #
             >>> sampler = ndsampler.CocoSampler.demo(workdir=workdir, backend='npy')
             >>> self = sampler.frames
-            >>> verify_prepare(self)
-            >>> #### serial, miss
-            >>> ub.delete(self.cache_dpath)
-            >>> self.prepare()
-            >>> #### serial, hit
-            >>> self.prepare()
-            >>> #### parallel, miss
-            >>> ub.delete(self.cache_dpath)
-            >>> self.prepare(workers=0)
-            >>> #### parallel, hit
-            >>> self.prepare(workers=0)
+            >>> ub.delete(self.cache_dpath)  # reset
+            >>> self.prepare()  # serial, miss
+            >>> self.prepare()  # serial, hit
+            >>> ub.delete(self.cache_dpath)  # reset
+            >>> self.prepare(workers=3)  # parallel, miss
+            >>> self.prepare(workers=3)  # parallel, hit
+            >>> #
+            >>> ## TEST COG
+            >>> sampler = ndsampler.CocoSampler.demo(workdir=workdir, backend='cog')
+            >>> self = sampler.frames
+            >>> ub.delete(self.cache_dpath)  # reset
+            >>> self.prepare()  # serial, miss
+            >>> self.prepare()  # serial, hit
+            >>> ub.delete(self.cache_dpath)  # reset
+            >>> self.prepare(workers=3)  # parallel, miss
+            >>> self.prepare(workers=3)  # parallel, hit
         """
         ub.ensuredir(self.cache_dpath)
         hashid = getattr(self, 'hashid', None)
-        stamp = ub.CacheStamp('prep_frames_step_stamp', dpath=self.cache_dpath,
+
+        # TODO:
+        #     Add some image preprocessing ability here
+        stamp = ub.CacheStamp('prepare_frames_stamp', dpath=self.cache_dpath,
                               cfgstr=hashid)
+
         stamp.cacher.enabled = bool(hashid)
         if stamp.expired():
             from ndsampler import util_futures
