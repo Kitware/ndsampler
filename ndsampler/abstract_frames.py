@@ -87,6 +87,9 @@ class Frames(object):
     def __init__(self, id_to_hashid=None, hashid_mode='PATH', workdir=None,
                  backend='cog'):
 
+        if backend is None:
+            backend = 'cog'
+
         # self._backend = 'npy'
         self._backend = backend
         assert self._backend in ['cog', 'npy']
