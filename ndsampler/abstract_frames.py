@@ -85,7 +85,7 @@ class Frames(object):
     """
 
     def __init__(self, id_to_hashid=None, hashid_mode='PATH', workdir=None,
-                 backend='cog'):
+                 backend=None):
 
         if backend is None:
             backend = 'cog'
