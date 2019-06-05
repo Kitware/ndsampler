@@ -10,6 +10,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Add `CocoDataset.load_annot_sample`, which helps load a chip for a specific annotation. (Note: this is less efficient than using the CocoSampler)
 * Add `Regions.get_item`
 * GDAL COG-backend for CocoFrames
+* Add `coerce_data` helper module for loading train/vali splits
 * `CocoDataset.remove_images`
 * `CocoDataset._alias_to_cat` looks up categories via the alias foreign key
 * Sampler has support for new coco json keypoint structure. 
