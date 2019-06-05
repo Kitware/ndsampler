@@ -112,9 +112,9 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
         self._negative_pool = None
         self._negative_idx = None
 
-        self.catgraph = self.dset.object_categories()
+        self.classes = self.dset.object_categories()
         # currently hacked in
-        self.BACKGROUND_CLASS_ID = self.catgraph.node_to_id.get('background', 0)
+        self.BACKGROUND_CLASS_ID = self.classes.node_to_id.get('background', 0)
 
         # A dictionary specifying which on-disk caches are enabled.  By default
         # all are enabled, but the user can turn these off if they are causing
@@ -128,8 +128,9 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
         }
 
     @property
-    def classes(self):
-        return self.catgraph
+    def catgraph(self):
+        # Old alias for classes
+        return self.classes
 
     @property
     def n_negatives(self):
