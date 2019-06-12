@@ -688,9 +688,15 @@ class MixinCocoExtras(object):
         Example:
             >>> print(CocoDataset.demo('photos'))
             >>> print(CocoDataset.demo('shapes', verbose=0))
+            >>> print(CocoDataset.demo('shapes256', verbose=0))
+            >>> print(CocoDataset.demo('shapes-8', verbose=0))
         """
-        if key == 'shapes':
+        if key.startswith('shapes'):
             from ndsampler import toydata
+            import parse
+            res = parse.parse('{prefix}{num_imgs:d}', key)
+            if res:
+                kw['n_imgs'] = int(res.named['num_imgs'])
             dataset = toydata.demodata_toy_dset(**kw)
             self = cls(dataset, tag='shapes')
         elif key == 'photos':

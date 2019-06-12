@@ -6,7 +6,15 @@ def coerce_datasets(config, build_hashid=False, verbose=1):
     Coerce train / val / test datasets from standard netharn config keys
 
     Example:
-        >>> import ndsampler
+        >>> import ndsampler.coerce_data
+        >>> config = {'datasets': 'special:shapes'}
+        >>> print('config = {!r}'.format(config))
+        >>> dsets = ndsampler.coerce_data.coerce_datasets(config)
+        >>> print('dsets = {!r}'.format(dsets))
+
+        >>> config = {'datasets': 'special:shapes256'}
+        >>> ndsampler.coerce_data.coerce_datasets(config)
+
         >>> config = {
         >>>     'datasets': ndsampler.CocoDataset.demo('shapes'),
         >>> }
@@ -21,23 +29,37 @@ def coerce_datasets(config, build_hashid=False, verbose=1):
         >>> })
     """
     # Ideally the user specifies a standard train/vali/test split
-    def _rectify_fpath(fpath):
+    def _rectify_fpath(key):
+        fpath = key
         fpath = fpath.lstrip('path:').lstrip('PATH:')
         fpath = ub.expandpath(fpath)
         return fpath
 
     def _ensure_coco(coco):
+        print('coco = {!r}'.format(coco))
         # Map a file path or an in-memory dataset to a CocoDataset
         import ndsampler
         import six
+        from os.path import exists
         if coco is None:
             return None
         elif isinstance(coco, six.string_types):
             fpath = _rectify_fpath(coco)
-            return ndsampler.CocoDataset(fpath)
+            if exists(fpath):
+                # print('read dataset: fpath = {!r}'.format(fpath))
+                coco = ndsampler.CocoDataset(fpath)
+            else:
+                if not coco.lower().startswith('special:'):
+                    import warnings
+                    warnings.warn('warning start dataset codes with special:')
+                    code = coco
+                else:
+                    code = coco.lower()[len('special:'):]
+                coco = ndsampler.CocoDataset.demo(code)
         else:
+            # print('live dataset')
             assert isinstance(coco, ndsampler.CocoDataset)
-            return coco
+        return coco
 
     config = config.copy()
 
@@ -57,15 +79,16 @@ def coerce_datasets(config, build_hashid=False, verbose=1):
 
     # However, sometimes they just specify a single dataset, and we need to
     # make a split for it.
+    print('config = {!r}'.format(config))
     base = _ensure_coco(config.get('datasets', None))
+    print('base = {!r}'.format(base))
     if base is not None:
         if verbose:
             print('Splitting base into train/vali')
-
         # TODO: the actual split may need to be cached.
         split_gids = _split_train_vali_test(base)
-
-        split_gids['train'] += split_gids.pop('test')
+        # if config.get('no_tests'):
+        # split_gids['train'] += split_gids.pop('test')
         for tag in split_gids.keys():
             gids = split_gids[tag]
             subset = base.subset(sorted(gids), copy=True)
@@ -107,7 +130,7 @@ def _catfreq_columns_str(subsets):
     return text
 
 
-def _split_train_vali_test(coco_dset, factor=2):
+def _split_train_vali_test(coco_dset, factor=3):
     """
 
     Args:
@@ -146,14 +169,24 @@ def _split_train_vali_test(coco_dset, factor=2):
     valix = learnx[_valix]
 
     split_gids = {
-        'train': list(ub.unique(ub.take(gids, trainx))),
-        'vali': list(ub.unique(ub.take(gids, valix))),
-        'test': list(ub.unique(ub.take(gids, testx))),
+        'train': sorted(ub.unique(ub.take(gids, trainx))),
+        'vali': sorted(ub.unique(ub.take(gids, valix))),
+        'test': sorted(ub.unique(ub.take(gids, testx))),
     }
+
+    if True:
+        # Hack to favor training a good model over testing it properly The only
+        # real fix to this is to add more data, otherwise its simply a systemic
+        # issue.
+        split_gids['vali'] = sorted(set(split_gids['vali']) - set(split_gids['train']))
+        split_gids['test'] = sorted(set(split_gids['test']) - set(split_gids['train']))
+        split_gids['test'] = sorted(set(split_gids['test']) - set(split_gids['vali']))
 
     if __debug__:
         import itertools as it
         for a, b in it.combinations(split_gids.values(), 2):
-            assert not (set(a) & set(b))
+            if (set(a) & set(b)):
+                print('split_gids = {!r}'.format(split_gids))
+                assert False
 
     return split_gids
