@@ -587,15 +587,17 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5, verbose=3, rng=0,
         'n_imgs': n_imgs,
         'categories': catpats.categories,
         'keypoint_categories': catpats.keypoint_categories,
-        'rng': rng,
+        'rng': ub.hash_data(rng),
     }
     cacher = ub.Cacher('toy_dset_v3', dpath=ub.ensuredir(dpath, 'cache'),
                        cfgstr=ub.repr2(cfg), verbose=verbose, enabled=0)
 
     img_dpath = ub.ensuredir((dpath, 'imgs_{}_{}'.format(
         cfg['n_imgs'], cacher._condense_cfgstr())))
+    print('img_dpath = {!r}'.format(img_dpath))
 
     n_have = len(list(glob.glob(join(img_dpath, '*.png'))))
+    print('n_have = {!r}'.format(n_have))
     # Hack: Only allow cache loading if the data seems to exist
     cacher.enabled = n_have == n_imgs
 
