@@ -23,6 +23,7 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, lossy=True):
 
     Example
         >>> # DISABLE_DOCTEST
+        >>> # xdoctest: +REQUIRES(module:gdal)
         >>> from ndsampler.utils.util_gdal import *  # NOQA
         >>> from ndsampler.utils.util_gdal import _imwrite_cloud_optimized_geotiff
         >>> data = (np.random.rand(1000, 1000, 3) * 255).astype(np.uint8)
@@ -112,6 +113,7 @@ class LazyGDalFrameFile(ub.NiceRepr):
               height, width, and channels if possible.
 
     Example:
+        >>> # xdoctest: +REQUIRES(module:gdal)
         >>> from ndsampler.utils.util_gdal import *  # NOQA
         >>> self = LazyGDalFrameFile.demo()
         >>> cog_fpath = self.cog_fpath

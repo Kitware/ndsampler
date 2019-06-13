@@ -1510,13 +1510,17 @@ class MixinCocoDraw(object):
 
             if 'keypoints' in ann:
                 cid = ann['category_id']
-                try:
-                    kpnames = self._lookup_kpnames(cid)
-                except KeyError:
+                if ann['keypoints'] is None or len(ann['keypoints']) == 0:
+                    try:
+                        kpnames = self._lookup_kpnames(cid)
+                    except KeyError:
+                        kpnames = None
+                    kpts = np.array(ann['keypoints']).reshape(-1, 3)
+                    isvisible = kpts.T[2] > 0
+                    xys = kpts.T[0:2].T[isvisible]
+                else:
                     kpnames = None
-                kpts = np.array(ann['keypoints']).reshape(-1, 3)
-                isvisible = kpts.T[2] > 0
-                xys = kpts.T[0:2].T[isvisible]
+                    xys = None
             else:
                 kpnames = None
                 xys = None
@@ -1563,11 +1567,12 @@ class MixinCocoDraw(object):
                 pt1, pt2 = (x1, y1), (x2, y2)
                 colored_segments[color].append([pt1, pt2])
             if 'keypoints' in ann:
-                keypoints.append(xys)
-                if kwargs.get('show_kpname', show_all):
-                    if kpnames is not None:
-                        for (kp_x, kp_y), kpname in zip(xys, kpnames):
-                            texts.append((kp_x, kp_y, kpname, textkw))
+                if xys:
+                    keypoints.append(xys)
+                    if kwargs.get('show_kpname', show_all):
+                        if kpnames is not None:
+                            for (kp_x, kp_y), kpname in zip(xys, kpnames):
+                                texts.append((kp_x, kp_y, kpname, textkw))
 
             if 'segmentation' in ann:
                 sseg = ann['segmentation']
