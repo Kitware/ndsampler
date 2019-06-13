@@ -362,11 +362,11 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
         }
         anns = [{'bbox': [15, 10, 9, 8],
           'category_name': 'star',
-          'keypoints': [{'xy': [19.5, 14.0]}],
+          'keypoints': [],
           'segmentation': {'counts': '[`06j0000O20N1000e8', 'size': [32, 32]},},
          {'bbox': [11, 20, 7, 7],
           'category_name': 'star',
-          'keypoints': [{'xy': [14.5, 23.5]}],
+          'keypoints': [],
           'segmentation': {'counts': 'g;1m04N0O20N102L[=', 'size': [32, 32]},},
          {'bbox': [4, 4, 8, 6],
           'category_name': 'superstar',
@@ -374,7 +374,7 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
           'segmentation': {'counts': 'U4210j0300O01010O00MVO0ed0', 'size': [32, 32]},},
          {'bbox': [3, 20, 6, 7],
           'category_name': 'star',
-          'keypoints': [{'xy': [6.0, 23.5]}],
+          'keypoints': [],
           'segmentation': {'counts': 'g31m04N000002L[f0', 'size': [32, 32]},},]
 
     Example:
