@@ -697,6 +697,8 @@ class MixinCocoExtras(object):
             res = parse.parse('{prefix}{num_imgs:d}', key)
             if res:
                 kw['n_imgs'] = int(res.named['num_imgs'])
+            if 'rng' not in kw and 'n_imgs' in kw:
+                kw['rng'] = kw['n_imgs']
             dataset = toydata.demodata_toy_dset(**kw)
             self = cls(dataset, tag='shapes')
         elif key == 'photos':

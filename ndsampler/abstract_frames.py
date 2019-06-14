@@ -299,8 +299,13 @@ class Frames(object):
 
             if 1:
                 from multiprocessing import current_process
+                from threading import current_thread
+                is_main = (
+                    current_thread().name == 'MainThread' and
+                    current_process().name == 'MainProcess'
+                )
                 DEBUG = 0
-                if current_process().name == 'MainProcess':
+                if is_main:
                     DEBUG = 2
             else:
                 DEBUG = 0
@@ -409,9 +414,8 @@ class Frames(object):
         #     Add some image preprocessing ability here
         stamp = ub.CacheStamp('prepare_frames_stamp', dpath=self.cache_dpath,
                               cfgstr=hashid)
-
         stamp.cacher.enabled = bool(hashid)
-        if stamp.expired():
+        if stamp.expired() or hashid is None:
             from ndsampler import util_futures
             from concurrent import futures
             # Use thread mode, because we are mostly in doing io.

@@ -39,10 +39,33 @@ class FrameIntersectionIndex(object):
         """
         Args:
             dset (ndsampler.CocoDataset): positive annotation data
+
+        Returns:
+            FrameIntersectionIndex
         """
         self = cls()
         self.qtrees = self._build_index(dset)
         self.all_gids = sorted(self.qtrees.keys())
+        return self
+
+    @classmethod
+    def demo(cls, *args, **kwargs):
+        """
+        Create a demo intersection index.
+
+        Args:
+            *args: see ndsampler.CocoDataset.demo
+            **kwargs: see ndsampler.CocoDataset.demo
+
+        Returns:
+            FrameIntersectionIndex
+        """
+        import ndsampler
+        dset = ndsampler.CocoDataset.demo(*args, **kwargs)
+        dset._ensure_imgsize()
+        dset.remove_annotations([ann for ann in dset.anns.values()
+                                 if 'bbox' not in ann])
+        self = cls.from_coco(dset)
         return self
 
     @staticmethod
@@ -74,19 +97,26 @@ class FrameIntersectionIndex(object):
 
         Returns:
             List[int]: list of annotation ids
+
+        Example:
+            >>> self = FrameIntersectionIndex.demo('shapes128')
+            >>> for gid, qtree in self.qtrees.items():
+            >>>     box = kwimage.Boxes([0, 0, qtree.width, qtree.height], 'xywh')
+            >>>     self.overlapping_aids(gid, box)
         """
         qtree = self.qtrees[gid]
         query = box.to_tlbr().data
-        isect_aids = sorted(qtree.intersect(query))
-        isect_aids_ = set(isect_aids)
-        if len(isect_aids_) != len(isect_aids):
-            if True:
-                # Hack in a fix
-                import warnings
-                warnings.warn('Is pyqtree bugged. Got duplicate aids. Hacking in a fix.')
-                isect_aids = sorted(isect_aids_)
-            else:
-                raise RuntimeError('Got duplicate aids')
+        isect_aids = sorted(set(qtree.intersect(query)))
+        # isect_aids_ = set(isect_aids)
+        # if len(isect_aids_) != len(isect_aids):
+        #     if True:
+        #         # Hack in a fix
+        #         import warnings
+        #         warnings.warn('Is pyqtree bugged. Got duplicate aids. Hacking in a fix.')
+        #         isect_aids = sorted(isect_aids_)
+        #         print('isect_aids = {!r}'.format(isect_aids))
+        #     else:
+        #         raise RuntimeError('Got duplicate aids')
         return isect_aids
 
     def ious(self, gid, box):
