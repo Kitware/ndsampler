@@ -75,7 +75,7 @@ class Executor(object):
     Abstracts Serial, Thread, and Process Executor via arguments.
     """
 
-    def __init__(self, mode='serial', max_workers=0):
+    def __init__(self, mode='thread', max_workers=0):
         from concurrent import futures
         if mode == 'serial' or max_workers == 0:
             backend = SerialExecutor()
@@ -83,6 +83,8 @@ class Executor(object):
             backend = futures.ThreadPoolExecutor(max_workers=max_workers)
         elif mode == 'process':
             backend = futures.ThreadPoolExecutor(max_workers=max_workers)
+        else:
+            raise KeyError(mode)
         self.backend = backend
 
     def __enter__(self):
