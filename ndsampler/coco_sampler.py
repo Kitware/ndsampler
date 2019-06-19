@@ -545,13 +545,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         """
 
         if with_annots is True:
-            with_annots = ['segmentation', 'keypoints']
+            with_annots = ['segmentation', 'keypoints', 'boxes']
         elif isinstance(with_annots, six.string_types):
             with_annots = with_annots.split('+')
 
         if __debug__:
             for k in with_annots:
-                assert k in ['segmentation', 'keypoints'], 'k={!r}'.format(k)
+                assert k in ['segmentation', 'keypoints', 'boxes'], 'k={!r}'.format(k)
 
         tr = sample['tr']
         gid = tr['gid']

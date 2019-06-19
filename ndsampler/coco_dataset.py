@@ -1576,40 +1576,57 @@ class MixinCocoDraw(object):
                             for (kp_x, kp_y), kpname in zip(xys, kpnames):
                                 texts.append((kp_x, kp_y, kpname, textkw))
 
-            if 'segmentation' in ann:
+            if 'segmentation' in ann and kwargs.get('show_segmentation', True):
                 sseg = ann['segmentation']
-
                 # Respect the 'color' attribute of categories
                 catcolor = cat.get('color', None)
 
-                # print('sseg = {!r}'.format(sseg))
-                if isinstance(sseg, dict):
-                    # Handle COCO-RLE-segmentations; convert to raw binary masks
-                    sseg = dict(sseg)
-                    if 'shape' not in sseg and 'size' in sseg:
-                        # NOTE: size here is actually h/w unlike almost
-                        # everywhere else
-                        sseg['shape'] = sseg['size']
-                    if isinstance(sseg['counts'], (six.binary_type, six.text_type)):
-                        mask = kwimage.Mask(sseg, 'bytes_rle').to_c_mask().data
+                HAVE_KWIMAGE = True
+                if HAVE_KWIMAGE:
+                    from kwimage.structs.mask import _coerce_coco_segmentation
+                    catcolor = kwplot.Color(catcolor).as01()
+                    # TODO: Unify masks and polygons into a kwimage
+                    # segmentation class
+                    sseg = _coerce_coco_segmentation(sseg)
+                    if isinstance(sseg, kwimage.Mask):
+                        sseg_masks.append((sseg, catcolor))
                     else:
-                        mask = kwimage.Mask(sseg, 'array_rle').to_c_mask().data
-                    sseg_masks.append((mask, catcolor))
-                elif isinstance(sseg, list):
-                    # Handle COCO-polygon-segmentation
-                    # If the segmentation is a list of polygons
-                    if not (len(sseg) and isinstance(sseg[0], list)):
-                        sseg = [sseg]
-                    for flat in sseg:
-                        poly_xys = np.array(flat).reshape(-1, 2)
+                        # TODO: interior
+                        poly_xys = sseg.data['exterior']
                         polykw = {}
                         if catcolor is not None:
                             polykw['color'] = catcolor
-
                         poly = mpl.patches.Polygon(poly_xys, **polykw)
                         sseg_polys.append(poly)
                 else:
-                    raise TypeError(type(sseg))
+                    # print('sseg = {!r}'.format(sseg))
+                    if isinstance(sseg, dict):
+                        # Handle COCO-RLE-segmentations; convert to raw binary masks
+                        sseg = dict(sseg)
+                        if 'shape' not in sseg and 'size' in sseg:
+                            # NOTE: size here is actually h/w unlike almost
+                            # everywhere else
+                            sseg['shape'] = sseg['size']
+                        if isinstance(sseg['counts'], (six.binary_type, six.text_type)):
+                            mask = kwimage.Mask(sseg, 'bytes_rle').to_c_mask().data
+                        else:
+                            mask = kwimage.Mask(sseg, 'array_rle').to_c_mask().data
+                        sseg_masks.append((mask, catcolor))
+                    elif isinstance(sseg, list):
+                        # Handle COCO-polygon-segmentation
+                        # If the segmentation is a list of polygons
+                        if not (len(sseg) and isinstance(sseg[0], list)):
+                            sseg = [sseg]
+                        for flat in sseg:
+                            poly_xys = np.array(flat).reshape(-1, 2)
+                            polykw = {}
+                            if catcolor is not None:
+                                polykw['color'] = catcolor
+
+                            poly = mpl.patches.Polygon(poly_xys, **polykw)
+                            sseg_polys.append(poly)
+                    else:
+                        raise TypeError(type(sseg))
 
         # Show image
         np_img = self.load_image(img)
@@ -2251,9 +2268,13 @@ class CocoIndex(object):
             try:
                 aid = ann['id']
                 gid = ann['image_id']
-                cid = ann['category_id']
             except KeyError:
                 raise KeyError('Annotation does not have ids {}'.format(ann))
+
+            try:
+                cid = ann['category_id']
+            except KeyError:
+                raise KeyError('Annotation does not have category id {}'.format(ann))
 
             if not isinstance(aid, INT_TYPES):
                 raise TypeError('bad aid={} type={}'.format(aid, type(aid)))
