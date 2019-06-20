@@ -590,6 +590,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         for aid in overlap_aids:
             ann = coco_dset.anns[aid]
 
+            # TODO: it should probably be the regions's responsibilty to load
+            # and return these kwimage data structures.
+
             rel_points = None
             if 'keypoints' in with_annots:
                 coco_kpts = ann.get('keypoints', None)

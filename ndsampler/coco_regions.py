@@ -298,6 +298,27 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
                 overlap_annots = self.dset.annots(overlap_aids)
         return overlap_aids
 
+    def get_segmentations(self, aids):
+        """
+        Returns the segmentations corresponding to a set of annotation ids
+
+        Example:
+            >>> from ndsampler.coco_regions import *
+            >>> from ndsampler import coco_sampler
+            >>> self = coco_sampler.CocoSampler.demo().regions
+            >>> aids = [1, 2]
+        """
+        sseg_list = []
+        for aid in aids:
+            ann = self.dset.anns[aid]
+            coco_sseg = ann.get('segmentation', None)
+            if coco_sseg is None:
+                sseg = None
+            else:
+                sseg = kwimage.MultiPolygon.coerce(coco_sseg)
+            sseg_list.append(sseg)
+        return sseg_list
+
     def get_negative(self, index=None, rng=None):
         """
         Get localization information for a negative region
