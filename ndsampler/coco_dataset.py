@@ -959,12 +959,14 @@ class MixinCocoExtras(object):
             >>> cat['alias'] = 'person'
             >>> self._alias_to_cat('person')
         """
-        if alias_catname in self.name_to_cat:
+        if self.name_to_cat and alias_catname in self.name_to_cat:
             fixed_catname = alias_catname
+            fixed_cat = self.name_to_cat[fixed_catname]
         else:
             # Try to find an alias
             fixed_catname = None
-            for cat in self.cats.values():
+            fixed_cat = None
+            for cat in self.dataset['categories']:
                 alias_list = cat.get('alias', [])
                 if isinstance(alias_list, six.string_types):
                     alias_list = [alias_list]
@@ -972,11 +974,12 @@ class MixinCocoExtras(object):
                 alias_list = alias_list + [cat['name']]
                 for alias in alias_list:
                     if alias_catname.lower() == alias.lower():
+                        fixed_cat = cat
                         fixed_catname = cat['name']
                         break
-                if fixed_catname is not None:
+                if fixed_cat is not None:
                     break
-            # if fixed_catname is None:
+            # if fixed_cat is None:
             #     # one last try
             #     for cat in dset.cats.values():
             #         alias_list = cat.get('alias', []) + [cat['supercategory']]
@@ -988,9 +991,10 @@ class MixinCocoExtras(object):
             #         if fixed_catname is not None:
             #             break
 
-            if fixed_catname is None:
+            if fixed_cat is None:
                 raise KeyError('Unknown category: {}'.format(alias_catname))
-        return self.name_to_cat[fixed_catname]
+
+        return fixed_cat
 
     def category_graph(self):
         """
@@ -1273,6 +1277,44 @@ class MixinCocoExtras(object):
         else:
             self.index.clear()
         self._invalidate_hashid()
+
+    def _ensure_json_serializable(self):
+        # inplace convert any ndarrays to lists
+
+        def _walk_json(data, prefix=[]):
+            items = None
+            if isinstance(data, list):
+                items = enumerate(data)
+            elif isinstance(data, dict):
+                items = data.items()
+            else:
+                raise TypeError(type(data))
+
+            root = prefix
+            level = {}
+            for key, value in items:
+                level[key] = value
+
+            # yield a dict so the user can choose to not walk down a path
+            yield root, level
+
+            for key, value in level.items():
+                if isinstance(value, (dict, list)):
+                    path = prefix + [key]
+                    for _ in _walk_json(value, prefix=path):
+                        yield _
+
+        to_convert = []
+        for root, level in ub.ProgIter(_walk_json(self.dataset), desc='walk json'):
+            for key, value in level.items():
+                if isinstance(value, np.ndarray):
+                    to_convert.append((root, key))
+
+        for root, key in to_convert:
+            d = self.dataset
+            for k in root:
+                d = d[k]
+            d[key] = d[key].tolist()
 
     def _aspycoco(self):
         # Converts to the official pycocotools.coco.COCO object
@@ -2535,7 +2577,7 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
         """
         def _json_dumps(data, indent=None):
             fp = StringIO()
-            json.dump(data, fp, indent=indent)
+            json.dump(data, fp, indent=indent, ensure_ascii=False)
             fp.seek(0)
             text = fp.read()
             return text
@@ -2623,7 +2665,7 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
             if newlines:
                 file.write(self.dumps(indent=indent, newlines=newlines))
             else:
-                json.dump(self.dataset, file, indent=indent)
+                json.dump(self.dataset, file, indent=indent, ensure_ascii=False)
 
     def _check_index(self):
         # We can verify our index invariants by copying the raw dataset and
