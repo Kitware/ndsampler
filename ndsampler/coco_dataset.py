@@ -1576,6 +1576,8 @@ class MixinCocoDraw(object):
                 x1, y1 = ann['line'][0:2]
             elif 'keypoints' in ann:
                 x1, y1 = xys.min(axis=0)
+            else:
+                raise Exception('no bbox, line, or keypoint position')
 
             cat = self.cats[ann['category_id']]
             catname = cat['name']
@@ -1634,7 +1636,7 @@ class MixinCocoDraw(object):
                         sseg_masks.append((sseg, catcolor))
                     else:
                         # TODO: interior
-                        poly_xys = sseg.data['exterior']
+                        poly_xys = sseg.data['exterior'].data
                         polykw = {}
                         if catcolor is not None:
                             polykw['color'] = catcolor
@@ -1702,12 +1704,14 @@ class MixinCocoDraw(object):
         else:
             ax.imshow(np_img)
 
-        title_parts = []
-        if kwargs.get('show_gid', True):
-            title_parts.append('gid={}'.format(gid))
-        if kwargs.get('show_filename', True):
-            title_parts.append(img['file_name'])
-        title = ' '.join(title_parts)
+        title = kwargs.get('title', None)
+        if title is None:
+            title_parts = []
+            if kwargs.get('show_gid', True):
+                title_parts.append('gid={}'.format(gid))
+            if kwargs.get('show_filename', True):
+                title_parts.append(img['file_name'])
+            title = ' '.join(title_parts)
         if title:
             ax.set_title(title)
 

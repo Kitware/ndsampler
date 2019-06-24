@@ -17,6 +17,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Frames now has `prepare` method which safely and quickly prepares the cached representation if needed.
 
 ### Changed
+* Visibility thresh now default to 0.
 * Sampler `load` methods now accept `with_annots` flag.
 * `id_to_idx` now behaves as a property.
 * Removed redundant items from `CategoryTree` serialization in `__json__` and `__getstate__`.

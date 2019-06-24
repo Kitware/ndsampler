@@ -305,7 +305,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
                                   with_annots=with_annots)
         return sample
 
-    def load_sample(self, tr, pad=None, window_dims=None, visible_thresh=0.1,
+    def load_sample(self, tr, pad=None, window_dims=None, visible_thresh=0.0,
                     with_annots=True, padkw={'mode': 'constant'}):
         """
         Loads the volume data associated with the bbox and frame of a target
