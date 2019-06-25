@@ -629,15 +629,27 @@ class MixinCocoExtras(object):
         Returns:
             np.ndarray : the image
         """
+        gpath = self.load_image_fpath(gid_or_img)
+        np_img = kwimage.imread(gpath)
+        return np_img
+
+    def load_image_fpath(self, gid_or_img):
+        """
+        Returns the full path to the image
+
+        Args:
+            gid_or_img (int or dict): image id or image dict
+
+        Returns:
+            PathLike: full path to the image
+        """
         try:
             img = gid_or_img
             gpath = join(self.img_root, img['file_name'])
         except Exception:
             img = self.imgs[gid_or_img]
             gpath = join(self.img_root, img['file_name'])
-
-        np_img = kwimage.imread(gpath)
-        return np_img
+        return gpath
 
     def load_annot_sample(self, aid_or_ann, image=None, pad=None):
         """
@@ -2479,7 +2491,9 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
             if 'img_root' in data:
                 # allow image root to be specified in the dataset
                 _root = data['img_root']
-                if isinstance(_root, six.string_types):
+                if _root is None:
+                    _root = ''
+                elif isinstance(_root, six.string_types):
                     import os
                     _tmp = ub.expandpath(_root)
                     if os.path.exists(_tmp):
@@ -2492,9 +2506,9 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
                 try:
                     img_root = join(root, _root)
                 except Exception:
-                        print('_root = {!r}'.format(_root))
-                        print('root = {!r}'.format(root))
-                        raise
+                    print('_root = {!r}'.format(_root))
+                    print('root = {!r}'.format(root))
+                    raise
             else:
                 img_root = root
 
