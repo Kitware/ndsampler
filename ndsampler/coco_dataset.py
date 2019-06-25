@@ -1734,18 +1734,19 @@ class MixinCocoDraw(object):
             ax.add_collection(poly_col)
 
         # Show all annotations inside it
-        for (x1, y1, catname, textkw) in texts:
-            ax.text(x1, y1, catname, **textkw)
+        if kwargs.get('show_boxes', True):
+            for (x1, y1, catname, textkw) in texts:
+                ax.text(x1, y1, catname, **textkw)
 
-        for color, segments in colored_segments.items():
-            line_col = mpl.collections.LineCollection(segments, 2, color=color)
-            ax.add_collection(line_col)
+            for color, segments in colored_segments.items():
+                line_col = mpl.collections.LineCollection(segments, 2, color=color)
+                ax.add_collection(line_col)
 
-        rect_col = mpl.collections.PatchCollection(rects, match_original=True)
-        ax.add_collection(rect_col)
-        if keypoints:
-            xs, ys = np.vstack(keypoints).T
-            ax.plot(xs, ys, 'bo')
+            rect_col = mpl.collections.PatchCollection(rects, match_original=True)
+            ax.add_collection(rect_col)
+            if keypoints:
+                xs, ys = np.vstack(keypoints).T
+                ax.plot(xs, ys, 'bo')
 
 
 class MixinCocoAddRemove(object):
