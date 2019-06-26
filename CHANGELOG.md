@@ -15,6 +15,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * `CocoDataset._alias_to_cat` looks up categories via the alias foreign key
 * Sampler has support for new coco json keypoint structure. 
 * Frames now has `prepare` method which safely and quickly prepares the cached representation if needed.
+* Add experimental method `CocoDataset._resolve_to_cat` for quick category lookup, may be aliased to lookup category in the future.
 
 ### Changed
 * Visibility thresh now default to 0.

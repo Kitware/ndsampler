@@ -501,6 +501,10 @@ class MixinCocoDepricate(object):
             img = self.imgs[gid]
             img['file_name'] = filename
         """
+        import warnings
+        warnings.warn('DEPRECATED: this method name may be recycled and '
+                      'do something different in a later version',
+                      DeprecationWarning)
         for img in self.imgs.values():
             if filename is not None:
                 fpath = img['file_name']
@@ -522,6 +526,10 @@ class MixinCocoDepricate(object):
             img = self.imgs[gid]
             img['file_name'] = filename
         """
+        import warnings
+        warnings.warn('DEPRECATED: this method name may be recycled and '
+                      'do something different in a later version',
+                      DeprecationWarning)
         for ann in self.anns.values():
             if has is not None:
                 if hasattr(ann, has):
@@ -534,6 +542,8 @@ class MixinCocoDepricate(object):
 
         # DEPRICATE
         """
+        import warnings
+        warnings.warn('DEPRECATED: this method should not be used', DeprecationWarning)
         for gid, img in self.imgs.items():
             aids = self.gid_to_aids.get(gid, [])
             # If there is at least one annotation, always mark as has_annots
@@ -548,6 +558,8 @@ class MixinCocoDepricate(object):
                     img['has_annots'] = None
 
     def _find_bad_annotations(self):
+        import warnings
+        warnings.warn('DEPRECATED: this method should not be used', DeprecationWarning)
         to_remove = []
         for ann in self.dataset['annotations']:
             if ann['image_id'] is None or ann['category_id'] is None:
@@ -567,6 +579,8 @@ class MixinCocoDepricate(object):
             >>> self = CocoDataset.demo()
             >>> self._remove_keypoint_annotations()
         """
+        import warnings
+        warnings.warn('DEPRECATED: this method should not be used', DeprecationWarning)
         to_remove = []
         for ann in self.dataset['annotations']:
             roi_shape = ann.get('roi_shape', None)
@@ -581,7 +595,8 @@ class MixinCocoDepricate(object):
             self._build_index()
 
     def _remove_bad_annotations(self, rebuild=True):
-        # DEPRICATE
+        import warnings
+        warnings.warn('DEPRECATED: this method should not be used', DeprecationWarning)
         to_remove = []
         for ann in self.dataset['annotations']:
             if ann['image_id'] is None or ann['category_id'] is None:
@@ -592,7 +607,8 @@ class MixinCocoDepricate(object):
             self._build_index()
 
     def _remove_radius_annotations(self, rebuild=False):
-        # DEPRICATE
+        import warnings
+        warnings.warn('DEPRECATED: this method should not be used', DeprecationWarning)
         to_remove = []
         for ann in self.dataset['annotations']:
             if 'radius' in ann:
@@ -603,6 +619,8 @@ class MixinCocoDepricate(object):
             self._build_index()
 
     def _remove_empty_images(self):
+        import warnings
+        warnings.warn('DEPRECATED: this method should not be used', DeprecationWarning)
         to_remove = []
         for gid in self.imgs.keys():
             aids = self.gid_to_aids.get(gid, [])
@@ -950,9 +968,58 @@ class MixinCocoExtras(object):
             resolved_ann = aid_or_ann
         return resolved_ann
 
+    def _resolve_to_cat(self, cat_identifier):
+        """
+        Lookup a coco-category dict via its name, alias, or id.
+
+        Args:
+            cat_identifier (int | str | dict): either the category name,
+                alias, or its category_id.
+
+        Raises:
+            KeyError: if the category doesn't exist.
+
+        Notes:
+            If the index is not built, the method will work but may be slow.
+
+        Example:
+            >>> self = CocoDataset.demo()
+            >>> cat = self._resolve_to_cat('human')
+            >>> import pytest
+            >>> assert self._resolve_to_cat(cat['id']) is cat
+            >>> assert self._resolve_to_cat(cat) is cat
+            >>> with pytest.raises(KeyError):
+            >>>     self._resolve_to_cat(32)
+            >>> self.index.clear()
+            >>> assert self._resolve_to_cat(cat['id']) is cat
+            >>> with pytest.raises(KeyError):
+            >>>     self._resolve_to_cat(32)
+        """
+        if isinstance(cat_identifier, INT_TYPES):
+            if self.cats:
+                cat = self.cats[cat_identifier]
+            else:
+                # If the index is not built
+                found = None
+                for cat in self.dataset['categories']:
+                    if cat['id'] == cat_identifier:
+                        found = cat
+                        break
+                if found is None:
+                    raise KeyError(
+                        'Cannot find a category with id={}'.format(cat_identifier))
+        elif isinstance(cat_identifier, six.string_types):
+            cat = self._alias_to_cat(cat_identifier)
+        elif isinstance(cat_identifier, dict):
+            cat = cat_identifier
+        else:
+            raise TypeError(type(cat_identifier))
+        return cat
+
     def _alias_to_cat(self, alias_catname):
         """
         Lookup a coco-category via its name or an "alias" name.
+        In production code, use `_resolve_to_cat` instead.
 
         Args:
             alias_catname (str): category name or alias
@@ -991,17 +1058,6 @@ class MixinCocoExtras(object):
                         break
                 if fixed_cat is not None:
                     break
-            # if fixed_cat is None:
-            #     # one last try
-            #     for cat in dset.cats.values():
-            #         alias_list = cat.get('alias', []) + [cat['supercategory']]
-            #         assert isinstance(alias_list, list)
-            #         for alias in alias_list:
-            #             if alias_catname.lower() == alias.lower():
-            #                 fixed_catname = cat['supercategory']
-            #                 break
-            #         if fixed_catname is not None:
-            #             break
 
             if fixed_cat is None:
                 raise KeyError('Unknown category: {}'.format(alias_catname))
