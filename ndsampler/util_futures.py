@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
 import concurrent.futures
+from concurrent.futures import as_completed
 
-__all__ = ['SerialExecutor']
+__all__ = ['Executor', 'SerialExecutor', 'as_completed']
 
 
 # class FakeCondition(object):
@@ -76,13 +77,18 @@ class Executor(object):
     """
 
     def __init__(self, mode='thread', max_workers=0):
+        """
+        Args:
+            mode (str): either thread, serial, or process
+            max_workers (int): number of workers. If 0, serial is forced.
+        """
         from concurrent import futures
         if mode == 'serial' or max_workers == 0:
             backend = SerialExecutor()
         elif mode == 'thread':
             backend = futures.ThreadPoolExecutor(max_workers=max_workers)
         elif mode == 'process':
-            backend = futures.ThreadPoolExecutor(max_workers=max_workers)
+            backend = futures.ProcessPoolExecutor(max_workers=max_workers)
         else:
             raise KeyError(mode)
         self.backend = backend

@@ -2527,10 +2527,11 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
                 'info': [],
             }
 
+        fpath = None
+
         if isinstance(data, six.string_types):
             fpath = data
             key = basename(fpath)
-            # .split('.')[0]
             data = json.load(open(fpath, 'r'))
 
             # If data is a path it gives us the absolute location of the root
@@ -2573,6 +2574,7 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
 
         self.hashid = None
         self.hashid_parts = None
+        self.fpath = fpath
 
         self.tag = tag
         self.dataset = data
