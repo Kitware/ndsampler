@@ -1231,19 +1231,30 @@ class MixinCocoExtras(object):
 
         Args:
             mapper (dict or Function): maps old names to new names.
-            strict (bool): if True, fails if mapper doesnt map all classes
-            preserve (bool): if True, preserve old categories as supercatgories
-                FIXME: Broken
+
+            strict (bool): DEPRICATED IGNORE.
+                if True, fails if mapper doesnt map all classes
+
+            preserve (bool): DEPRICATED IGNORE.
+                if True, preserve old categories as supercatgories. Broken.
 
             simple (bool, default=True): defaults to the new way of doing this.
 
         Example:
-            >>> # DISABLE_DOCTEST
             >>> self = CocoDataset.demo()
             >>> self.rename_categories({'astronomer': 'person', 'astronaut': 'person', 'mouth': 'person', 'helmet': 'hat'}, preserve=0)
-            >>> self.rename_categories({'person': 'obj', 'hat': 'obj'}, preserve=0)
             >>> assert 'hat' in self.name_to_cat
             >>> assert 'helmet' not in self.name_to_cat
+            >>> # Test merge case
+            >>> self = CocoDataset.demo()
+            >>> mapper = {
+            >>>     'helmet': 'rocket',
+            >>>     'astronomer': 'rocket',
+            >>>     'human': 'rocket',
+            >>>     'mouth': 'helmet',
+            >>>     'star': 'gas'
+            >>> }
+            >>> self.rename_categories(mapper)
         """
         old_cats = self.dataset['categories']
 
@@ -1254,17 +1265,17 @@ class MixinCocoExtras(object):
             mapper = {k: v for k, v in mapper.items() if k != v}
 
             # Perform checks to determine what bookkeeping needs to be done
-            orig_names = {cat['name'] for cat in old_cats}
-            src_names = set(mapper.keys())
-            dst_names = set(mapper.values())
+            orig_cnames = {cat['name'] for cat in old_cats}
+            src_cnames = set(mapper.keys())
+            dst_cnames = set(mapper.values())
 
-            bad_names = src_names - orig_names
-            if bad_names:
+            bad_cnames = src_cnames - orig_cnames
+            if bad_cnames:
                 raise ValueError(
-                    'The following categories to not exist: {}'.format(bad_names))
+                    'The following categories to not exist: {}'.format(bad_cnames))
 
-            has_orig_merges = dst_names.intersection(orig_names)
-            has_src_merges = dst_names.intersection(src_names)
+            has_orig_merges = dst_cnames.intersection(orig_cnames)
+            has_src_merges = dst_cnames.intersection(src_cnames)
 
             has_merges = has_orig_merges or has_src_merges
 
@@ -1276,8 +1287,66 @@ class MixinCocoExtras(object):
                         if cat['name'] == key:
                             cat['name'] = value
             else:
-                raise NotImplementedError(
-                    'Cannot yet handle the case where categories are being merged')
+                # raise NotImplementedError(
+                #     'Cannot yet handle the case where categories are being merged')
+
+                # Remember the original categories
+                orig_cats = {cat['name']: cat for cat in old_cats}
+
+                # Remember all annotations of the original categories
+                src_cids = [self.index.name_to_cat[c]['id']
+                            for c in src_cnames]
+                src_cname_to_aids = {c: self.index.cid_to_aids[cid]
+                                     for c, cid in zip(src_cnames, src_cids)}
+
+                # Track which srcs each dst is constructed from
+                dst_to_srcs = ub.invert_dict(mapper, unique_vals=False)
+
+                # Mark unreferenced cats for removal
+                rm_cnames = src_cnames - dst_cnames
+
+                # Mark unseen cats for addition
+                add_cnames = dst_cnames - orig_cnames
+
+                # Mark renamed cats for update
+                update_cnames = dst_cnames - add_cnames
+
+                # Populate new category information
+                new_cats = {}
+                for dst in dst_cnames:
+                    srcs = dst_to_srcs[dst]
+                    # Note: this update order is arbitrary and may be funky
+                    new_cat = {}
+                    for src in srcs:
+                        new_cat.update(orig_cats[src])
+                    new_cat['name'] = dst
+                    new_cat.pop('id')
+                    new_cats[dst] = new_cat
+
+                # Apply category deltas
+                self.remove_categories(rm_cnames, keep_annots=True)
+
+                for cname in update_cnames:
+                    new_cat = new_cats[cname]
+                    orig_cat = orig_cats[cname]
+                    # Only update name and non-existing information
+                    # TODO: check for conflicts?
+                    new_info = ub.dict_diff(new_cat, orig_cat)
+                    orig_cat.update(new_info)
+
+                for cname in add_cnames:
+                    self.add_category(**new_cats[cname])
+
+                # Apply the annotation deltas
+                for src, aids in src_cname_to_aids.items():
+                    cat = self.name_to_cat[mapper[src]]
+                    cid = cat['id']
+                    for aid in aids:
+                        self.anns[aid]['category_id'] = cid
+
+                # force rebuild if any annotations we changed
+                if src_cname_to_aids:
+                    rebuild = True
 
         else:
             new_cats = []
@@ -2063,31 +2132,34 @@ class MixinCocoAddRemove(object):
             self._invalidate_hashid(['annotations'])
         return remove_info
 
-    def remove_categories(self, cids_or_cats, verbose=0):
+    def remove_categories(self, cat_identifiers, keep_annots=False, verbose=0):
         """
         Remove categories and all annotations in those categories.
         Currently does not change any heirarchy information
 
         Args:
-            cids_or_cats (List): list of category dicts, names, or ids
+            cat_identifiers (List): list of category dicts, names, or ids
+
+            keep_annots (bool, default=False):
+                if True, keeps annotations, but removes category labels.
 
         Returns:
             Dict: num_removed: information on the number of items removed
 
         Example:
             >>> self = CocoDataset.demo()
-            >>> cids_or_cats = [self.cats[1], 'rocket', 3]
-            >>> self.remove_categories(cids_or_cats)
+            >>> cat_identifiers = [self.cats[1], 'rocket', 3]
+            >>> self.remove_categories(cat_identifiers)
             >>> assert len(self.dataset['categories']) == 5
             >>> self._check_index()
         """
         remove_info = {'annotations': None, 'categories': None}
-        if cids_or_cats:
+        if cat_identifiers:
 
             if verbose > 1:
                 print('Removing annots of removed categories')
 
-            remove_cids = list(map(self._resolve_to_cid, cids_or_cats))
+            remove_cids = list(map(self._resolve_to_cid, cat_identifiers))
             # First remove any annotation that belongs to those categories
             if self.cid_to_aids:
                 remove_aids = list(it.chain(*[self.cid_to_aids[cid]
@@ -2096,8 +2168,14 @@ class MixinCocoAddRemove(object):
                 remove_aids = [ann['id'] for ann in self.dataset['annotations']
                                if ann['category_id'] in remove_cids]
 
-            rminfo = self.remove_annotations(remove_aids, verbose=verbose)
-            remove_info.update(rminfo)
+            if keep_annots:
+                # Simply remove category information instead of removing the
+                # entire annotation.
+                for aid in remove_aids:
+                    self.anns[aid].pop('category_id')
+            else:
+                rminfo = self.remove_annotations(remove_aids, verbose=verbose)
+                remove_info.update(rminfo)
 
             remove_info['categories'] = len(remove_cids)
             if verbose > 1:
@@ -2386,26 +2464,35 @@ class CocoIndex(object):
             except KeyError:
                 raise KeyError('Annotation does not have ids {}'.format(ann))
 
-            try:
-                cid = ann['category_id']
-            except KeyError:
-                raise KeyError('Annotation does not have category id {}'.format(ann))
-
             if not isinstance(aid, INT_TYPES):
                 raise TypeError('bad aid={} type={}'.format(aid, type(aid)))
             if not isinstance(gid, INT_TYPES):
                 raise TypeError('bad gid={} type={}'.format(gid, type(gid)))
-            if not isinstance(cid, INT_TYPES):
-                raise TypeError('bad cid={} type={}'.format(cid, type(cid)))
 
             gid_to_aids[gid].add(aid)
-            cid_to_aids[cid].add(aid)
             if gid not in imgs:
                 warnings.warn('Annotation {} in {} references '
                               'unknown image_id'.format(ann, parent))
-            if cid not in cats:
-                warnings.warn('Annotation {} in {} references '
-                              'unknown category_id'.format(ann, parent))
+
+            ALLOW_EMPTY_CATEGORIES = True
+
+            try:
+                cid = ann['category_id']
+            except KeyError:
+                if ALLOW_EMPTY_CATEGORIES:
+                    warnings.warn('Annotation {} in {} is missing '
+                                  'a category_id'.format(ann, parent))
+                else:
+                    raise KeyError('Annotation does not have category id {}'.format(ann))
+            else:
+                cid_to_aids[cid].add(aid)
+
+                if not isinstance(cid, INT_TYPES):
+                    raise TypeError('bad cid={} type={}'.format(cid, type(cid)))
+
+                if cid not in cats:
+                    warnings.warn('Annotation {} in {} references '
+                                  'unknown category_id'.format(ann, parent))
 
         # Fix one-to-zero cases
         for cid in cats.keys():

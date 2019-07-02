@@ -584,7 +584,7 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
         self._negative_pool = _negative_pool
         self._negative_idx = 0
         num_neg = len(self._negative_pool)
-        if verbose > 2:
+        if verbose > 0:
             print('Preselected {} negatives'.format(num_neg))
         return num_neg
 

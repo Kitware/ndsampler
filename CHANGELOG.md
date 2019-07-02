@@ -16,8 +16,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Sampler has support for new coco json keypoint structure. 
 * Frames now has `prepare` method which safely and quickly prepares the cached representation if needed.
 * Add experimental method `CocoDataset._resolve_to_cat` for quick category lookup, may be aliased to lookup category in the future.
+* Rename categories now supports merge cases
 
 ### Changed
+* Annotations no longer require a category id, although it is still recommended.
 * Visibility thresh now default to 0.
 * Sampler `load` methods now accept `with_annots` flag.
 * `id_to_idx` now behaves as a property.
