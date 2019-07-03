@@ -1662,6 +1662,11 @@ class MixinCocoDraw(object):
         import kwimage
         import kwplot
 
+        figkw = {k: kwargs[k] for k in ['fnum', 'pnum', 'doclf', 'docla']
+                 if k in kwargs}
+        if figkw:
+            kwplot.figure(**figkw)
+
         if gid is None:
             primary_ann = self.anns[aid]
             gid = primary_ann['image_id']
