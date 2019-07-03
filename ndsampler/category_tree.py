@@ -420,6 +420,28 @@ class CategoryTree(ub.NiceRepr):
     def class_names(self):
         return self.idx_to_node
 
+    @property
+    def category_names(self):
+        return self.idx_to_node
+
+    @property
+    def cats(self):
+        """
+        Returns a mapping from category names to category attributes.
+
+        If this category tree was constructed from a coco-dataset, then this
+        will contain the coco category attributes.
+
+        Returns:
+            Dict[str, Dict[str, object]]
+
+        Example:
+            >>> from ndsampler.category_tree import *
+            >>> self = CategoryTree.demo()
+            >>> print('self.categories = {!r}'.format(self.categories))
+        """
+        return dict(self.graph.node)
+
     def index(self, node):
         """ Return the index that corresponds to the category name """
         return self.node_to_idx[node]
