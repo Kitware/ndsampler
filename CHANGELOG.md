@@ -4,7 +4,13 @@ This changelog follows the specifications detailed in: [Keep a Changelog](https:
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
 
-## Version 0.2.0
+## Version 0.3.0
+
+### Changed
+* `CategoryTree` now serializes graph node attributes
+
+
+## Version 0.2.0 - [Finalized 2019 June 9th]
 
 ### Added
 * Add `CocoDataset.load_annot_sample`, which helps load a chip for a specific annotation. (Note: this is less efficient than using the CocoSampler)

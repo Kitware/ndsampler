@@ -438,7 +438,7 @@ class CategoryTree(ub.NiceRepr):
         Example:
             >>> from ndsampler.category_tree import *
             >>> self = CategoryTree.demo()
-            >>> print('self.categories = {!r}'.format(self.categories))
+            >>> print('self.cats = {!r}'.format(self.cats))
         """
         return dict(self.graph.node)
 
@@ -693,6 +693,15 @@ class CategoryTree(ub.NiceRepr):
         class_logits = self.heirarchical_log_softmax(class_energy, dim)
         class_probs = torch.exp(class_logits)
         return class_probs
+
+    def heirarchical_cross_entropy(self, class_energy, targets,
+                                   reduction='mean'):
+        """
+        Combines heirarchical_log_softmax and nll_loss in a single function
+        """
+        class_logits = self.heirarchical_log_softmax(class_energy, dim=1)
+        loss = F.nll_loss(class_logits, targets, reduction=reduction)
+        return loss
 
     def heirarchical_nll_loss(self, class_logits, targets):
         """
@@ -1173,18 +1182,25 @@ def tree_depth(graph, root=None):
     return depth
 
 
-def to_directed_nested_tuples(graph):
+def to_directed_nested_tuples(graph, with_data=True):
     """
     Encodes each node and its children in a tuple as:
         (node, children)
     """
-    def _traverse_encode(node):
-        children = sorted(graph.successors(node))
+    def _represent_node(node):
+        if with_data:
+            node_data = graph.node[node]
+            return (node, node_data, _traverse_encode(node))
+        else:
+            return (node, _traverse_encode(node))
+
+    def _traverse_encode(parent):
+        children = sorted(graph.successors(parent))
         # graph.get_edge_data(node, child)
-        return [(child, _traverse_encode(child)) for child in children]
+        return [_represent_node(node) for node in children]
 
     sources = sorted(source_nodes(graph))
-    encoding = [(node, _traverse_encode(node)) for node in sources]
+    encoding = [_represent_node(node) for node in sources]
     return encoding
 
 
@@ -1193,15 +1209,24 @@ def from_directed_nested_tuples(encoding):
     Example:
         >>> from ndsampler.category_tree import *
         >>> graph = nx.generators.gnr_graph(20, 0.3, seed=790).reverse()
+        >>> graph.node[0]['color'] = 'black'
         >>> encoding = to_directed_nested_tuples(graph)
         >>> recon = from_directed_nested_tuples(encoding)
         >>> recon_encoding = to_directed_nested_tuples(recon)
         >>> assert recon_encoding == encoding
     """
+    node_data_view = {}
     def _traverse_recon(tree):
         nodes = []
         edges = []
-        for node, subtree in tree:
+        for tup in tree:
+            if len(tup) == 2:
+                node, subtree = tup
+            elif len(tup) == 3:
+                node, node_data, subtree = tup
+                node_data_view[node] = node_data
+            else:
+                raise AssertionError('invalid tup')
             children = [t[0] for t in subtree]
             nodes.append(node)
             edges.extend((node, child) for child in children)
@@ -1213,6 +1238,8 @@ def from_directed_nested_tuples(encoding):
     graph = nx.DiGraph()
     graph.add_nodes_from(nodes)
     graph.add_edges_from(edges)
+    for k, v in node_data_view.items():
+        graph.node[k].update(v)
     return graph
 
 
