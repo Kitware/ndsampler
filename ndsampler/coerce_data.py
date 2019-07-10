@@ -87,8 +87,8 @@ def coerce_datasets(config, build_hashid=False, verbose=1):
             print('Splitting base into train/vali')
         # TODO: the actual split may need to be cached.
         split_gids = _split_train_vali_test(base)
-        # if config.get('no_tests'):
-        # split_gids['train'] += split_gids.pop('test')
+        if config.get('no_tests'):
+            split_gids['train'] += split_gids.pop('test')
         for tag in split_gids.keys():
             gids = split_gids[tag]
             subset = base.subset(sorted(gids), copy=True)
