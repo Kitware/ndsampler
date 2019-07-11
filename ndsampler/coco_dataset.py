@@ -117,7 +117,6 @@ from os.path import splitext
 from os.path import basename
 from os.path import join
 from collections import OrderedDict
-import kwimage
 import json
 import numpy as np
 import ubelt as ub
@@ -456,6 +455,7 @@ class Annots(ObjectList1D):
                        [350,   5, 130, 290],
                        [124,  96,  45,  18]]))>
         """
+        import kwimage
         xywh = self._lookup('bbox')
         boxes = kwimage.Boxes(xywh, 'xywh')
         return boxes
@@ -647,6 +647,7 @@ class MixinCocoExtras(object):
         Returns:
             np.ndarray : the image
         """
+        import kwimage
         gpath = self.load_image_fpath(gid_or_img)
         np_img = kwimage.imread(gpath)
         return np_img
@@ -730,10 +731,10 @@ class MixinCocoExtras(object):
             if 'rng' not in kw and 'n_imgs' in kw:
                 kw['rng'] = kw['n_imgs']
             dataset = toydata.demodata_toy_dset(**kw)
-            self = cls(dataset, tag='shapes')
+            self = cls(dataset, tag=key)
         elif key == 'photos':
             dataset = demo_coco_data()
-            self = cls(dataset, tag='demo')
+            self = cls(dataset, tag=key)
         else:
             raise KeyError(key)
         return self
@@ -1941,8 +1942,12 @@ class MixinCocoAddRemove(object):
         ann['image_id'] = int(image_id)
         ann['category_id'] = int(category_id)
         if bbox is not None:
-            if isinstance(bbox, kwimage.Boxes):
-                bbox = bbox.to_xywh().data.tolist()
+            try:
+                import kwimage
+                if isinstance(bbox, kwimage.Boxes):
+                    bbox = bbox.to_xywh().data.tolist()
+            except ImportError:
+                pass
             ann['bbox'] = bbox
         # assert not set(kw).intersection(set(ann))
         ann.update(**kw)
@@ -3074,7 +3079,7 @@ def demo_coco_data():
         >>> self.show_image(gid=1)
         >>> kwplot.show_if_requested()
     """
-
+    import kwimage
     from kwimage.im_demodata import _TEST_IMAGES
     from os.path import commonprefix, relpath
 
