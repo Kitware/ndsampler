@@ -375,10 +375,10 @@ class Frames(object):
             >>> self = SimpleFrames.demo(backend='npy', workdir=workdir)
             >>> print('self = {!r}'.format(self))
             >>> print('self.cache_dpath = {!r}'.format(self.cache_dpath))
-            >>> _ = ub.cmd('tree ' + workdir, verbose=3)
+            >>> #_ = ub.cmd('tree ' + workdir, verbose=3)
             >>> self.prepare()
             >>> self.prepare()
-            >>> _ = ub.cmd('tree ' + workdir, verbose=3)
+            >>> #_ = ub.cmd('tree ' + workdir, verbose=3)
             >>> _ = ub.cmd('ls ' + self.cache_dpath, verbose=3)
 
         Example:

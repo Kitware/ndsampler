@@ -17,6 +17,8 @@ steps:
       #- conda create -y -n py36 python=3.6
       #- conda activate py36
       #- conda install gdal -y
+      - pip uninstall scikit-image -y
+      - conda install scikit-image 
       - pip install pip -U
       - pip install scikit-build cmake numpy cython ninja ubelt cffi wheel setuptools
       - pip install git+ssh://git@gitlab.kitware.com/vigilant/kwarray.git@dev/0.4.0#egg=kwarray --no-use-pep517

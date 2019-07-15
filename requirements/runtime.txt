@@ -5,14 +5,14 @@ parse >= 1.12.0
 numpy 
 scipy
 
-fasteners
-atomicwrites
+fasteners >= 1.12.0
+atomicwrites >= 1.3.0
 
 # opencv?
 # scikit-image?
 
 Pillow
-pyqtree
+pyqtree >= 1.0.0
 
 # functools python2
 # There are likely several more undocumented deps, see what fails and submit a PR please!
@@ -20,3 +20,5 @@ pyqtree
 
 kwimage
 kwarray
+
+futures>=3.2.0;python_version=="2.7"
