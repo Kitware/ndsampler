@@ -19,9 +19,9 @@ steps:
       #- conda install gdal -y
       - pip install pip -U
       - pip install scikit-build cmake numpy cython ninja ubelt cffi wheel setuptools
-      - pip install git+ssh://git@gitlab.kitware.com/vigilant/kwarray.git@dev/0.3.0#egg=kwarray --no-use-pep517
-      - pip install git+ssh://git@gitlab.kitware.com/vigilant/kwimage.git@dev/0.3.0#egg=kwimage --no-use-pep517
-      - pip install git+ssh://git@gitlab.kitware.com/vigilant/kwimage.git@dev/0.3.0#egg=kwplot --no-use-pep517
+      - pip install git+ssh://git@gitlab.kitware.com/vigilant/kwarray.git@dev/0.4.0#egg=kwarray --no-use-pep517
+      - pip install git+ssh://git@gitlab.kitware.com/vigilant/kwimage.git@dev/0.4.0#egg=kwimage --no-use-pep517
+      - pip install git+ssh://git@gitlab.kitware.com/vigilant/kwplot.git@dev/0.4.0#egg=kwplot --no-use-pep517
       - pip install -r requirements.txt
       - pip install . --no-use-pep517
       - ./run_tests.py
@@ -61,9 +61,9 @@ steps:
       #- conda install gdal -y
       - pip install pip -U
       - pip install scikit-build cmake numpy cython ninja ubelt cffi wheel setuptools
-      - pip install git+ssh://git@gitlab.kitware.com/vigilant/kwarray.git@dev/0.3.0#egg=kwarray --no-use-pep517
-      - pip install git+ssh://git@gitlab.kitware.com/vigilant/kwimage.git@dev/0.3.0#egg=kwimage --no-use-pep517
-      - pip install git+ssh://git@gitlab.kitware.com/vigilant/kwimage.git@dev/0.3.0#egg=kwplot --no-use-pep517
+      - pip install git+ssh://git@gitlab.kitware.com/vigilant/kwarray.git@dev/0.4.0#egg=kwarray --no-use-pep517
+      - pip install git+ssh://git@gitlab.kitware.com/vigilant/kwimage.git@dev/0.4.0#egg=kwimage --no-use-pep517
+      - pip install git+ssh://git@gitlab.kitware.com/vigilant/kwplot.git@dev/0.4.0#egg=kwplot --no-use-pep517
       - pip install -r requirements.txt
       - pip install . --no-use-pep517
       - ./run_tests.py

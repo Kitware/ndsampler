@@ -1896,6 +1896,7 @@ class MixinCocoAddRemove(object):
 
         Example:
             >>> self = CocoDataset.demo()
+            >>> import kwimage
             >>> gname = kwimage.grab_test_image_fpath('paraview')
             >>> gid = self.add_image(gname)
             >>> assert self.imgs[gid]['file_name'] == gname
