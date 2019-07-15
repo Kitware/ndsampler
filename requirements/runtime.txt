@@ -1,5 +1,5 @@
 networkx >= 2.2.0
-ubelt
+ubelt >= 0.8.2
 
 numpy 
 scipy
