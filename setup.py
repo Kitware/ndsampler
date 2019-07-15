@@ -1,24 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""
-Installation:
-    pip install git+https://github.com/Erotemic/ndsampler.git
-
-Developing:
-    git clone https://github.com/Erotemic/ndsampler.git
-    pip install -e ndsampler
-
-Pypi:
-     # Presetup
-     pip install twine
-
-     # First tag the source-code
-     VERSION=$(python -c "import setup; print(setup.version)")
-     echo $VERSION
-     git tag $VERSION -m "tarball tag $VERSION"
-     git push --tags origin master
-"""
 from setuptools import setup
+from setuptools import find_packages
 import sys
 
 
@@ -160,7 +143,7 @@ if __name__ == '__main__':
             'all': parse_requirements('requirements.txt')
         },
         license='Apache 2',
-        packages=['ndsampler'],
+        packages=find_packages(include='ndsampler.*'),
         classifiers=[
             # List of classifiers available at:
             # https://pypi.python.org/pypi?%3Aaction=list_classifiers
