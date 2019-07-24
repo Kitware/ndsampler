@@ -1784,6 +1784,11 @@ class MixinCocoDraw(object):
                         if catcolor is not None:
                             polykw['color'] = catcolor
                         poly = mpl.patches.Polygon(poly_xys, **polykw)
+                        try:
+                            # hack
+                            poly.area = sseg.to_shapely().area
+                        except Exception as ex:
+                            pass
                         sseg_polys.append(poly)
                 else:
                     # print('sseg = {!r}'.format(sseg))
@@ -1860,6 +1865,13 @@ class MixinCocoDraw(object):
 
         if sseg_polys:
             # print('sseg_polys = {!r}'.format(sseg_polys))
+            if True:
+                # hack: show smaller polygons first.
+                if len(sseg_polys):
+                    areas = np.array([getattr(p, 'area', np.inf) for p in sseg_polys])
+                    sortx = np.argsort(areas)[::-1]
+                    sseg_polys = list(ub.take(sseg_polys, sortx))
+
             poly_col = mpl.collections.PatchCollection(
                 sseg_polys, 2, alpha=0.4)
             ax.add_collection(poly_col)
