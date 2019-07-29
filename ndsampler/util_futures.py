@@ -74,14 +74,13 @@ class Executor(object):
     Wrapper around a specific executor.
 
     Abstracts Serial, Thread, and Process Executor via arguments.
+
+    Args:
+        mode (str, default='thread'): either thread, serial, or process
+        max_workers (int, default=0): number of workers. If 0, serial is forced.
     """
 
     def __init__(self, mode='thread', max_workers=0):
-        """
-        Args:
-            mode (str): either thread, serial, or process
-            max_workers (int): number of workers. If 0, serial is forced.
-        """
         from concurrent import futures
         if mode == 'serial' or max_workers == 0:
             backend = SerialExecutor()
