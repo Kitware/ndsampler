@@ -106,6 +106,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
 
     @property
     def catgraph(self):
+        """
+        DEPRICATED, use self.classes instead
+        """
         if self.regions is None:
             return None
         return self.regions.classes
@@ -194,7 +197,39 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
 
     def load_item(self, index, pad=None, window_dims=None, with_annots=True):
         """
-        Loads from positives and then negatives.
+        Loads item from either positive or negative regions pool.
+
+        Lower indexes will return positive regions and higher indexes will
+        return negative regions.
+
+        The main paradigm of the sampler is that sampler.regions maintains a
+        pool of target regions, you can influence what that pool is at any
+        point by calling sampler.regions.preselect (usually either at the start
+        of learning, or maybe after every epoch, etc..), and you use load_item
+        to load the index-th item from that preselected pool. Depending on how
+        you preselected the pool, the returned item might correspond to a
+        positive or negative region.
+
+        Args:
+            index (int): index of target region
+            pad (tuple): (height, width) extra context to add to each size.
+                This helps prevent augmentation from producing boundary effects
+            window_dims (tuple): (height, width) area around the center
+                of the target region to sample.
+            with_annots (bool | str, default=True):
+                if True, also extracts information about any annotation that
+                overlaps the region of interest (subject to visibility_thresh).
+                Can also be a List[str] that specifies which specific subinfo
+                should be extracted. Valid strings in this list are: keypoints
+                and segmenation.
+
+        Returns:
+            Dict: sample: dict containing keys
+                im (ndarray): image data
+                tr (dict): contains the same input items as tr but additionally
+                    specifies rel_cx and rel_cy, which gives the center
+                    of the target w.r.t the returned **padded** sample.
+                annots (dict): Dict of aids, cids, and rel/abs boxes
         """
         if index < self.n_positives:
             sample = self.load_positive(index, pad=pad,
@@ -210,6 +245,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
     def load_positive(self, index=None, pad=None, window_dims=None,
                       with_annots=True, rng=None):
         """
+        Load an item from the the positive pool of regions.
+
         Args:
             index (int): index of positive target
             pad (tuple): (height, width) extra context to add to each size.
@@ -251,6 +288,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
     def load_negative(self, index=None, pad=None, window_dims=None,
                       with_annots=True, rng=None):
         """
+        Load an item from the the negative pool of regions.
+
         Args:
             index (int): if specified loads a specific negative from the
                 presampled pool, otherwise the next negative in the pool is

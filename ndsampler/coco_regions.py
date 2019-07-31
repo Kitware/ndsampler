@@ -244,10 +244,18 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
             cacher = self._cacher('neg_anchors')
             neg_anchors = cacher.tryload(on_error='clear')
             if neg_anchors is None:
-                neg_anchors = np.vstack([
-                    self.targets['width'] / self.targets['img_width'],
-                    self.targets['height'] / self.targets['img_height']
-                ]).T
+                if False:
+                    # FIXME: this is not the right way to normalize anchors
+                    neg_anchors = np.vstack([
+                        self.targets['width'] / self.targets['img_width'],
+                        self.targets['height'] / self.targets['img_height']
+                    ]).T
+                else:
+                    z = np.minimum(self.targets['img_width'],
+                                   self.targets['img_height'])
+                    neg_anchors = np.vstack([self.targets['width'],
+                                             self.targets['height']]).T
+                    neg_anchors = neg_anchors / z
                 rng = kwarray.ensure_rng(0)
                 rng.shuffle(neg_anchors)
                 neg_anchors = neg_anchors[0:1000]

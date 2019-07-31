@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 * `CategoryTree` now serializes graph node attributes
 
+### Fixed
+* Negative regions now have correct aspect ratios.
+
+
 
 ## Version 0.2.0 - [Finalized 2019 June 9th]
 
