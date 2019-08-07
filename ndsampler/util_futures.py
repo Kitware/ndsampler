@@ -103,3 +103,45 @@ class Executor(object):
 
     def shutdown(self):
         return self.backend.shutdown()
+
+
+class JobPool(object):
+    """
+    Abstracts away boilerplate of submitting and collecting jobs
+
+    Example:
+        >>> def worker(data):
+        >>>     return data + 1
+        >>> pool = JobPool('thread', max_workers=16)
+        >>> with pool:
+        >>>     for data in ub.ProgIter(range(10), desc='submit jobs'):
+        >>>         job = pool.submit(worker, data)
+        >>>     final = []
+        >>>     for job in ub.ProgIter(pool.as_completed(), total=len(pool), desc='collect jobs'):
+        >>>         info = job.result()
+        >>>         final.append(info)
+        >>> print('final = {!r}'.format(final))
+    """
+    def __init__(self, mode='thread', max_workers=0):
+        self.executor = Executor(mode=mode, max_workers=max_workers)
+        self.jobs = []
+
+    def __len__(self):
+        return len(self.jobs)
+
+    def submit(self, func, *args, **kwargs):
+        job = self.executor.submit(func, *args, **kwargs)
+        self.jobs.append(job)
+        return job
+
+    def __enter__(self):
+        self.executor.__enter__()
+        return self
+
+    def __exit__(self, a, b, c):
+        self.executor.__exit__(a, b, c)
+
+    def as_completed(self):
+        from concurrent.futures import as_completed
+        for job in as_completed(self.jobs):
+            yield job
