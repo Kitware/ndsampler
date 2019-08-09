@@ -183,13 +183,20 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> kwplot.show_if_requested()
         """
         full_image = self.frames.load_image(image_id)
-        gid = image_id
         coco_dset = self.dset
-        img = coco_dset.imgs[gid].copy()
-        aids = coco_dset.index.gid_to_aids[gid]
-        anns = [coco_dset.anns[aid] for aid in aids]
+        img = coco_dset.imgs[image_id].copy()
+        anns = self.load_annotations(image_id)
         img['imdata'] = full_image
         return img, anns
+
+    def load_annotations(self, image_id):
+        """
+        Loads the annotations within an image
+        """
+        coco_dset = self.dset
+        aids = coco_dset.index.gid_to_aids[image_id]
+        anns = [coco_dset.anns[aid] for aid in aids]
+        return anns
 
     def load_image(self, image_id):
         full_image = self.frames.load_image(image_id)

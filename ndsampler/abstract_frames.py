@@ -265,6 +265,10 @@ class Frames(object):
         return file
 
     def _gnames(self, image_id, mode):
+        """
+        Lookup the original image name and its cached efficient representation
+        name
+        """
         gpath = self._lookup_gpath(image_id)
         hashid = self._lookup_hashid(image_id)
         fname_base = os.path.basename(gpath).split('.')[0]
@@ -530,7 +534,7 @@ def _locked_cache_write(_write_func, gpath, cache_gpath):
     """
     lock_fpath = cache_gpath + '.lock'
 
-    DEBUG = 1
+    DEBUG = 0
 
     if DEBUG:
         import multiprocessing
