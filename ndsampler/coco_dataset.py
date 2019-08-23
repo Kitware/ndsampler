@@ -2918,7 +2918,7 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
         #     # This is an instance not an object
         #     return CocoDataset.__class__.union(CocoDataset, *others, **kw)
 
-        def _coco_union(relative_dsets):
+        def _coco_union(relative_dsets, common_root):
             """ union of dictionary based data structure """
             merged = _dict([
                 ('categories', []),
@@ -3003,9 +3003,23 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
                     merged['annotations'].append(new_annot)
             return merged
 
-        relative_dsets = [(d.img_root, d.dataset) for d in others]
-        merged = _coco_union(relative_dsets)
-        return CocoDataset(merged, **kw)
+        from os.path import normpath
+        dset_roots = [dset.dataset.get('img_root', None) for dset in others]
+        dset_roots = [normpath(r) if r is not None else None for r in dset_roots]
+        if ub.allsame(dset_roots):
+            common_root = ub.peek(dset_roots)
+            relative_dsets = [('', d.dataset) for d in others]
+        else:
+            common_root = None
+            relative_dsets = [(d.img_root, d.dataset) for d in others]
+
+        merged = _coco_union(relative_dsets, common_root)
+
+        if common_root is not None:
+            merged['img_root'] = common_root
+
+        new_dset = CocoDataset(merged, **kw)
+        return new_dset
 
     def subset(self, gids, copy=False):
         """

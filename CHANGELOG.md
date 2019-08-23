@@ -46,6 +46,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Fixes for larger images (maybe need to do something else besides memmap)
 * Fixes for kwimage 0.4.0 api changes
 * Fixed issue in region caches when using python 2 and 3
+* CocoDataset union now respects `img_root` that is common to all operands.
 
 
 ## Version 0.1.0
