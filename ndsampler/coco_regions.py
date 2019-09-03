@@ -451,7 +451,7 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
             neg_anchors (): prior normalized aspect ratios for negative boxes.
                 Mutually exclusive with `window_size`.
 
-            window_dims (Tuple): absolute dimensions (height, width)
+            window_size (Tuple): absolute box size (width, height)
                 used to sample negative regions. If not specified the relative
                 anchor strategy will be used to randomly choose potentially
                 non-square regions relative to the image size.
@@ -596,11 +596,6 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
 
         rng = kwarray.ensure_rng(rng)
         if window_dims is not None:
-            # TODO: neg_anchors are supposed to be in normalized coordinates IT
-            # IS NOT POSSIBLE TO GET NORMALIZE COORDS FROM ABS WINDOW_DIMS HOW
-            # DO WE SPECIFY A WINDOW HERE. PROBABLY HAVE TO ADD OPTION FOR
-            # ABSOLUTE COORDINATES, WHICH MEANS GENERATING RANDOM BOXES ON A
-            # PER-IMAGE BASIS
             window_size = window_dims[::-1]
             neg_anchors = None
         else:
