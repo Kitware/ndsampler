@@ -2,16 +2,65 @@ import numpy as np
 import ubelt as ub
 
 
-def _imwrite_cloud_optimized_geotiff(fpath, data, lossy=True):
+def have_gdal():
+    try:
+        import gdal
+    except ImportError:
+        return False
+    else:
+        return gdal is not None
+
+
+def _doctest_check_cog(data, fpath):
+    from ndsampler.utils.validate_cog import validate as _validate_cog
+    import kwimage
+    print('---- CHECK COG ---')
+    print('fpath = {!r}'.format(fpath))
+    disk_shape = kwimage.imread(fpath).shape
+    errors = _validate_cog(fpath)
+    warnings, errors, details = _validate_cog(fpath)
+    print('disk_shape = {!r}'.format(disk_shape))
+    print('details = ' + ub.repr2(details, nl=2))
+    print('warnings = ' + ub.repr2(warnings, nl=1))
+    print('errors = ' + ub.repr2(errors, nl=1))
+    passed = not errors
+
+    assert data.shape == disk_shape
+    return passed
+
+
+def _numpy_to_gdal_dtype(numpy_dtype):
+    import gdal
+    kindsize = (numpy_dtype.kind, numpy_dtype.itemsize)
+    if kindsize == ('u', 1):
+        eType = gdal.GDT_Byte
+    elif kindsize == ('u', 2):
+        eType = gdal.GDT_UInt16
+    # we dont support floats to keep things somewhat simple
+    # elif kindsize == ('f', 4):
+    #     eType = gdal.GDT_Float32
+    # elif kindsize == ('f', 8):
+    #     eType = gdal.GDT_Float64
+    else:
+        raise TypeError('Unsupported GDAL dtype for {}'.format(kindsize))
+    return eType
+
+
+def _imwrite_cloud_optimized_geotiff(fpath, data, compress='JPEG'):
     """
     Args:
-        fpath (PathLike):
-        data (ndarray):
-        lossy (bool, default=True): Use lossy compression if True
+        fpath (PathLike): file path to save the COG to.
+
+        data (ndarray[ndim=3]): Raw HWC image data to save. Dimensions should
+            be height, width, channels.
+
+        compress (bool, default='JPEG'): Can be JPEG (lossy) or LZW (lossless),
+            or DEFLATE (lossless).
 
     References:
         https://geoexamples.com/other/2019/02/08/cog-tutorial.html#create-a-cog-using-gdal-python
         http://osgeo-org.1560.x6.nabble.com/gdal-dev-Creating-Cloud-Optimized-GeoTIFFs-td5320101.html
+        https://gdal.org/drivers/raster/cog.html
 
     Notes:
         conda install gdal
@@ -21,75 +70,65 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, lossy=True):
         sudo apt install gdal-dev
         pip install gdal ---with special flags, forgot which though, sry
 
+    CommandLine:
+        xdoctest -m ndsampler.utils.util_gdal _imwrite_cloud_optimized_geotiff
+
     Example
-        >>> # DISABLE_DOCTEST
         >>> # xdoctest: +REQUIRES(module:gdal)
         >>> from ndsampler.utils.util_gdal import *  # NOQA
         >>> from ndsampler.utils.util_gdal import _imwrite_cloud_optimized_geotiff
-        >>> data = (np.random.rand(1000, 1000, 3) * 255).astype(np.uint8)
+
+        >>> data = (np.random.rand(700, 700, 3) * 255).astype(np.uint8)
         >>> fpath = '/tmp/foo.cog.tiff'
+        >>> _imwrite_cloud_optimized_geotiff(fpath, data, compress='JPEG')
+        >>> assert _doctest_check_cog(data, fpath)
+        >>> _imwrite_cloud_optimized_geotiff(fpath, data, compress='LZW')
+        >>> assert _doctest_check_cog(data, fpath)
 
-        >>> _imwrite_cloud_optimized_geotiff(fpath, data, lossy=False)
-        >>> import netharn as nh
-        >>> print(ub.repr2(nh.util.get_file_info(fpath)))
-        >>> from ndsampler.utils.validate_cog import validate as _validate_cog
-        >>> errors = _validate_cog(fpath)
-        >>> warnings, errors, details = _validate_cog(fpath)
-        >>> print('details = ' + ub.repr2(details))
-        >>> print('warnings = ' + ub.repr2(warnings))
-        >>> print('errors = ' + ub.repr2(errors))
-        >>> assert not errors
+        >>> data = (np.random.rand(100, 100, 4) * 255).astype(np.uint8)
+        >>> _imwrite_cloud_optimized_geotiff(fpath, data, compress='JPEG')
+        >>> assert _doctest_check_cog(data, fpath)
+        >>> _imwrite_cloud_optimized_geotiff(fpath, data, compress='LZW')
+        >>> assert _doctest_check_cog(data, fpath)
+        >>> _imwrite_cloud_optimized_geotiff(fpath, data, compress='DEFLATE')
+        >>> assert _doctest_check_cog(data, fpath)
 
-        >>> _imwrite_cloud_optimized_geotiff(fpath, data, lossy=True)
-        >>> import netharn as nh
-        >>> print(ub.repr2(nh.util.get_file_info(fpath)))
-        >>> from ndsampler.utils.validate_cog import validate as _validate_cog
-        >>> errors = _validate_cog(fpath)
-        >>> warnings, errors, details = _validate_cog(fpath)
-        >>> print('details = ' + ub.repr2(details))
-        >>> print('warnings = ' + ub.repr2(warnings))
-        >>> print('errors = ' + ub.repr2(errors))
-        >>> assert not errors
-
-        fpath2 = '/tmp/foo.png'
-        kwimage.imwrite(fpath2, data)
-        print(nh.util.get_file_info(fpath2))
-
-        fpath3 = '/tmp/foo.jpg'
-        kwimage.imwrite(fpath3, data)
-        print(nh.util.get_file_info(fpath3))
+        >>> data = (np.random.rand(100, 100, 5) * 255).astype(np.uint8)
+        >>> _imwrite_cloud_optimized_geotiff(fpath, data, compress='LZW')
+        >>> assert _doctest_check_cog(data, fpath)
     """
     import gdal
     y_size, x_size, num_bands = data.shape
 
-    if num_bands == 4:
-        # Silently discarding the alpha channel
-        num_bands = 3
+    if compress == 'JPEG' and num_bands >= 5:
+        raise ValueError('Cannot use JPEG with more than 4 channels')
 
-    kindsize = (data.dtype.kind, data.dtype.itemsize)
-    if kindsize == ('u', 1):
-        eType = gdal.GDT_Byte
-    else:
-        raise TypeError(kindsize)
+    eType = _numpy_to_gdal_dtype(data.dtype)
+    if compress == 'JPEG':
+        if eType not in [gdal.GDT_Byte, gdal.GDT_UInt16]:
+            raise ValueError('JPEG compression must use 8 or 16 bit integer imagery')
 
+    # Create an in-memory dataset where we will prepare the COG data structure
     driver = gdal.GetDriverByName(str('MEM'))
-    data_set = driver.Create(str(''), x_size, y_size, num_bands,
-                             eType=eType)
-
+    data_set = driver.Create(str(''), x_size, y_size, num_bands, eType=eType)
     for i in range(num_bands):
         band_data = np.ascontiguousarray(data[:, :, i])
         data_set.GetRasterBand(i + 1).WriteArray(band_data)
 
+    # Build the downsampled overviews (for fast zoom in / out)
+    # TODO: optional RESAMPLING option
+    # NEAREST/AVERAGE/BILINEAR/CUBIC/CUBICSPLINE/LANCZOS
     data_set.BuildOverviews(str('NEAREST'), [2, 4, 8, 16, 32, 64])
 
-    if lossy:
-        options = ['COPY_SRC_OVERVIEWS=YES', 'TILED=YES', 'COMPRESS=JPEG', 'PHOTOMETRIC=YCBCR']
-        # options = ['COPY_SRC_OVERVIEWS=YES', 'TILED=YES', 'COMPRESS=JPEG']
-    else:
-        options = ['COPY_SRC_OVERVIEWS=YES', 'TILED=YES', 'COMPRESS=LZW']
-
+    options = [
+        'COPY_SRC_OVERVIEWS=YES',
+        'TILED=YES',
+        'COMPRESS={}'.format(compress)
+        # TODO: optional BLOCKSIZE
+    ]
     options = list(map(str, options))  # python2.7 support
 
+    # Copy the in-memory dataset to an on-disk GeoTiff
     driver2 = gdal.GetDriverByName(str('GTiff'))
     data_set2 = driver2.CreateCopy(fpath, data_set, options=options)
     # OK, so setting things to None turns out to be important. Gah!
@@ -98,10 +137,6 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, lossy=True):
     data_set = None
     data_set2 = None
     driver = driver2 = None
-
-    # if False:
-    #     z = gdal.Open(fpath, gdal.GA_ReadOnly)
-    #     z.GetRasterBand(1).GetMetadataItem('BLOCK_OFFSET_0_0', 'TIFF')
     return fpath
 
 

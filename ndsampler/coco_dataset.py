@@ -1771,7 +1771,8 @@ class MixinCocoDraw(object):
                 HAVE_KWIMAGE = True
                 if HAVE_KWIMAGE:
                     from kwimage.structs.mask import _coerce_coco_segmentation
-                    catcolor = kwplot.Color(catcolor).as01()
+                    if catcolor is not None:
+                        catcolor = kwplot.Color(catcolor).as01()
                     # TODO: Unify masks and polygons into a kwimage
                     # segmentation class
                     sseg = _coerce_coco_segmentation(sseg)

@@ -160,7 +160,12 @@ def validate(ds, check_tiled=True):
     details['data_offsets']['main'] = data_offset
     for i in range(ovr_count):
         ovr_band = ds.GetRasterBand(1).GetOverview(i)
-        data_offset = int(ovr_band.GetMetadataItem('BLOCK_OFFSET_0_0', 'TIFF'))
+        data_offset_code = ovr_band.GetMetadataItem('BLOCK_OFFSET_0_0', 'TIFF')
+        try:
+            data_offset = int(data_offset_code)
+        except TypeError:
+            # metadata = ovr_band.GetMetadata()
+            raise TypeError('data_offset_code={} was not an integer'.format(data_offset_code))
         data_offsets.append(data_offset)
         details['data_offsets']['overview_%d' % i] = data_offset
 

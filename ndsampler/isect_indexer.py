@@ -173,17 +173,24 @@ class FrameIntersectionIndex(object):
         Args:
             num (int): number of negative boxes to generate (actual number of
                 boxes returned may be less unless `exact=True`)
+
             anchors (ndarray): prior normalized aspect ratios for negative
                 boxes. Mutually exclusive with `window_size`.
-            window_size (ndarray): absolute window sizes.
+
+            window_size (ndarray): absolute (W, H) sizes to use for negative
+                boxes.  Mutually exclusive with `anchors`.
+
             gids (List[int]): image-ids to generate negatives for,
                 if not specified generates for all images.
+
             thresh (float): overlap area threshold as a percentage of
                 the negative box size. When thresh=0.0, that means
                 negatives cannot overlap any positive, when threh=1.0, there
                 are no constrains on negative placement.
+
             exact (bool): if True, ensure that we generate exactly `num` boxes
-            rng (np.random.RandomState): random number generator
+
+            rng (RandomState): random number generator
 
         Example:
             >>> from ndsampler.isect_indexer import *

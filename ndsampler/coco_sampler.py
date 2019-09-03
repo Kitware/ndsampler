@@ -22,6 +22,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
     Args:
         dset (ndsampler.CocoDataset): a coco-formatted dataset
 
+        backend :
+
     Example:
         >>> from ndsampler.coco_sampler import *
         >>> self = CocoSampler.demo('photos')
@@ -74,7 +76,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         self.dset = dset
         self.regions = None
         self.frames = None
-        self._backend = backend  # save until we init the frames
+
+        # save at least until we init the frames / regions
+        self._backend = backend
+
         self.verbose = verbose
         self.BACKGROUND_CLASS_ID = None
 

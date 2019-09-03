@@ -113,6 +113,7 @@ class JobPool(object):
         >>> def worker(data):
         >>>     return data + 1
         >>> pool = JobPool('thread', max_workers=16)
+        >>> import ubelt as ub
         >>> with pool:
         >>>     for data in ub.ProgIter(range(10), desc='submit jobs'):
         >>>         job = pool.submit(worker, data)
