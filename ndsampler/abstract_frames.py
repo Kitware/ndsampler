@@ -32,6 +32,12 @@ if six.PY2:
 else:
     from functools import lru_cache
 
+# try:
+#     import xdev
+#     profile = xdev.profile
+# except ImportError:
+#     profile = ub.identity
+
 
 class Frames(object):
     """
@@ -377,6 +383,7 @@ class Frames(object):
         return gpath, cache_gpath
 
     @lru_cache(1)  # Keeps frequently accessed images open
+    # @profile
     def _load_image_cog(self, image_id):
         """
         Returns a special array-like object with a COG GeoTIFF backend
@@ -525,12 +532,14 @@ class Frames(object):
                     job = executor.submit(self.load_image, image_id, cache=True)
                     job_list.append(job)
 
-                for job in ub.ProgIter(futures.as_completed(job_list), total=len(gids),
+                for job in ub.ProgIter(futures.as_completed(job_list),
+                                       total=len(gids), adjust=False, freq=1,
                                        desc='Frames: collect prepare jobs'):
                     job.result()
             stamp.renew()
 
 
+# @profile
 def _cog_cache_write(gpath, cache_gpath, config=None):
     """
     CommandLine:
@@ -556,13 +565,14 @@ def _cog_cache_write(gpath, cache_gpath, config=None):
     # Load all the image data and dump it to npy format
     import kwimage
     raw_data = kwimage.imread(gpath)
+    raw_data = kwimage.atleast_3channels(raw_data, copy=False)
     # TODO: THERE HAS TO BE A CORRECT WAY TO DO THIS.
     # However, I'm not sure what it is. I extend my appologies to whoever is
     # maintaining this code. Note: mode MUST be 'w'
 
     assert config is not None
 
-    DEBUG = 1
+    DEBUG = 0
     if DEBUG:
         import multiprocessing
         proc = multiprocessing.current_process()
@@ -602,17 +612,22 @@ def _cog_cache_write(gpath, cache_gpath, config=None):
     if RUN_CORRUPTION_CHECKS:
         # CHECK THAT THE DATA WAS WRITTEN CORRECTLY
         file = util_gdal.LazyGDalFrameFile(cache_gpath)
-        orig_sum = raw_data.sum()
-        cache_sum = file[:].sum()
-        if DEBUG:
-            _debug('orig_sum = {}'.format(orig_sum))
-            _debug('cache_sum = {}'.format(cache_sum))
-        if orig_sum > 0 and cache_sum == 0:
-            print('FAILED TO WRITE COG FILE')
-            if DEBUG:
-                _debug('FAILED TO WRITE COG FILE')
-            ub.delete(cache_gpath)
-            raise Exception('FAILED TO WRITE COG FILE CORRECTLY')
+        is_valid = util_gdal.validate_gdal_file(file)
+        if not is_valid:
+            # The check may fail on zero images, so check that
+            orig_sum = raw_data.sum()
+            # cache_sum = file[:].sum()
+            # if DEBUG:
+            #     _debug('is_valid = {}'.format(is_valid))
+            #     _debug('cache_sum = {}'.format(cache_sum))
+            if orig_sum > 0:
+                print('FAILED TO WRITE COG FILE')
+                if DEBUG:
+                    _debug('FAILED TO WRITE COG FILE')
+                ub.delete(cache_gpath)
+                raise Exception('FAILED TO WRITE COG FILE CORRECTLY')
+
+    # raise RuntimeError('FOOBAR')
 
 
 def _npy_cache_write(gpath, cache_gpath, config=None):

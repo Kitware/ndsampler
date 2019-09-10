@@ -2,6 +2,13 @@ import numpy as np
 import ubelt as ub
 
 
+# try:
+#     import xdev
+#     profile = xdev.profile
+# except ImportError:
+#     profile = ub.identity
+
+
 def have_gdal():
     try:
         import gdal
@@ -46,6 +53,7 @@ def _numpy_to_gdal_dtype(numpy_dtype):
     return eType
 
 
+# @profile
 def _imwrite_cloud_optimized_geotiff(fpath, data, compress='JPEG'):
     """
     Args:
@@ -100,6 +108,8 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, compress='JPEG'):
     import gdal
     y_size, x_size, num_bands = data.shape
 
+    assert compress in ['JPEG', 'LZW', 'DEFLATE'], 'unknown compress'
+
     if compress == 'JPEG' and num_bands >= 5:
         raise ValueError('Cannot use JPEG with more than 4 channels')
 
@@ -123,7 +133,7 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, compress='JPEG'):
     options = [
         'COPY_SRC_OVERVIEWS=YES',
         'TILED=YES',
-        'COMPRESS={}'.format(compress)
+        'COMPRESS={}'.format(compress),
         # TODO: optional BLOCKSIZE
     ]
     options = list(map(str, options))  # python2.7 support
@@ -227,6 +237,7 @@ class LazyGDalFrameFile(ub.NiceRepr):
             rb_indices = range(C)
             assert len(trailing_part) <= 1
 
+        # TODO: preallocate like kwimage
         channels = []
         for i in rb_indices:
             rb = ds.GetRasterBand(1 + i)
