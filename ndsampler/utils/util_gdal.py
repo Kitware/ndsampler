@@ -134,6 +134,7 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, compress='JPEG'):
         'COPY_SRC_OVERVIEWS=YES',
         'TILED=YES',
         'COMPRESS={}'.format(compress),
+        'BIGTIFF=YES',
         # TODO: optional BLOCKSIZE
     ]
     options = list(map(str, options))  # python2.7 support
