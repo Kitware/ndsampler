@@ -124,7 +124,8 @@ class Frames(object):
         'type': 'cog',
         'config': {
             'compress': 'JPEG',
-        }
+        },
+        '_hack_old_names': False,  # This will be removed in the future
     }
 
     def __init__(self, id_to_hashid=None, hashid_mode='PATH', workdir=None,
@@ -170,6 +171,7 @@ class Frames(object):
                 backend = 'cog'
             else:
                 backend = 'npy'
+        # TODO: allow for heterogeneous backends
 
         if isinstance(backend, six.string_types):
             backend = {'type': backend, 'config': {}}
@@ -372,8 +374,11 @@ class Frames(object):
         # We actually don't want to write the image-id in the filename because
         # the same file may be in different datasets with different ids.
         if mode == 'cog':
-            cache_gname = '{}_{}_{}.cog.tiff'.format(fname_base, hashid,
-                                                     self._backend_hashid)
+            if self._backend['_hack_old_names']:
+                cache_gname = '{}_{}.cog.tiff'.format(fname_base, hashid)
+            else:
+                cache_gname = '{}_{}_{}.cog.tiff'.format(fname_base, hashid,
+                                                         self._backend_hashid)
         elif mode == 'npy':
             # cache_gname = '{}_{}_{}.npy'.format(image_id, fname_base, hashid)
             cache_gname = '{}_{}.npy'.format(fname_base, hashid)
