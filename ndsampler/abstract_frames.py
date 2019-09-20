@@ -39,6 +39,11 @@ else:
 #     profile = ub.identity
 
 
+DEBUG_COG_ATOMIC_WRITE = 0
+DEBUG_FILE_LOCK_CACHE_WRITE = 0
+DEBUG_LOAD_COG = 1
+
+
 class Frames(object):
     """
     Abstract implementation of Frames.
@@ -126,14 +131,17 @@ class Frames(object):
             'compress': 'JPEG',
         },
         '_hack_old_names': False,  # This will be removed in the future
+        '_hack_use_cli': True,  # Uses the gdal-CLI to create cogs, which frustratingly seems to be faster
     }
 
     def __init__(self, id_to_hashid=None, hashid_mode='PATH', workdir=None,
                  backend=None):
 
-        self._backend = self._coerce_backend_config(backend)
-        self._backend_hashid = ub.hash_data(
-            sorted(self._backend['config'].items()))[0:8]
+        self._backend = None
+        self._backend_hashid = None  # hash of backend config parameters
+        self._cache_dpath = None
+
+        self._update_backend(backend)
 
         if id_to_hashid is None:
             id_to_hashid = {}
@@ -146,14 +154,18 @@ class Frames(object):
             workdir = ub.get_app_cache_dir('ndsampler')
             warnings.warn('Frames workdir not specified. '
                           'Defaulting to {!r}'.format(workdir))
-
         self.workdir = workdir
-        self._cache_dpath = None
-
         self.hashid_mode = hashid_mode
 
         if self.hashid_mode not in ['PATH', 'PIXELS', 'GIVEN']:
             raise KeyError(self.hashid_mode)
+
+    def _update_backend(self, backend):
+        """ change the backend and update internals accordingly """
+        self._backend = self._coerce_backend_config(backend)
+        self._cache_dpath = None
+        self._backend_hashid = ub.hash_data(
+            sorted(self._backend['config'].items()))[0:8]
 
     @classmethod
     def _coerce_backend_config(cls, backend=None):
@@ -166,13 +178,13 @@ class Frames(object):
                 specific type.
         """
         import copy
+        # TODO: allow for heterogeneous backends
         if backend is None:
+            # Use defaults that work on the system
             if util_gdal.have_gdal():
                 backend = 'cog'
             else:
                 backend = 'npy'
-        # TODO: allow for heterogeneous backends
-
         if isinstance(backend, six.string_types):
             backend = {'type': backend, 'config': {}}
 
@@ -193,14 +205,20 @@ class Frames(object):
             raise ValueError('Backend got unknown keys: {}'.format(unknown_keys))
 
         # Check the config-level dictionary has no unknown keys
-        given_kw = backend.get('config', {})
+        inner_kw = backend.get('config', {})
         default_kw = final['config']
-        unknown_config_keys = set(given_kw) - set(default_kw)
+        unknown_config_keys = set(inner_kw) - set(default_kw)
         if unknown_config_keys:
             raise ValueError('Backend config got unknown keys: {}'.format(unknown_config_keys))
 
         # Only update expected values in the subconfig
-        final['config'].update(given_kw)
+        # Update the outer config
+        outer_kw = backend.copy()
+        outer_kw.pop('config', None)
+        final.update(outer_kw)
+
+        # Update the inner config
+        final['config'].update(inner_kw)
         return final
 
     @property
@@ -209,9 +227,39 @@ class Frames(object):
         Returns the path where cached frame representations will be stored
         """
         if self._cache_dpath is None:
-            dpath = join(self.workdir, '_cache/frames', self._backend['type'])
+            backend_type = self._backend['type']
+            if backend_type == 'cog':
+                if self._backend['_hack_old_names']:
+                    # Old style didn't care about the particular config. Used whatever the first config was.
+                    dpath = join(self.workdir, '_cache', 'frames',
+                                 backend_type)
+                else:
+                    # New style respects user config choice
+                    dpath = join(self.workdir, '_cache', 'frames',
+                                 backend_type, self._backend_hashid)
+            else:
+                dpath = join(self.workdir, '_cache', 'frames', backend_type)
             self._cache_dpath = ub.ensuredir(dpath)
         return self._cache_dpath
+
+    def _gnames(self, image_id, mode):
+        """
+        Lookup the original image name and its cached efficient representation
+        name
+        """
+        gpath = self._lookup_gpath(image_id)
+        hashid = self._lookup_hashid(image_id)
+        fname_base = os.path.basename(gpath).split('.')[0]
+        # We actually don't want to write the image-id in the filename because
+        # the same file may be in different datasets with different ids.
+        if mode == 'cog':
+            cache_gname = '{}_{}.cog.tiff'.format(fname_base, hashid)
+        elif mode == 'npy':
+            cache_gname = '{}_{}.npy'.format(fname_base, hashid)
+        else:
+            raise KeyError(mode)
+        cache_gpath = join(self.cache_dpath, cache_gname)
+        return gpath, cache_gpath
 
     def _lookup_gpath(self, image_id):
         """
@@ -238,16 +286,20 @@ class Frames(object):
 
     def _lookup_hashid(self, image_id):
         """
-        Get the hashid of a particular image
+        Get the hashid of a particular image.
+
+        NOTE: THIS IS OVERWRITTEN BY THE COCO FRAMES TO ONLY USE THE RELATIVE
+        FILE PATH
         """
         if image_id not in self.id_to_hashid:
             # Compute the hash if we it does not exist yet
             gpath = self._lookup_gpath(image_id)
             if self.hashid_mode == 'PATH':
                 # Hash the full path to the image data
+                # NOTE: this logic is not machine independent
                 hashid = ub.hash_data(gpath, hasher='sha1', base='hex')
             elif self.hashid_mode == 'PIXELS':
-                # Hash the pixels in selfthe image
+                # Hash the pixels in the image
                 hashid = ub.hash_file(gpath, hasher='sha1', base='hex')
             elif self.hashid_mode == 'GIVEN':
                 raise IndexError(
@@ -263,7 +315,7 @@ class Frames(object):
 
     def load_region(self, image_id, region=None, bands=None, scale=0):
         """
-        Ammortized O(1) image subregion loading
+        Ammortized O(1) image subregion loading (assuming constant region size)
 
         Args:
             image_id (int): image identifier
@@ -363,30 +415,6 @@ class Frames(object):
                 raise
         return file
 
-    def _gnames(self, image_id, mode):
-        """
-        Lookup the original image name and its cached efficient representation
-        name
-        """
-        gpath = self._lookup_gpath(image_id)
-        hashid = self._lookup_hashid(image_id)
-        fname_base = os.path.basename(gpath).split('.')[0]
-        # We actually don't want to write the image-id in the filename because
-        # the same file may be in different datasets with different ids.
-        if mode == 'cog':
-            if self._backend['_hack_old_names']:
-                cache_gname = '{}_{}.cog.tiff'.format(fname_base, hashid)
-            else:
-                cache_gname = '{}_{}_{}.cog.tiff'.format(fname_base, hashid,
-                                                         self._backend_hashid)
-        elif mode == 'npy':
-            # cache_gname = '{}_{}_{}.npy'.format(image_id, fname_base, hashid)
-            cache_gname = '{}_{}.npy'.format(fname_base, hashid)
-        else:
-            raise KeyError(mode)
-        cache_gpath = join(self.cache_dpath, cache_gname)
-        return gpath, cache_gpath
-
     @lru_cache(1)  # Keeps frequently accessed images open
     # @profile
     def _load_image_cog(self, image_id):
@@ -404,7 +432,7 @@ class Frames(object):
             from ndsampler.utils.validate_cog import validate as _validate_cog
             warnings, errors, details = _validate_cog(gpath)
 
-            if 1:
+            if DEBUG_LOAD_COG:
                 from multiprocessing import current_process
                 from threading import current_thread
                 is_main = (
@@ -417,16 +445,18 @@ class Frames(object):
             else:
                 DEBUG = 0
 
+            if DEBUG:
+                print('\n<DEBUG INFO>')
+                print('Missing cog_gpath={}'.format(cog_gpath))
+
             gpath_is_cog = not bool(errors)
             if gpath_is_cog:
                 # If we already are a cog, then just use it
                 if DEBUG:
-                    print('<DEBUG INFO>')
-                    print('Coco Image is already a cog, symlinking to cache')
+                    print('Image is already a cog, symlinking to cache')
                 ub.symlink(gpath, cog_gpath)
             else:
                 if DEBUG:
-                    print('<DEBUG INFO>')
                     if DEBUG > 2:
                         print('details = ' + ub.repr2(details))
                         print('warnings = ' + ub.repr2(warnings))
@@ -439,8 +469,9 @@ class Frames(object):
                             print(' * info(gpath) = ' + ub.repr2(nh.util.get_file_info(gpath)))
                         except ImportError:
                             pass
-                self._ensure_cog_representation(gpath, cog_gpath,
-                                                self._backend['config'])
+                config = self._backend['config'].copy()
+                config['hack_use_cli'] = self._backend['_hack_use_cli']
+                self._ensure_cog_representation(gpath, cog_gpath, config)
 
             if DEBUG:
                 print('cog_gpath = {!r}'.format(cog_gpath))
@@ -523,7 +554,7 @@ class Frames(object):
         # TODO:
         #     Add some image preprocessing ability here
         stamp = ub.CacheStamp('prepare_frames_stamp', dpath=self.cache_dpath,
-                              cfgstr=hashid)
+                              cfgstr=hashid, verbose=3)
         stamp.cacher.enabled = bool(hashid)
         if stamp.expired() or hashid is None:
             from ndsampler import util_futures
@@ -567,27 +598,30 @@ def _cog_cache_write(gpath, cache_gpath, config=None):
         >>> cache_gpath = cog_gpath = join(self.cache_dpath, cog_gname)
         >>> _cog_cache_write(gpath, cache_gpath, {})
     """
-    # Load all the image data and dump it to npy format
-    import kwimage
-    raw_data = kwimage.imread(gpath)
-    raw_data = kwimage.atleast_3channels(raw_data, copy=False)
+    assert config is not None
+    hack_use_cli = config.pop('hack_use_cli', False)
+
+    if DEBUG_COG_ATOMIC_WRITE:
+        import multiprocessing
+        proc = multiprocessing.current_process()
+        def _debug(msg):
+            with open(cache_gpath + '.atomic.debug', 'a') as f:
+                f.write('[{}, {}, {}] '.format(ub.timestamp(), proc, proc.pid) + msg + '\n')
+        _debug('attempts aquire'.format())
+
+    if not hack_use_cli:
+        # Load all the image data and dump it to cog format
+        import kwimage
+        if DEBUG_COG_ATOMIC_WRITE:
+            _debug('reading data')
+        raw_data = kwimage.imread(gpath)
+        raw_data = kwimage.atleast_3channels(raw_data, copy=False)
     # TODO: THERE HAS TO BE A CORRECT WAY TO DO THIS.
     # However, I'm not sure what it is. I extend my appologies to whoever is
     # maintaining this code. Note: mode MUST be 'w'
 
-    assert config is not None
-
-    DEBUG = 0
-    if DEBUG:
-        import multiprocessing
-        proc = multiprocessing.current_process()
-        def _debug(msg):
-            with open(cache_gpath + '.proxy.debug', 'a') as f:
-                f.write('[{}, {}, {}] '.format(ub.timestamp(), proc, proc.pid) + msg + '\n')
-        _debug('attempts aquire'.format())
-
-    with atomicwrites.atomic_write(cache_gpath + '.proxy', mode='w', overwrite=True) as file:
-        if DEBUG:
+    with atomicwrites.atomic_write(cache_gpath + '.atomic', mode='w', overwrite=True) as file:
+        if DEBUG_COG_ATOMIC_WRITE:
             _debug('begin')
             _debug('gpath = {}'.format(gpath))
             _debug('cache_gpath = {}'.format(cache_gpath))
@@ -596,21 +630,27 @@ def _cog_cache_write(gpath, cache_gpath, config=None):
             file.write('gpath = {}\n'.format(gpath))
             file.write('cache_gpath = {}\n'.format(cache_gpath))
             if not exists(cache_gpath):
-                util_gdal._imwrite_cloud_optimized_geotiff(
-                    cache_gpath, raw_data, **config)
-                if DEBUG:
+                if not hack_use_cli:
+                    util_gdal._imwrite_cloud_optimized_geotiff(
+                        cache_gpath, raw_data, **config)
+                else:
+                    # The CLI is experimental and might make this pipeline
+                    # faster by avoiding the initial read.
+                    util_gdal._cli_convert_cloud_optimized_geotiff(
+                        gpath, cache_gpath, **config)
+                if DEBUG_COG_ATOMIC_WRITE:
                     _debug('finished write: {}\n'.format(ub.timestamp()))
             else:
-                if DEBUG:
+                if DEBUG_COG_ATOMIC_WRITE:
                     _debug('ALREADY EXISTS did not write: {}\n'.format(ub.timestamp()))
             file.write('end: {}\n'.format(ub.timestamp()))
         except Exception as ex:
             file.write('FAILED DUE TO EXCEPTION: {}: {}\n'.format(ex, ub.timestamp()))
-            if DEBUG:
+            if DEBUG_COG_ATOMIC_WRITE:
                 _debug('FAILED DUE TO EXCEPTION: {}'.format(ex))
             raise
         finally:
-            if DEBUG:
+            if DEBUG_COG_ATOMIC_WRITE:
                 _debug('finally')
 
     RUN_CORRUPTION_CHECKS = True
@@ -619,6 +659,9 @@ def _cog_cache_write(gpath, cache_gpath, config=None):
         file = util_gdal.LazyGDalFrameFile(cache_gpath)
         is_valid = util_gdal.validate_gdal_file(file)
         if not is_valid:
+            if not hack_use_cli:
+                import kwimage
+                raw_data = kwimage.imread(gpath)
             # The check may fail on zero images, so check that
             orig_sum = raw_data.sum()
             # cache_sum = file[:].sum()
@@ -627,7 +670,7 @@ def _cog_cache_write(gpath, cache_gpath, config=None):
             #     _debug('cache_sum = {}'.format(cache_sum))
             if orig_sum > 0:
                 print('FAILED TO WRITE COG FILE')
-                if DEBUG:
+                if DEBUG_COG_ATOMIC_WRITE:
                     _debug('FAILED TO WRITE COG FILE')
                 ub.delete(cache_gpath)
                 raise Exception('FAILED TO WRITE COG FILE CORRECTLY')
@@ -645,7 +688,8 @@ def _npy_cache_write(gpath, cache_gpath, config=None):
     # condition somewhere. Not sure what it is.
     # _semi_atomic_numpy_save(cache_gpath, raw_data)
 
-    with atomicwrites.atomic_write(cache_gpath, mode='wb', overwrite=True) as file:
+    # with atomicwrites.atomic_write(cache_gpath, mode='wb', overwrite=True) as file:
+    with open(cache_gpath, mode='wb') as file:
         np.save(file, raw_data)
 
 
@@ -655,9 +699,7 @@ def _locked_cache_write(_write_func, gpath, cache_gpath, config=None):
     """
     lock_fpath = cache_gpath + '.lock'
 
-    DEBUG = 0
-
-    if DEBUG:
+    if DEBUG_FILE_LOCK_CACHE_WRITE:
         import multiprocessing
         proc = multiprocessing.current_process()
         def _debug(msg):
@@ -672,7 +714,7 @@ def _locked_cache_write(_write_func, gpath, cache_gpath, config=None):
         # See: https://github.com/harlowja/fasteners/issues/26
         with fasteners.InterProcessLock(lock_fpath):
 
-            if DEBUG:
+            if DEBUG_FILE_LOCK_CACHE_WRITE:
                 _debug('aquires')
                 _debug('will read {}'.format(gpath))
                 _debug('will write {}'.format(cache_gpath))
@@ -680,22 +722,22 @@ def _locked_cache_write(_write_func, gpath, cache_gpath, config=None):
             if not exists(cache_gpath):
                 _write_func(gpath, cache_gpath, config)
 
-                if DEBUG:
+                if DEBUG_FILE_LOCK_CACHE_WRITE:
                     _debug('wrote'.format())
             else:
-                if DEBUG:
+                if DEBUG_FILE_LOCK_CACHE_WRITE:
                     _debug('does not need to write'.format())
 
-            if DEBUG:
+            if DEBUG_FILE_LOCK_CACHE_WRITE:
                 _debug('releasing'.format())
 
-        if DEBUG:
+        if DEBUG_FILE_LOCK_CACHE_WRITE:
             _debug('released'.format())
     except Exception as ex:
-        if DEBUG:
+        if DEBUG_FILE_LOCK_CACHE_WRITE:
             _debug('GOT EXCEPTION: {}'.format(ex))
     finally:
-        if DEBUG:
+        if DEBUG_FILE_LOCK_CACHE_WRITE:
             _debug('finally')
 
 

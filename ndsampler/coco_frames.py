@@ -71,3 +71,19 @@ class CocoFrames(abstract_frames.Frames, util.HashIdentifiable):
                 region = None  # setting region to None disables memmap/geotiff caching
 
         return super(CocoFrames, self).load_region(image_id, region)
+
+    def _lookup_hashid(self, image_id):
+        """
+        Get the hashid of a particular image
+        """
+        if image_id not in self.id_to_hashid:
+            USE_RELATIVE_PATH = not self._backend.get('_hack_old_names', False)
+            if USE_RELATIVE_PATH and self.hashid_mode == 'PATH':
+                # Hash the relative path to the image data
+                img = self.dset.imgs[image_id]
+                rel_gpath = img['file_name']
+                hashid = ub.hash_data(rel_gpath, hasher='sha1', base='hex')
+                self.id_to_hashid[image_id] = hashid
+            else:
+                return super(CocoFrames, self)._lookup_hashid(image_id)
+        return self.id_to_hashid[image_id]

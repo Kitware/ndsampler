@@ -2,11 +2,11 @@ import numpy as np
 import ubelt as ub
 
 
-# try:
-#     import xdev
-#     profile = xdev.profile
-# except ImportError:
-#     profile = ub.identity
+try:
+    import xdev
+    profile = xdev.profile
+except ImportError:
+    profile = ub.identity
 
 
 def have_gdal():
@@ -53,7 +53,7 @@ def _numpy_to_gdal_dtype(numpy_dtype):
     return eType
 
 
-# @profile
+@profile
 def _imwrite_cloud_optimized_geotiff(fpath, data, compress='JPEG'):
     """
     Args:
@@ -69,6 +69,9 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, compress='JPEG'):
         https://geoexamples.com/other/2019/02/08/cog-tutorial.html#create-a-cog-using-gdal-python
         http://osgeo-org.1560.x6.nabble.com/gdal-dev-Creating-Cloud-Optimized-GeoTIFFs-td5320101.html
         https://gdal.org/drivers/raster/cog.html
+        https://github.com/harshurampur/Geotiff-conversion
+        https://github.com/sshuair/cogeotiff
+        https://github.com/cogeotiff/rio-cogeo
 
     Notes:
         conda install gdal
@@ -86,8 +89,9 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, compress='JPEG'):
         >>> from ndsampler.utils.util_gdal import *  # NOQA
         >>> from ndsampler.utils.util_gdal import _imwrite_cloud_optimized_geotiff
 
-        >>> data = (np.random.rand(700, 700, 3) * 255).astype(np.uint8)
+        >>> data = np.random.randint(0, 255, (800, 800, 3), dtype=np.uint8)
         >>> fpath = '/tmp/foo.cog.tiff'
+        >>> compress = 'JPEG'
         >>> _imwrite_cloud_optimized_geotiff(fpath, data, compress='JPEG')
         >>> assert _doctest_check_cog(data, fpath)
         >>> _imwrite_cloud_optimized_geotiff(fpath, data, compress='LZW')
@@ -104,6 +108,24 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, compress='JPEG'):
         >>> data = (np.random.rand(100, 100, 5) * 255).astype(np.uint8)
         >>> _imwrite_cloud_optimized_geotiff(fpath, data, compress='LZW')
         >>> assert _doctest_check_cog(data, fpath)
+
+    Ignore:
+        >>> import xdev
+        >>> data = np.random.randint(0, 255, (8000, 8000, 3), dtype=np.uint8)
+        >>> print(xdev.byte_str(data.size * data.dtype.itemsize))
+        >>> fpath = fpath1 = ub.expandpath('~/ssd/foo.tiff')
+        >>> fpath2 = ub.expandpath('~/raid/foo.tiff')
+        >>> import ubelt as ub
+        >>> ti = ub.Timerit(1, bestof=1, verbose=3)
+        >>> #
+        >>> for timer in ti.reset('SSD'):
+        >>>     ub.delete(fpath1)
+        >>>     with timer:
+        >>>         _imwrite_cloud_optimized_geotiff(fpath1, data)
+        >>> for timer in ti.reset('HDD'):
+        >>>     ub.delete(fpath2)
+        >>>     with timer:
+        >>>         _imwrite_cloud_optimized_geotiff(fpath2, data)
     """
     import gdal
     y_size, x_size, num_bands = data.shape
@@ -118,6 +140,24 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, compress='JPEG'):
         if eType not in [gdal.GDT_Byte, gdal.GDT_UInt16]:
             raise ValueError('JPEG compression must use 8 or 16 bit integer imagery')
 
+    options = [
+        'TILED=YES',
+        'COMPRESS={}'.format(compress),
+        'BIGTIFF=YES',
+        # 'PHOTOMETRIC=YCBCR',
+        # TODO: optional BLOCKSIZE
+    ]
+    options = list(map(str, options))  # python2.7 support
+
+    # TODO: optional RESAMPLING option
+    # NEAREST/AVERAGE/BILINEAR/CUBIC/CUBICSPLINE/LANCZOS
+    overview_resample = 'NEAREST'
+    overview_levels = [2, 4, 8, 16, 32, 64]
+    overview_levels = []
+
+    if overview_levels:
+        options.append('COPY_SRC_OVERVIEWS=YES')
+
     # Create an in-memory dataset where we will prepare the COG data structure
     driver = gdal.GetDriverByName(str('MEM'))
     data_set = driver.Create(str(''), x_size, y_size, num_bands, eType=eType)
@@ -125,30 +165,62 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, compress='JPEG'):
         band_data = np.ascontiguousarray(data[:, :, i])
         data_set.GetRasterBand(i + 1).WriteArray(band_data)
 
-    # Build the downsampled overviews (for fast zoom in / out)
-    # TODO: optional RESAMPLING option
-    # NEAREST/AVERAGE/BILINEAR/CUBIC/CUBICSPLINE/LANCZOS
-    data_set.BuildOverviews(str('NEAREST'), [2, 4, 8, 16, 32, 64])
+    if overview_levels:
+        # Build the downsampled overviews (for fast zoom in / out)
+        data_set.BuildOverviews(str(overview_resample), overview_levels)
 
+    driver = None
+    # Copy the in-memory dataset to an on-disk GeoTiff
+    driver2 = gdal.GetDriverByName(str('GTiff'))
+    data_set2 = driver2.CreateCopy(fpath, data_set, options=options)
+    data_set = None
+
+    # OK, so setting things to None turns out to be important. Gah!
+    data_set2.FlushCache()
+
+    # Dereference everything
+    data_set2 = None
+    driver2 = None
+    return fpath
+
+
+def _cli_convert_cloud_optimized_geotiff(src_fpath, dst_fpath, compress='JPEG'):
+    """
+    For whatever reason using the CLI seems to simply be faster.
+
+    Ignore:
+        >>> import xdev
+        >>> import kwimage
+        >>> data = np.random.randint(0, 255, (4000, 4000, 3), dtype=np.uint8)
+        >>> print(xdev.byte_str(data.size * data.dtype.itemsize))
+        >>> src_fpath = ub.expandpath('~/raid/src.tiff')
+        >>> kwimage.imwrite(src_fpath, data)
+        >>> dst_fpath = ub.expandpath('~/raid/dst.tiff')
+        >>> ti = ub.Timerit(1, bestof=1, verbose=3)
+        >>> for timer in ti.reset('SSD-api'):
+        >>>     _cli_convert_cloud_optimized_geotiff(src_fpath, dst_fpath)
+    """
     options = [
-        'COPY_SRC_OVERVIEWS=YES',
         'TILED=YES',
         'COMPRESS={}'.format(compress),
         'BIGTIFF=YES',
         # TODO: optional BLOCKSIZE
     ]
-    options = list(map(str, options))  # python2.7 support
+    overview_resample = 'NEAREST'
 
-    # Copy the in-memory dataset to an on-disk GeoTiff
-    driver2 = gdal.GetDriverByName(str('GTiff'))
-    data_set2 = driver2.CreateCopy(fpath, data_set, options=options)
-    # OK, so setting things to None turns out to be important. Gah!
-    data_set2.FlushCache()
+    # TODO: overview levels
+    overview_levels = []
+    temp_fpath = src_fpath
+    if overview_levels:
+        level_str = ' '.join(list(map(str, overview_levels)))
+        info = ub.cmd('gdaladdo -r {} {} {}'.format(overview_resample, temp_fpath, level_str))
+        assert info['ret'] == 0, 'failed {}'.format(info)
 
-    data_set = None
-    data_set2 = None
-    driver = driver2 = None
-    return fpath
+    option_strs = ['-co {}'.format(o) for o in options]
+    tr_command = ['gdal_translate', temp_fpath, dst_fpath] + option_strs
+    info = ub.cmd(' '.join(tr_command))
+    assert info['ret'] == 0, 'failed {}'.format(info)
+    return dst_fpath
 
 
 class LazyGDalFrameFile(ub.NiceRepr):
