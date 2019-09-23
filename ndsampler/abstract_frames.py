@@ -39,9 +39,10 @@ else:
 #     profile = ub.identity
 
 
-DEBUG_COG_ATOMIC_WRITE = 0
-DEBUG_FILE_LOCK_CACHE_WRITE = 0
+DEBUG_COG_ATOMIC_WRITE = 1
+DEBUG_FILE_LOCK_CACHE_WRITE = 1
 DEBUG_LOAD_COG = 1
+RUN_COG_CORRUPTION_CHECKS = True
 
 
 class Frames(object):
@@ -499,7 +500,7 @@ class Frames(object):
         _locked_cache_write(_npy_cache_write, gpath, cache_gpath=mem_gpath,
                             config=config)
 
-    def prepare(self, workers=0):
+    def prepare(self, workers=0, use_stamp=True):
         """
         Precompute the cached frame conversions
 
@@ -555,7 +556,7 @@ class Frames(object):
         #     Add some image preprocessing ability here
         stamp = ub.CacheStamp('prepare_frames_stamp', dpath=self.cache_dpath,
                               cfgstr=hashid, verbose=3)
-        stamp.cacher.enabled = bool(hashid)
+        stamp.cacher.enabled = bool(hashid) and bool(use_stamp)
         if stamp.expired() or hashid is None:
             from ndsampler import util_futures
             from concurrent import futures
@@ -603,10 +604,17 @@ def _cog_cache_write(gpath, cache_gpath, config=None):
 
     if DEBUG_COG_ATOMIC_WRITE:
         import multiprocessing
+        from multiprocessing import current_process
+        from threading import current_thread
+        is_main = (current_thread().name == 'MainThread' and
+                   current_process().name == 'MainProcess')
         proc = multiprocessing.current_process()
         def _debug(msg):
+            msg_ = '[{}, {}, {}] '.format(ub.timestamp(), proc, proc.pid) + msg + '\n'
+            if is_main:
+                print(msg_)
             with open(cache_gpath + '.atomic.debug', 'a') as f:
-                f.write('[{}, {}, {}] '.format(ub.timestamp(), proc, proc.pid) + msg + '\n')
+                f.write(msg_)
         _debug('attempts aquire'.format())
 
     if not hack_use_cli:
@@ -653,8 +661,7 @@ def _cog_cache_write(gpath, cache_gpath, config=None):
             if DEBUG_COG_ATOMIC_WRITE:
                 _debug('finally')
 
-    RUN_CORRUPTION_CHECKS = True
-    if RUN_CORRUPTION_CHECKS:
+    if RUN_COG_CORRUPTION_CHECKS:
         # CHECK THAT THE DATA WAS WRITTEN CORRECTLY
         file = util_gdal.LazyGDalFrameFile(cache_gpath)
         is_valid = util_gdal.validate_gdal_file(file)
@@ -701,10 +708,17 @@ def _locked_cache_write(_write_func, gpath, cache_gpath, config=None):
 
     if DEBUG_FILE_LOCK_CACHE_WRITE:
         import multiprocessing
+        from multiprocessing import current_process
+        from threading import current_thread
+        is_main = (current_thread().name == 'MainThread' and
+                   current_process().name == 'MainProcess')
         proc = multiprocessing.current_process()
         def _debug(msg):
+            msg_ = '[{}, {}, {}] '.format(ub.timestamp(), proc, proc.pid) + msg + '\n'
+            if is_main:
+                print(msg_)
             with open(lock_fpath + '.debug', 'a') as f:
-                f.write('[{}, {}, {}] '.format(ub.timestamp(), proc, proc.pid) + msg + '\n')
+                f.write(msg_)
         _debug('lock_fpath = {}'.format(lock_fpath))
         _debug('attempt aquire')
 

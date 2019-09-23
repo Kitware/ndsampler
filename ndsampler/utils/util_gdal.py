@@ -1,3 +1,4 @@
+from os.path import exists
 import numpy as np
 import ubelt as ub
 
@@ -214,12 +215,22 @@ def _cli_convert_cloud_optimized_geotiff(src_fpath, dst_fpath, compress='JPEG'):
     if overview_levels:
         level_str = ' '.join(list(map(str, overview_levels)))
         info = ub.cmd('gdaladdo -r {} {} {}'.format(overview_resample, temp_fpath, level_str))
-        assert info['ret'] == 0, 'failed {}'.format(info)
+        if info['ret'] != 0:
+            print(info['out'])
+            print(info['err'])
+            raise Exception('failed {}'.format(info))
 
     option_strs = ['-co {}'.format(o) for o in options]
     tr_command = ['gdal_translate', temp_fpath, dst_fpath] + option_strs
     info = ub.cmd(' '.join(tr_command))
-    assert info['ret'] == 0, 'failed {}'.format(info)
+    if info['ret'] != 0:
+        print(info['out'])
+        print(info['err'])
+        raise Exception('failed {}'.format(info))
+
+    if not exists(dst_fpath):
+        raise Exception('Failed to create specified COG file')
+
     return dst_fpath
 
 
