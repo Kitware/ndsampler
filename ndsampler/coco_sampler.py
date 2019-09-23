@@ -22,7 +22,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
     Args:
         dset (ndsampler.CocoDataset): a coco-formatted dataset
 
-        backend :
+        backend (str | Dict): either 'cog' or 'npy', or a dict with
+            `{'type': str, 'config': Dict}`. See AbstractFrames for more
+            details.
 
     Example:
         >>> from ndsampler.coco_sampler import *
