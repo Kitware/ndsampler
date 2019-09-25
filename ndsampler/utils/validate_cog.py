@@ -50,9 +50,10 @@ def validate(ds, check_tiled=True):
       check_tiled: Set to False to ignore missing tiling.
 
     Returns:
-      A tuple, whose first element is an array of error messages
-      (empty if there is no error), and the second element, a dictionary
-      with the structure of the GeoTIFF file.
+      Tuple[List, List, Dict] - warnings, errors, details - A tuple, whose first
+          element is an array of error messages (empty if there is no error),
+          and the second element, a dictionary with the structure of the
+          GeoTIFF file.
 
     Raises:
       ValidateCloudOptimizedGeoTIFFException: Unable to open the file or the

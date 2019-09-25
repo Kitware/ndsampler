@@ -123,6 +123,22 @@ class CategoryTree(ub.NiceRepr):
         return self
 
     @classmethod
+    def from_coco(cls, categories):
+        """
+        Create a CategoryTree object from coco categories
+
+        Args:
+            List[Dict]: list of coco-style categories
+        """
+        graph = nx.DiGraph()
+        for cat in categories:
+            graph.add_node(cat['name'], **cat)
+            if 'supercategory' in cat:
+                graph.add_edge(cat['supercategory'], cat['name'])
+        self = cls(graph)
+        return self
+
+    @classmethod
     def coerce(cls, data):
         """
         Attempt to coerce data as a CategoryTree object.

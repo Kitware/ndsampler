@@ -54,6 +54,51 @@ def _numpy_to_gdal_dtype(numpy_dtype):
     return eType
 
 
+def _benchmark_cog_conversions():
+    """
+    CommandLine:
+        xdoctest -m ~/code/ndsampler/ndsampler/utils/util_gdal.py _benchmark_cog_conversions
+    """
+    # Benchmark
+    # xdoc: +REQUIRES(--bench)
+    from ndsampler.utils.validate_cog import validate
+    import xdev
+    import kwimage
+    # Prepare test data
+    shape = (1000, 1000, 3)
+    print('Test data shape = {!r}'.format(shape))
+    data = np.random.randint(0, 255, shape, dtype=np.uint8)
+    print('Test data size = {}'.format(xdev.byte_str(data.size * data.dtype.itemsize)))
+    src_fpath = ub.expandpath('~/raid/src.png')
+    kwimage.imwrite(src_fpath, data)
+
+    # Benchmark conversions
+    dst_api_fpath = ub.expandpath('~/raid/dst_api.tiff')
+    dst_cli_fpath = ub.expandpath('~/raid/dst_cli.tiff')
+    dst_data_fpath = ub.expandpath('~/raid/dst_data.tiff')
+
+    ti = ub.Timerit(10, bestof=3, verbose=3, unit='s')
+
+    for timer in ti.reset('cov-convert-data'):
+        ub.delete(dst_data_fpath)
+        with timer:
+            _imwrite_cloud_optimized_geotiff(dst_data_fpath, data)
+    assert not len(validate(dst_cli_fpath)[1])
+
+    for timer in ti.reset('cog-convert-api'):
+        ub.delete(dst_api_fpath)
+        with timer:
+            _api_convert_cloud_optimized_geotiff(src_fpath, dst_api_fpath)
+    assert not len(validate(dst_api_fpath)[1])
+
+    for timer in ti.reset('cog-convert-cli'):
+        ub.delete(dst_cli_fpath)
+        with timer:
+            _cli_convert_cloud_optimized_geotiff(src_fpath, dst_cli_fpath)
+
+    assert not len(validate(dst_data_fpath)[1])
+
+
 @profile
 def _imwrite_cloud_optimized_geotiff(fpath, data, compress='JPEG'):
     """
@@ -141,6 +186,13 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, compress='JPEG'):
         if eType not in [gdal.GDT_Byte, gdal.GDT_UInt16]:
             raise ValueError('JPEG compression must use 8 or 16 bit integer imagery')
 
+    # TODO: optional RESAMPLING option
+    # TODO: option to specify num levels
+    # NEAREST/AVERAGE/BILINEAR/CUBIC/CUBICSPLINE/LANCZOS
+    overview_resample = 'NEAREST'
+    # overviewlist = [2, 4, 8, 16, 32, 64]
+    overviewlist = []
+
     options = [
         'TILED=YES',
         'COMPRESS={}'.format(compress),
@@ -149,14 +201,7 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, compress='JPEG'):
         # TODO: optional BLOCKSIZE
     ]
     options = list(map(str, options))  # python2.7 support
-
-    # TODO: optional RESAMPLING option
-    # NEAREST/AVERAGE/BILINEAR/CUBIC/CUBICSPLINE/LANCZOS
-    overview_resample = 'NEAREST'
-    overview_levels = [2, 4, 8, 16, 32, 64]
-    overview_levels = []
-
-    if overview_levels:
+    if overviewlist:
         options.append('COPY_SRC_OVERVIEWS=YES')
 
     # Create an in-memory dataset where we will prepare the COG data structure
@@ -166,9 +211,9 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, compress='JPEG'):
         band_data = np.ascontiguousarray(data[:, :, i])
         data_set.GetRasterBand(i + 1).WriteArray(band_data)
 
-    if overview_levels:
+    if overviewlist:
         # Build the downsampled overviews (for fast zoom in / out)
-        data_set.BuildOverviews(str(overview_resample), overview_levels)
+        data_set.BuildOverviews(str(overview_resample), overviewlist)
 
     driver = None
     # Copy the in-memory dataset to an on-disk GeoTiff
@@ -210,10 +255,10 @@ def _cli_convert_cloud_optimized_geotiff(src_fpath, dst_fpath, compress='JPEG'):
     overview_resample = 'NEAREST'
 
     # TODO: overview levels
-    overview_levels = []
+    overviewlist = []
     temp_fpath = src_fpath
-    if overview_levels:
-        level_str = ' '.join(list(map(str, overview_levels)))
+    if overviewlist:
+        level_str = ' '.join(list(map(str, overviewlist)))
         info = ub.cmd('gdaladdo -r {} {} {}'.format(overview_resample, temp_fpath, level_str))
         if info['ret'] != 0:
             print(info['out'])
@@ -231,6 +276,58 @@ def _cli_convert_cloud_optimized_geotiff(src_fpath, dst_fpath, compress='JPEG'):
     if not exists(dst_fpath):
         raise Exception('Failed to create specified COG file')
 
+    return dst_fpath
+
+
+def _api_convert_cloud_optimized_geotiff(src_fpath, dst_fpath,
+                                         compress='JPEG'):
+    """
+    Optimization of imwrite specifically for converting files that already
+    exist on disk. Skipping the initial load of data can be very helpful.
+
+    CommandLine:
+        xdoctest -m ~/code/ndsampler/ndsampler/utils/util_gdal.py _api_convert_cloud_optimized_geotiff --bench
+
+    """
+    import gdal
+    # data_set = gdal.Open(src_fpath)
+    data_set = gdal.Open(src_fpath, gdal.GA_ReadOnly)
+
+    # TODO: optional RESAMPLING option
+    # NEAREST/AVERAGE/BILINEAR/CUBIC/CUBICSPLINE/LANCZOS
+    overview_resample = 'NEAREST'
+    # overviewlist = [2, 4, 8, 16, 32, 64]
+    overviewlist = []
+    if len(overviewlist) > 0:
+        # TODO: check if the overviews already exist
+        # main_band = data_set.GetRasterBand(1)
+        # ovr_count = main_band.GetOverviewCount()
+        # if ovr_count != len(overviewlist):
+        # TODO: expose overview levels as arg
+        data_set.BuildOverviews(str(overview_resample), overviewlist)
+
+    options = [
+        'TILED=YES',
+        'COMPRESS={}'.format(compress),
+        'BIGTIFF=YES',
+        # 'PHOTOMETRIC=YCBCR',
+        # TODO: optional BLOCKSIZE
+    ]
+    if overviewlist:
+        options.append('COPY_SRC_OVERVIEWS=YES')
+    options = list(map(str, options))  # python2.7 support
+
+    # Copy the in-memory dataset to an on-disk GeoTiff
+    driver2 = gdal.GetDriverByName(str('GTiff'))
+    data_set2 = driver2.CreateCopy(dst_fpath, data_set, options=options)
+    data_set = None
+
+    # OK, so setting things to None turns out to be important. Gah!
+    data_set2.FlushCache()
+
+    # Dereference everything
+    data_set2 = None
+    driver2 = None
     return dst_fpath
 
 

@@ -166,10 +166,14 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
     def preselect(self, **kwargs):
         return self.regions.preselect(**kwargs)
 
-    def load_image_with_annots(self, image_id):
+    def load_image_with_annots(self, image_id, cache=True):
         """
         Args:
             image_id (int): the coco image id
+
+            cache (bool, default=True): if True returns the fast
+                subregion-indexable file reference. Otherwise, eagerly loads
+                the entire image.
 
         Returns:
             Tuple[Dict, List[Dict]]:
@@ -189,7 +193,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> dets.draw()
             >>> kwplot.show_if_requested()
         """
-        full_image = self.frames.load_image(image_id)
+        full_image = self.load_image(image_id, cache=cache)
         coco_dset = self.dset
         img = coco_dset.imgs[image_id].copy()
         anns = self.load_annotations(image_id)
@@ -199,14 +203,33 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
     def load_annotations(self, image_id):
         """
         Loads the annotations within an image
+
+        Args:
+            image_id (int): the coco image id
+
+        Returns:
+            List[Dict]: list of coco annotation dictionaries
         """
         coco_dset = self.dset
         aids = coco_dset.index.gid_to_aids[image_id]
         anns = [coco_dset.anns[aid] for aid in aids]
         return anns
 
-    def load_image(self, image_id):
-        full_image = self.frames.load_image(image_id)
+    def load_image(self, image_id, cache=True):
+        """
+        Loads the annotations within an image
+
+        Args:
+            image_id (int): the coco image id
+
+            cache (bool, default=True): if True returns the fast
+                subregion-indexable file reference. Otherwise, eagerly loads
+                the entire image.
+
+        Returns:
+            ArrayLike: either ndarray data or a indexable reference
+        """
+        full_image = self.frames.load_image(image_id, cache=cache)
         return full_image
 
     def load_item(self, index, pad=None, window_dims=None, with_annots=True):
@@ -636,8 +659,6 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         sseg_list = []
         kpts_list = []
 
-        # TODO: make it optional to load these annotions (as it may be slow)
-
         coco_dset = self.dset
         kp_classes = self.kp_classes
         for aid in overlap_aids:
@@ -645,14 +666,12 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
 
             # TODO: it should probably be the regions's responsibilty to load
             # and return these kwimage data structures.
-
             rel_points = None
             if 'keypoints' in with_annots:
                 coco_kpts = ann.get('keypoints', None)
-                if coco_kpts is not None:
-                    if len(coco_kpts) and isinstance(ub.peek(coco_kpts), dict):
-                        # new style encoding
-                        # raise NotImplementedError('new-style')
+                if coco_kpts is not None and len(coco_kpts) > 0:
+                    if isinstance(ub.peek(coco_kpts), dict):
+                        # new style coco keypoint encoding
                         abs_points = kwimage.Points._from_coco(
                             coco_kpts, classes=kp_classes)
                     else:
