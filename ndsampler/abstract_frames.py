@@ -550,6 +550,7 @@ class Frames(object):
             >>> self.prepare(workers=3)  # parallel, hit
         """
         ub.ensuredir(self.cache_dpath)
+        # Note: this usually acceses the hashid attribute of util.HashIdentifiable
         hashid = getattr(self, 'hashid', None)
 
         # TODO:
