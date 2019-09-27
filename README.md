@@ -19,6 +19,8 @@ annotation that takes up the entire image.
 
 # Example
 
+This example shows how you can efficiently load subregions from images.
+
 ```python
 >>> # Imagine you have some images
 >>> import kwimage
