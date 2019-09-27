@@ -1,4 +1,47 @@
 # -*- coding: utf-8 -*-
+"""
+Example:
+    >>> # Imagine you have some images
+    >>> import kwimage
+    >>> image_paths = [
+    >>>     kwimage.grab_test_image_fpath('astro'),
+    >>>     kwimage.grab_test_image_fpath('carl'),
+    >>>     kwimage.grab_test_image_fpath('airport'),
+    >>> ]  # xdoc: +IGNORE_WANT
+    ['~/.cache/kwimage/demodata/KXhKM72.png',
+     '~/.cache/kwimage/demodata/flTHWFD.png',
+     '~/.cache/kwimage/demodata/Airport.jpg']
+    >>> # And you want to randomly load subregions of them in O(1) time
+    >>> import ndsampler
+    >>> # First make a COCO dataset that refers to your images (and possibly annotations)
+    >>> dataset = {
+    >>>     'images': [{'id': i, 'file_name': fpath} for i, fpath in enumerate(image_paths)],
+    >>>     'annotations': [],
+    >>>     'categories': [],
+    >>> }
+    >>> coco_dset = ndsampler.CocoDataset(dataset)
+    >>> print(coco_dset)
+    <CocoDataset(tag=None, n_anns=0, n_imgs=3, n_cats=0)>
+    >>> # Now pass the dataset to a sampler and tell it where it can store temporary files
+    >>> workdir = ub.ensure_app_cache_dir('ndsampler/demo')
+    >>> sampler = ndsampler.CocoSampler(coco_dset, workdir=workdir)
+    >>> # Now you can load arbirary samples by specifing a target dictionary
+    >>> # with an image_id (gid) center location (cx, cy) and width, height.
+    >>> target = {'gid': 0, 'cx': 200, 'cy': 200, 'width': 100, 'height': 100}
+    >>> sample = sampler.load_sample(target)
+    >>> # The sample contains the image data, any visible annotations, a reference
+    >>> # to the original target, and params of the transform used to sample this
+    >>> # patch
+    >>> print(sorted(sample.keys()))
+    ['annots', 'im', 'params', 'tr']
+    >>> im = sample['im']
+    >>> print(im.shape)
+    (100, 100, 3)
+    >>> # The load sample function is at the core of what ndsampler does
+    >>> # There are other helper functions like load_positive / load_negative
+    >>> # which deal with annotations. See those for more details.
+    >>> # For random negative sampling see coco_regions.
+"""
 from __future__ import absolute_import, division, print_function, unicode_literals
 import ubelt as ub
 import numpy as np
