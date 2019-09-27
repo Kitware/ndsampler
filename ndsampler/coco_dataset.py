@@ -739,13 +739,14 @@ class MixinCocoExtras(object):
             raise KeyError(key)
         return self
 
-    def _build_hashid(self, hash_pixels=True, verbose=0):
+    def _build_hashid(self, hash_pixels=False, verbose=0):
         """
         Construct a hash that uniquely identifies the state of this dataset.
 
         Args:
-            hash_pixels (bool): If False the image data is not included in the
-                hash, which can speed up computation. Defaults to True.
+            hash_pixels (bool, default=False): If False the image data is not
+                included in the hash, which can speed up computation, but is
+                not 100% robust.
             verbose (int): verbosity level
 
         Example:
