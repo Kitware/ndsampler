@@ -2130,7 +2130,8 @@ class MixinCocoAddRemove(object):
             >>> self = ndsampler.CocoDataset.demo()
             >>> prev_n_annots = self.n_annots
             >>> aids_or_anns = [self.anns[2], 3, 4, self.anns[1]]
-            >>> self.remove_annotations(aids_or_anns)
+            >>> self.remove_annotations(aids_or_anns)  # xdoc: +IGNORE_WANT
+            {'annotations': 4}
             >>> assert len(self.dataset['annotations']) == prev_n_annots - 4
             >>> self._check_index()
         """
@@ -2231,7 +2232,8 @@ class MixinCocoAddRemove(object):
             >>> self = CocoDataset.demo()
             >>> assert len(self.dataset['images']) == 3
             >>> gids_or_imgs = [self.imgs[2], 'KXhKM72.png']
-            >>> self.remove_images(gids_or_imgs)
+            >>> self.remove_images(gids_or_imgs)  # xdoc: +IGNORE_WANT
+            {'annotations': 11, 'images': 2}
             >>> assert len(self.dataset['images']) == 1
             >>> self._check_index()
             >>> gids_or_imgs = [3]

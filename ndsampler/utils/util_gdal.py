@@ -44,11 +44,12 @@ def _numpy_to_gdal_dtype(numpy_dtype):
         eType = gdal.GDT_Byte
     elif kindsize == ('u', 2):
         eType = gdal.GDT_UInt16
-    # we dont support floats to keep things somewhat simple
-    # elif kindsize == ('f', 4):
-    #     eType = gdal.GDT_Float32
-    # elif kindsize == ('f', 8):
-    #     eType = gdal.GDT_Float64
+    elif kindsize == ('i', 2):
+        eType = gdal.GDT_Int16
+    elif kindsize == ('f', 4):
+        eType = gdal.GDT_Float32
+    elif kindsize == ('f', 8):
+        eType = gdal.GDT_Float64
     else:
         raise TypeError('Unsupported GDAL dtype for {}'.format(kindsize))
     return eType
@@ -174,12 +175,15 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, compress='JPEG'):
         >>>         _imwrite_cloud_optimized_geotiff(fpath2, data)
     """
     import gdal
+    if len(data.shape) == 2:
+        data = data[:, :, None]
+
     y_size, x_size, num_bands = data.shape
 
     assert compress in ['JPEG', 'LZW', 'DEFLATE'], 'unknown compress'
 
     if compress == 'JPEG' and num_bands >= 5:
-        raise ValueError('Cannot use JPEG with more than 4 channels')
+        raise ValueError('Cannot use JPEG with more than 4 channels (got {})'.format(num_bands))
 
     eType = _numpy_to_gdal_dtype(data.dtype)
     if compress == 'JPEG':

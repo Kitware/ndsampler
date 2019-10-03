@@ -624,7 +624,7 @@ def _cog_cache_write(gpath, cache_gpath, config=None):
         if DEBUG_COG_ATOMIC_WRITE:
             _debug('reading data')
         raw_data = kwimage.imread(gpath)
-        raw_data = kwimage.atleast_3channels(raw_data, copy=False)
+        # raw_data = kwimage.atleast_3channels(raw_data, copy=False)
     # TODO: THERE HAS TO BE A CORRECT WAY TO DO THIS.
     # However, I'm not sure what it is. I extend my appologies to whoever is
     # maintaining this code. Note: mode MUST be 'w'
@@ -667,7 +667,7 @@ def _cog_cache_write(gpath, cache_gpath, config=None):
         file = util_gdal.LazyGDalFrameFile(cache_gpath)
         is_valid = util_gdal.validate_gdal_file(file)
         if not is_valid:
-            if not hack_use_cli:
+            if hack_use_cli:
                 import kwimage
                 raw_data = kwimage.imread(gpath)
             # The check may fail on zero images, so check that
@@ -678,6 +678,8 @@ def _cog_cache_write(gpath, cache_gpath, config=None):
             #     _debug('cache_sum = {}'.format(cache_sum))
             if orig_sum > 0:
                 print('FAILED TO WRITE COG FILE')
+                print('orig_sum = {!r}'.format(orig_sum))
+                # print(kwimage.imread(cache_gpath).sum())
                 if DEBUG_COG_ATOMIC_WRITE:
                     _debug('FAILED TO WRITE COG FILE')
                 ub.delete(cache_gpath)
