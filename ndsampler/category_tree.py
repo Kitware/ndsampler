@@ -35,12 +35,12 @@ import numpy as np
 
 class CategoryTree(ub.NiceRepr):
     """
-    Helps compute softmaxes and probabilities for tree-based cateogries
+    Helps compute softmaxes and probabilities for tree-based categories
     where a directed edge (A, B) represents that A is a superclass of B.
 
     TODO:
         - [ ] separate the category tree from the method used to
-              compute the heirarchical softmax
+              compute the hierarchical softmax
 
         - [ ] I think its ok to keep the decision function here.
 
@@ -61,7 +61,7 @@ class CategoryTree(ub.NiceRepr):
         >>> }, nx.DiGraph)
         >>> self = CategoryTree(graph)
         >>> class_energy = torch.randn(3, len(self))
-        >>> class_probs = self.heirarchical_softmax(class_energy, dim=1)
+        >>> class_probs = self.hierarchical_softmax(class_energy, dim=1)
         >>> print(self)
         <CategoryTree(nNodes=22, maxDepth=6, maxBreadth=4...)>
     """
@@ -69,7 +69,7 @@ class CategoryTree(ub.NiceRepr):
         """
         Args:
             graph (nx.DiGraph):
-                either the graph representing a category heirarchy
+                either the graph representing a category hierarchy
         """
         if graph is None:
             graph = nx.DiGraph()
@@ -143,8 +143,8 @@ class CategoryTree(ub.NiceRepr):
         """
         Attempt to coerce data as a CategoryTree object.
 
-        This is primarilly useful for when the software stack depends on
-        categories being represnet
+        This is primarily useful for when the software stack depends on
+        categories being represent
 
         This will work if the input data is a specially formatted json dict, a
         list of mutually exclusive classes, or if it is already a CategoryTree.
@@ -361,7 +361,7 @@ class CategoryTree(ub.NiceRepr):
                     class_energy[start + i + 1][path] += 2 ** (i / 4)
                 class_energy[start + i + 2][path] += 2 ** 20
 
-        class_probs = self.heirarchical_softmax(class_energy, dim=1)
+        class_probs = self.hierarchical_softmax(class_energy, dim=1)
         return class_probs
 
     @classmethod
@@ -528,7 +528,7 @@ class CategoryTree(ub.NiceRepr):
         """
         Applies the probability chain rule (in log space, which has better
         numerical properties) to a set of conditional probabilities (wrt this
-        heriarchy) to achieve absolute probabilities for each node.
+        hierarchy) to achieve absolute probabilities for each node.
 
         Args:
             cond_logits (Tensor): conditional log probabilities for each class
@@ -574,23 +574,23 @@ class CategoryTree(ub.NiceRepr):
 
     def source_log_softmax(self, class_energy, dim):
         """
-        Top-down heirarchical softmax
+        Top-down hierarchical softmax
 
         Alternative to `sink_log_softmax`
 
         SeeAlso:
             * sink_log_softmax
-            * heirarchical_log_softmax
+            * hierarchical_log_softmax
 
         Converts raw class energy to absolute log probabilites based on the
-        category heirarchy. This is done by first converting to conditional
+        category hierarchy. This is done by first converting to conditional
         log probabilities and then applying the probability chain rule (in log
         space, which has better numerical properties).
 
         Args:
             class_energy (Tensor): raw output from network. The values in
                 `class_energy[..., idx]` should correspond to the network
-                activations for the heirarchical class `self.idx_to_node[idx]`
+                activations for the hierarchical class `self.idx_to_node[idx]`
             dim (int): dimension corresponding to classes (usually 1)
 
         Example:
@@ -598,7 +598,7 @@ class CategoryTree(ub.NiceRepr):
             >>> graph = nx.generators.gnr_graph(20, 0.3, seed=328).reverse()
             >>> self = CategoryTree(graph)
             >>> class_energy = torch.randn(3, len(self.idx_to_node))
-            >>> class_logits = self.heirarchical_log_softmax(class_energy, dim=-1)
+            >>> class_logits = self.hierarchical_log_softmax(class_energy, dim=-1)
             >>> class_probs = torch.exp(class_logits)
             >>> for node, idx in self.node_to_idx.items():
             ...     # Check the total children probabilities
@@ -618,13 +618,13 @@ class CategoryTree(ub.NiceRepr):
 
     def sink_log_softmax(self, class_energy, dim):
         """
-        Bottom-up heirarchical softmax
+        Bottom-up hierarchical softmax
 
         Alternative to `source_log_softmax`
 
         SeeAlso:
             * source_log_softmax
-            * heirarchical_log_softmax
+            * hierarchical_log_softmax
 
         Does a regular softmax over all the mutually exclusive leaf nodes, then
         sums their probabilities to get the score for the parent nodes.
@@ -632,7 +632,7 @@ class CategoryTree(ub.NiceRepr):
         Args:
             class_energy (Tensor): raw output from network. The values in
                 `class_energy[..., idx]` should correspond to the network
-                activations for the heirarchical class `self.idx_to_node[idx]`
+                activations for the hierarchical class `self.idx_to_node[idx]`
             dim (int): dimension corresponding to classes (usually 1)
 
         Example:
@@ -640,7 +640,7 @@ class CategoryTree(ub.NiceRepr):
             >>> graph = nx.generators.gnr_graph(20, 0.3, seed=328).reverse()
             >>> self = CategoryTree(graph)
             >>> class_energy = torch.randn(3, len(self.idx_to_node))
-            >>> class_logits = self.heirarchical_log_softmax(class_energy, dim=1)
+            >>> class_logits = self.hierarchical_log_softmax(class_energy, dim=1)
             >>> class_probs = torch.exp(class_logits)
             >>> for node, idx in self.node_to_idx.items():
             ...     # Check the total children probabilities
@@ -690,40 +690,40 @@ class CategoryTree(ub.NiceRepr):
 
     # TODO: Need to figure out the best way to parametarize which
     # of the source or sink softmaxes will be used by a network
-    heirarchical_log_softmax = source_log_softmax
-    # heirarchical_log_softmax = sink_log_softmax
+    hierarchical_log_softmax = source_log_softmax
+    # hierarchical_log_softmax = sink_log_softmax
 
-    def heirarchical_softmax(self, class_energy, dim):
+    def hierarchical_softmax(self, class_energy, dim):
         """ Convinience method which converts class-energy to final probs """
-        class_logits = self.heirarchical_log_softmax(class_energy, dim)
+        class_logits = self.hierarchical_log_softmax(class_energy, dim)
         class_probs = torch.exp(class_logits)
         return class_probs
 
     def graph_log_softmax(self, class_energy, dim):
         """ Convinience method which converts class-energy to logits """
-        class_logits = self.heirarchical_log_softmax(class_energy, dim)
+        class_logits = self.hierarchical_log_softmax(class_energy, dim)
         return class_logits
 
     def graph_softmax(self, class_energy, dim):
         """ Convinience method which converts class-energy to final probs """
-        class_logits = self.heirarchical_log_softmax(class_energy, dim)
+        class_logits = self.hierarchical_log_softmax(class_energy, dim)
         class_probs = torch.exp(class_logits)
         return class_probs
 
-    def heirarchical_cross_entropy(self, class_energy, targets,
+    def hierarchical_cross_entropy(self, class_energy, targets,
                                    reduction='mean'):
         """
-        Combines heirarchical_log_softmax and nll_loss in a single function
+        Combines hierarchical_log_softmax and nll_loss in a single function
         """
-        class_logits = self.heirarchical_log_softmax(class_energy, dim=1)
+        class_logits = self.hierarchical_log_softmax(class_energy, dim=1)
         loss = F.nll_loss(class_logits, targets, reduction=reduction)
         return loss
 
-    def heirarchical_nll_loss(self, class_logits, targets):
+    def hierarchical_nll_loss(self, class_logits, targets):
         """
-        Given predicted heirarchical class log-probabilities and target vectors
+        Given predicted hierarchical class log-probabilities and target vectors
         indicating the finest-grained known target class, compute the loss such
-        that only errors on coarser levels of the heirarchy are considered.
+        that only errors on coarser levels of the hierarchy are considered.
         To quote from YOLO-9000:
             > For example, if the label is “dog” we do assign any error to
             > predictions further down in the tree, “German Shepherd” versus
@@ -737,7 +737,7 @@ class CategoryTree(ub.NiceRepr):
 
         This is because the class logits have already been computed using
         information from all conditional probabilities computed at itself and
-        at each ancestor in the tree, and these conditional probabilites were
+        at each ancestor in the tree, and these conditional probabilities were
         computed with respect to all siblings at a given level, so the class
         logits exactly contain the relevant information. In other words as long
         as the log probabilities are computed correctly, then the nothing
@@ -759,8 +759,8 @@ class CategoryTree(ub.NiceRepr):
             >>> target_nodes = ['boxer', 'dog', 'quartz', 'animal', 'background']
             >>> targets = torch.LongTensor([self.node_to_idx[n] for n in target_nodes])
             >>> class_energy = torch.randn(len(targets), len(self), requires_grad=True)
-            >>> class_logits = self.heirarchical_log_softmax(class_energy, dim=-1)
-            >>> loss = self.heirarchical_nll_loss(class_logits, targets)
+            >>> class_logits = self.hierarchical_log_softmax(class_energy, dim=-1)
+            >>> loss = self.hierarchical_nll_loss(class_logits, targets)
             >>> # Note that only the relevant classes (wrt to the target) for
             >>> # each batch item receive gradients
             >>> loss.backward()
@@ -819,7 +819,7 @@ class CategoryTree(ub.NiceRepr):
             >>> from ndsampler import category_tree
             >>> self = category_tree.CategoryTree.demo('btree', r=3, h=4)
             >>> class_energy = torch.randn(33, len(self))
-            >>> class_logits = self.heirarchical_log_softmax(class_energy, dim=-1)
+            >>> class_logits = self.hierarchical_log_softmax(class_energy, dim=-1)
             >>> class_probs = torch.exp(class_logits).numpy()
             >>> dim = 1
             >>> thresh = 0.3
@@ -931,7 +931,7 @@ class CategoryTree(ub.NiceRepr):
             >>> for i in range(8):
             >>>     class_energy[i + 1][path] += 2 ** (i / 4)
             >>> class_energy[i + 2][path] += 2 ** 20
-            >>> class_logits = self.heirarchical_log_softmax(class_energy, dim=-1)
+            >>> class_logits = self.hierarchical_log_softmax(class_energy, dim=-1)
             >>> class_probs = torch.exp(class_logits).numpy()
             >>> print(ub.hzcat(['probs = ', ub.repr2(class_probs[:8], precision=2, supress_small=True)]))
             >>> dim = 1
@@ -1148,6 +1148,28 @@ class CategoryTree(ub.NiceRepr):
         depth = 0
         pred_idxs, pred_conf = _entropy_refine(depth, nodes, jdxs)
         return pred_idxs, pred_conf
+
+    #### DEPRECATED METHODS
+
+    def heirarchical_softmax(self, *args, **kw):
+        import warnings
+        warnings.warn('deprecated use the correctly spelled version')
+        return self.hierarchical_softmax(*args, **kw)
+
+    def heirarchical_cross_entropy(self, *args, **kw):
+        import warnings
+        warnings.warn('deprecated use the correctly spelled version')
+        return self.hierarchical_cross_entropy(*args, **kw)
+
+    def heirarchical_nll_loss(self, *args, **kw):
+        import warnings
+        warnings.warn('deprecated use the correctly spelled version')
+        return self.hierarchical_nll_loss(*args, **kw)
+
+    def heirarchical_log_softmax(self, *args, **kw):
+        import warnings
+        warnings.warn('deprecated use the correctly spelled version')
+        return self.hierarchical_log_softmax(*args, **kw)
 
 
 def source_nodes(graph):

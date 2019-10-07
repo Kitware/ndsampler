@@ -90,7 +90,7 @@ Dataset Spec:
         'keypoint_categories': [{
             'name': <str>,
             'id': <int>,  # an id for this keypoint category
-            'supercategory': <kp_name>  # name of coarser parent keypoint class (for heirarchical keypoints)
+            'supercategory': <kp_name>  # name of coarser parent keypoint class (for hierarchical keypoints)
             'reflection_id': <kp_cid>  # specify only if the keypoint id would be swapped with another keypoint type
         },...
         ]
@@ -1068,7 +1068,7 @@ class MixinCocoExtras(object):
 
     def category_graph(self):
         """
-        Construct a networkx category heirarchy
+        Construct a networkx category hierarchy
 
         Returns:
             network.DiGraph: graph: a directed graph where category names are
@@ -2161,7 +2161,7 @@ class MixinCocoAddRemove(object):
     def remove_categories(self, cat_identifiers, keep_annots=False, verbose=0):
         """
         Remove categories and all annotations in those categories.
-        Currently does not change any heirarchy information
+        Currently does not change any hierarchy information
 
         Args:
             cat_identifiers (List): list of category dicts, names, or ids
