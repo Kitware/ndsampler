@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-An implementation and extension of the original MS-COCO API [1].
+An implementation and extension of the original MS-COCO API [1]_.
 
 Extends the format to also include line annotations.
 
@@ -58,7 +58,7 @@ Dataset Spec:
 
     RunLengthEncoding:
         The RLE can be in a special bytes encoding or in a binary array
-        encoding. We reuse the original C functions are in [2] in
+        encoding. We reuse the original C functions are in [2]_ in
         `kwimage.structs.Mask` to provide a convinient way to abstract this
         rather esoteric bytes encoding.
 
@@ -106,8 +106,8 @@ Dataset Spec:
         keypoint categories.
 
 References:
-    ..[1] http://cocodataset.org/#format-data
-    ..[2] https://github.com/nightrome/cocostuffapi/blob/master/PythonAPI/pycocotools/mask.py
+    .. [1] http://cocodataset.org/#format-data
+    .. [2] https://github.com/nightrome/cocostuffapi/blob/master/PythonAPI/pycocotools/mask.py
 
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
