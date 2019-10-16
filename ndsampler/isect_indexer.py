@@ -302,6 +302,10 @@ class FrameIntersectionIndex(object):
             raise ValueError('must specify at least one window_size or anchors')
 
         if exact:
+            # TODO: Dont attempt to sample negatives from images where the
+            # positives cover more than a threshold percent. (Handle the case
+            # of chip detections)
+
             factor = 2  # oversample factor
             if patience is None:
                 patience = int(np.sqrt(num * 10) + 1)

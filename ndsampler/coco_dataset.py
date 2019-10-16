@@ -970,6 +970,56 @@ class MixinCocoExtras(object):
             resolved_ann = aid_or_ann
         return resolved_ann
 
+    def _resolve_to_kpcat(self, kp_identifier):
+        """
+        Lookup a keypoint-category dict via its name or id
+
+        Args:
+            kp_identifier (int | str | dict): either the keypoint category
+                name, alias, or its keypoint_category_id.
+
+        Returns:
+            Dict: keypoint category dictionary
+
+        Example:
+            >>> self = CocoDataset.demo('shapes')
+            >>> kpcat1 = self._resolve_to_kpcat(1)
+            >>> kpcat2 = self._resolve_to_kpcat('left_eye')
+            >>> assert kpcat1 is kpcat2
+            >>> import pytest
+            >>> with pytest.raises(KeyError):
+            >>>     self._resolve_to_cat('human')
+        """
+        if 'keypoint_categories' not in self.dataset:
+            raise NotImplementedError('Must have newstyle keypoints to use')
+
+        # TODO: add keypoint categories to the index and optimize
+        if isinstance(kp_identifier, INT_TYPES):
+            kpcat = None
+            for _kpcat in self.dataset['keypoint_categories']:
+                if _kpcat['id'] == kp_identifier:
+                    kpcat = _kpcat
+            if kpcat is None:
+                raise KeyError('unable to find keypoint category')
+        elif isinstance(kp_identifier, six.string_types):
+            kpcat = None
+            for _kpcat in self.dataset['keypoint_categories']:
+                if _kpcat['name'] == kp_identifier:
+                    kpcat = _kpcat
+            if kpcat is None:
+                for _kpcat in self.dataset['keypoint_categories']:
+                    alias = _kpcat.get('alias', {})
+                    alias = alias if ub.iterable(alias) else {alias}
+                    if kp_identifier in alias:
+                        kpcat = _kpcat
+            if kpcat is None:
+                raise KeyError('unable to find keypoint category')
+        elif isinstance(kp_identifier, dict):
+            kpcat = kp_identifier
+        else:
+            raise TypeError(type(kp_identifier))
+        return kpcat
+
     def _resolve_to_cat(self, cat_identifier):
         """
         Lookup a coco-category dict via its name, alias, or id.
@@ -1517,6 +1567,31 @@ class MixinCocoStats(object):
     def n_cats(self):
         return len(self.dataset['categories'])
 
+    def keypoint_annotation_frequency(self):
+        """
+        Example:
+            >>> from ndsampler.coco_dataset import *
+            >>> self = CocoDataset.demo('shapes')
+            >>> hist = self.keypoint_annotation_frequency()
+            >>> print(ub.repr2(hist))
+            {
+                'bot_tip': 6,
+                'left_eye': 14,
+                'mid_tip': 6,
+                'right_eye': 14,
+                'top_tip': 6,
+            }
+        """
+        ann_kpcids = [kp['keypoint_category_id']
+                      for ann in self.dataset['annotations']
+                      for kp in ann.get('keypoints', [])]
+        kpcid_to_name = {kpcat['id']: kpcat['name']
+                         for kpcat in self.dataset['keypoint_categories']}
+        kpcid_to_num = ub.dict_hist(ann_kpcids,
+                                    labels=list(kpcid_to_name.keys()))
+        kpname_to_num = ub.map_keys(kpcid_to_name, kpcid_to_num)
+        return kpname_to_num
+
     def category_annotation_frequency(self):
         """
         Reports the number of annotations of each category
@@ -1698,14 +1773,27 @@ class MixinCocoDraw(object):
 
             if 'keypoints' in ann:
                 cid = ann['category_id']
-                if ann['keypoints'] is None or len(ann['keypoints']) == 0:
-                    try:
-                        kpnames = self._lookup_kpnames(cid)
-                    except KeyError:
+                if ann['keypoints'] is not None and len(ann['keypoints']) > 0:
+                    # TODO: rely on kwimage.Points to parse multiple format info?
+                    kpts_data = ann['keypoints']
+                    if isinstance(ub.peek(kpts_data), dict):
+                        xys = np.array([p['xy'] for p in kpts_data])
+                        isvisible = np.array([p.get('visible', True) for p in kpts_data])
                         kpnames = None
-                    kpts = np.array(ann['keypoints']).reshape(-1, 3)
-                    isvisible = kpts.T[2] > 0
-                    xys = kpts.T[0:2].T[isvisible]
+                        # kpnames = []
+                        # for p in kpts_data:
+                        #     if 'keypoint_category_id' in p:
+                        #         pass
+                        #     pass
+                        isvisible = np.array([p.get('visible', True) for p in kpts_data])
+                    else:
+                        try:
+                            kpnames = self._lookup_kpnames(cid)
+                        except KeyError:
+                            kpnames = None
+                        kpts = np.array(ann['keypoints']).reshape(-1, 3)
+                        isvisible = kpts.T[2] > 0
+                        xys = kpts.T[0:2].T[isvisible]
                 else:
                     kpnames = None
                     xys = None
@@ -1757,7 +1845,7 @@ class MixinCocoDraw(object):
                 pt1, pt2 = (x1, y1), (x2, y2)
                 colored_segments[color].append([pt1, pt2])
             if 'keypoints' in ann:
-                if xys:
+                if xys is not None and len(xys):
                     keypoints.append(xys)
                     if kwargs.get('show_kpname', show_all):
                         if kpnames is not None:
@@ -2217,6 +2305,75 @@ class MixinCocoAddRemove(object):
             self.index._remove_categories(remove_cids, verbose=verbose)
             self._invalidate_hashid(['categories', 'annotations'])
 
+        return remove_info
+
+    def remove_annotation_keypoints(self, kp_identifiers):
+        """
+        Removes all keypoints with a particular category
+
+        Args:
+            kp_identifiers (List): list of keypoint category dicts, names, or ids
+
+        Returns:
+            Dict: num_removed: information on the number of items removed
+        """
+        # kpnames = {k['name'] for k in remove_kpcats}
+        # TODO: needs optimization
+        remove_kpcats = list(map(self._resolve_to_kpcat, kp_identifiers))
+        kpcids = {k['id'] for k in remove_kpcats}
+        num_kps_removed = 0
+        for ann in self.dataset['annotations']:
+            remove_idxs = [
+                kp_idx for kp_idx, kp in enumerate(ann['keypoints'])
+                if kp['keypoint_category_id'] in kpcids
+            ]
+            num_kps_removed += len(remove_idxs)
+            delitems(ann['keypoints'], remove_idxs)
+        remove_info = {'annotation_keypoints': num_kps_removed}
+        return remove_info
+
+    def remove_keypoint_categories(self, kp_identifiers):
+        """
+        Removes all keypoints of a particular category as well as all
+        annotation keypoints with those ids.
+
+        Args:
+            kp_identifiers (List): list of keypoint category dicts, names, or ids
+
+        Returns:
+            Dict: num_removed: information on the number of items removed
+
+        Example:
+            >>> self = CocoDataset.demo('shapes')
+            >>> kp_identifiers = ['left_eye', 'mid_tip']
+            >>> remove_info = self.remove_keypoint_categories(kp_identifiers)
+            >>> print('remove_info = {!r}'.format(remove_info))
+            >>> assert remove_info == {'keypoint_categories': 2, 'annotation_keypoints': 20, 'reflection_ids': 1}
+            >>> assert self._resolve_to_kpcat('right_eye')['reflection_id'] is None
+        """
+        remove_info = {
+            'keypoint_categories': None,
+            'annotation_keypoints': None
+        }
+        remove_kpcats = list(map(self._resolve_to_kpcat, kp_identifiers))
+
+        _ann_remove_info = self.remove_annotation_keypoints(remove_kpcats)
+        remove_info.update(_ann_remove_info)
+
+        remove_kpcids = {k['id'] for k in remove_kpcats}
+
+        for kpcat in remove_kpcats:
+            self.dataset['keypoint_categories'].remove(kpcat)
+
+        # handle reflection ids
+        remove_reflect_ids = 0
+        for kpcat in self.dataset['keypoint_categories']:
+            if kpcat.get('reflection_id', None) in remove_kpcids:
+                kpcat['reflection_id'] = None
+                remove_reflect_ids += 1
+
+        remove_info['reflection_ids'] = remove_reflect_ids
+        remove_info['keypoint_categories'] = len(remove_kpcats)
         return remove_info
 
     def remove_images(self, gids_or_imgs, verbose=0):
@@ -2910,17 +3067,48 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
     def _clear_index(self):
         self.index.clear()
 
-    @classmethod
-    def union(CocoDataset, *others, **kw):
+    def union(self, *others, **kw):
         """
         Merges multiple `CocoDataset` items into one. Names and associations
         are retained, but ids may be different.
 
         TODO: are supercategories broken?
+
+        CommandLine:
+            xdoctest -m ~/code/ndsampler/ndsampler/coco_dataset.py CocoDataset.union
+
+        Example:
+            >>> # Test union works with different keypoint categories
+            >>> dset1 = CocoDataset.demo('shapes1')
+            >>> dset2 = CocoDataset.demo('shapes2')
+            >>> dset1.remove_keypoint_categories(['bot_tip', 'mid_tip', 'right_eye'])
+            >>> dset2.remove_keypoint_categories(['top_tip', 'left_eye'])
+            >>> dset_12a = CocoDataset.union(dset1, dset2)
+            >>> dset_12b = dset1.union(dset2)
+            >>> dset_21 = dset2.union(dset1)
+            >>> def add_hist(h1, h2):
+            >>>     return {k: h1.get(k, 0) + h2.get(k, 0) for k in set(h1) | set(h2)}
+            >>> kpfreq1 = dset1.keypoint_annotation_frequency()
+            >>> kpfreq2 = dset2.keypoint_annotation_frequency()
+            >>> kpfreq_want = add_hist(kpfreq1, kpfreq2)
+            >>> kpfreq_got1 = dset_12a.keypoint_annotation_frequency()
+            >>> kpfreq_got2 = dset_12b.keypoint_annotation_frequency()
+            >>> assert kpfreq_want == kpfreq_got1
+            >>> assert kpfreq_want == kpfreq_got2
+
+        Ignore:
+            dset_12.dataset['keypoint_categories']
+            dset_12._keypoint_category_names()
+            dset_21._keypoint_category_names()
         """
-        # if hasattr(CocoDataset, '__class__'):
-        #     # This is an instance not an object
-        #     return CocoDataset.__class__.union(CocoDataset, *others, **kw)
+        print('---')
+        if self.__class__ is type:
+            # Method called as classmethod
+            cls = self
+        else:
+            # Method called as instancemethod
+            cls = self.__class__
+            others = (self,) + others
 
         def _coco_union(relative_dsets, common_root):
             """ union of dictionary based data structure """
@@ -2935,6 +3123,7 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
             # TODO: need to handle keypoint_categories
 
             merged_cat_name_to_id = {}
+            merged_kp_name_to_id = {}
 
             def update_ifnotin(d1, d2):
                 """ copies keys from d2 that doent exist in d1 into d1 """
@@ -2947,6 +3136,7 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
                 # Create temporary indexes to map from old to new
                 cat_id_map = {}
                 img_id_map = {}
+                kpcat_id_map = {}
 
                 # Add the licenses / info into the merged dataset
                 # Licenses / info are unused in our datas, so this might not be
@@ -2970,6 +3160,42 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
                         update_ifnotin(new_cat, old_cat)
                         merged['categories'].append(new_cat)
                     cat_id_map[old_cat['id']] = new_id
+
+                # Add the keypoint categories into the merged dataset
+                if 'keypoint_categories' in old_dset:
+                    if 'keypoint_categories' not in merged:
+                        merged['keypoint_categories'] = []
+                    old_id_to_name = {k['id']: k['name']
+                                      for k in old_dset['keypoint_categories']}
+                    postproc_kpcats = []
+                    for old_kpcat in old_dset['keypoint_categories']:
+                        new_id = merged_kp_name_to_id.get(old_kpcat['name'], None)
+                        # The same kpcategory might exist in different datasets.
+                        if new_id is None:
+                            # Only add if it does not yet exist
+                            new_id = len(merged_kp_name_to_id) + 1
+                            merged_kp_name_to_id[old_kpcat['name']] = new_id
+                            new_kpcat = _dict([
+                                ('id', new_id),
+                                ('name', old_kpcat['name']),
+                            ])
+                            update_ifnotin(new_kpcat, old_kpcat)
+
+                            old_reflect_id = new_kpcat.get('reflection_id', None)
+                            if old_reflect_id is not None:
+                                # Temporarilly overwrite reflectid with name
+                                reflect_name = old_id_to_name.get(old_reflect_id, None)
+                                new_kpcat['reflection_id'] = reflect_name
+                                postproc_kpcats.append(new_kpcat)
+
+                            merged['keypoint_categories'].append(new_kpcat)
+                        kpcat_id_map[old_kpcat['id']] = new_id
+
+                    # Fix reflection ids
+                    for kpcat in postproc_kpcats:
+                        reflect_name = kpcat['reflection_id']
+                        new_reflect_id = merged_kp_name_to_id.get(reflect_name, None)
+                        kpcat['reflection_id'] = new_reflect_id
 
                 # Add the images into the merged dataset
                 for old_img in old_dset['images']:
@@ -3004,6 +3230,17 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
                         ('category_id', new_cat_id),
                     ])
                     update_ifnotin(new_annot, old_annot)
+
+                    if kpcat_id_map:
+                        # Need to copy keypoint dict to not clobber original
+                        # dset
+                        if 'keypoints' in new_annot:
+                            old_keypoints = new_annot['keypoints']
+                            new_keypoints = copy.deepcopy(old_keypoints)
+                            for kp in new_keypoints:
+                                kp['keypoint_category_id'] = kpcat_id_map.get(
+                                    kp['keypoint_category_id'], None)
+                            new_annot['keypoints'] = new_keypoints
                     merged['annotations'].append(new_annot)
             return merged
 
@@ -3022,7 +3259,7 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
         if common_root is not None:
             merged['img_root'] = common_root
 
-        new_dset = CocoDataset(merged, **kw)
+        new_dset = cls(merged, **kw)
         return new_dset
 
     def subset(self, gids, copy=False):

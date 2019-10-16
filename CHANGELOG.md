@@ -6,11 +6,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Version 0.3.0
 
+
+### Added
+
+* Can now remove keypoint categories (implementation is not optimized)
+
 ### Changed
 * `CategoryTree` now serializes graph node attributes
 
 ### Fixed
 * Negative regions now have correct aspect ratios.
+* Coco union now properly handles basic keypoint categories. 
 
 
 
