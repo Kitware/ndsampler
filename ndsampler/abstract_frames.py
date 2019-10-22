@@ -582,6 +582,10 @@ class Frames(object):
             >>> self.prepare(workers=3)  # parallel, miss
             >>> self.prepare(workers=3)  # parallel, hit
         """
+        if self.cache_dpath is None:
+            print('Frames backend is None, skip prepare')
+            return
+
         ub.ensuredir(self.cache_dpath)
         # Note: this usually acceses the hashid attribute of util.HashIdentifiable
         hashid = getattr(self, 'hashid', None)
