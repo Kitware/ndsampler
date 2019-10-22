@@ -13,6 +13,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 * `CategoryTree` now serializes graph node attributes
+* `backend` default is now `auto` instead of `None`. Setting `backend=None` now disables backend caching which might cause the entire image to be loaded in order to load any region.
 
 ### Fixed
 * Negative regions now have correct aspect ratios.

@@ -97,7 +97,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
     """
 
     @classmethod
-    def demo(cls, key='shapes', workdir=None, backend=None, **kw):
+    def demo(cls, key='shapes', workdir=None, backend='auto', **kw):
         """
         Create a toy coco sampler for testing and demo puposes
 

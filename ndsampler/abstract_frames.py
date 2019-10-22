@@ -136,7 +136,7 @@ class Frames(object):
     }
 
     def __init__(self, id_to_hashid=None, hashid_mode='PATH', workdir=None,
-                 backend=None):
+                 backend='auto'):
 
         self._backend = None
         self._backend_hashid = None  # hash of backend config parameters
@@ -169,7 +169,7 @@ class Frames(object):
             sorted(self._backend['config'].items()))[0:8]
 
     @classmethod
-    def _coerce_backend_config(cls, backend=None):
+    def _coerce_backend_config(cls, backend='auto'):
         """
         Coerce a backend argument into a valid configuration dictionary.
 
@@ -179,8 +179,12 @@ class Frames(object):
                 specific type.
         """
         import copy
-        # TODO: allow for heterogeneous backends
+
         if backend is None:
+            return {'type': None, 'config': {}}
+
+        # TODO: allow for heterogeneous backends
+        if backend == 'auto':
             # Use defaults that work on the system
             if util_gdal.have_gdal():
                 backend = 'cog'
@@ -225,11 +229,15 @@ class Frames(object):
     @property
     def cache_dpath(self):
         """
-        Returns the path where cached frame representations will be stored
+        Returns the path where cached frame representations will be stored.
+
+        This will be None if there is no backend.
         """
         if self._cache_dpath is None:
             backend_type = self._backend['type']
-            if backend_type == 'cog':
+            if backend_type is None:
+                return None
+            elif backend_type == 'cog':
                 if self._backend['_hack_old_names']:
                     # Old style didn't care about the particular config. Used whatever the first config was.
                     dpath = join(self.workdir, '_cache', 'frames',
@@ -238,8 +246,10 @@ class Frames(object):
                     # New style respects user config choice
                     dpath = join(self.workdir, '_cache', 'frames',
                                  backend_type, self._backend_hashid)
-            else:
+            elif backend_type == 'npy':
                 dpath = join(self.workdir, '_cache', 'frames', backend_type)
+            else:
+                raise KeyError(backend_type)
             self._cache_dpath = ub.ensuredir(dpath)
         return self._cache_dpath
 
@@ -326,6 +336,7 @@ class Frames(object):
         """
         region = self._rectify_region(region)
         if all(r.start is None and r.stop is None for r in region):
+            # Avoid forcing a cache computation when loading the full image
             im = self.load_image(image_id, bands=bands, scale=scale,
                                  cache=False)
         else:
@@ -344,25 +355,47 @@ class Frames(object):
         return region
 
     def load_image(self, image_id, bands=None, scale=0, cache=True):
+        """
+        Load the image data for a particular image id
+
+        Args:
+            image_id (int): the id of the image to load
+            cache (bool, default=True): ensure and return the efficient backend
+                cached representation.
+            bands : NotImplemented
+            scale : NotImplemented
+
+        Returns:
+            ArrayLike: an indexable array like representation, possibly
+                memmapped.
+        """
         if bands is not None:
             raise NotImplementedError('cannot handle different bands')
 
         if scale != 0:
             raise NotImplementedError('can only handle scale=0')
 
-        if not cache:
+        if not cache :
             import kwimage
             gpath = self._lookup_gpath(image_id)
             raw_data = kwimage.imread(gpath)
-            # raw_data = np.asarray(Image.open(gpath))
             return raw_data
         else:
-            if self._backend['type'] == 'cog':
+            if self._backend['type'] is None:
+                return self._load_image_full(image_id)
+            elif self._backend['type'] == 'cog':
                 return self._load_image_cog(image_id)
             elif self._backend['type'] == 'npy':
                 return self._load_image_npy(image_id)
             else:
                 raise KeyError(self._backend['type'])
+
+    @lru_cache(1)  # Keeps frequently accessed images open
+    def _load_image_full(self, image_id):
+        import kwimage
+        gpath = self._lookup_gpath(image_id)
+        raw_data = kwimage.imread(gpath)
+        return raw_data
 
     @lru_cache(1)  # Keeps frequently accessed images open
     def _load_image_npy(self, image_id):
