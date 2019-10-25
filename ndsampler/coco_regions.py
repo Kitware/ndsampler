@@ -505,7 +505,7 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
     def _preselect_positives(self, num=None, window_dims=None, rng=None,
                              verbose=None):
         """"
-        preload a bunch of negatives
+        preload a bunch of positives
 
         Example:
             >>> from ndsampler.coco_regions import *

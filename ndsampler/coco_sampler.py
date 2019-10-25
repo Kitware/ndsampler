@@ -357,7 +357,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> # xdoc: +REQUIRES(--show)
             >>> import kwplot
             >>> kwplot.autompl()
-            >>> kwplot.imshow(sample)
+            >>> kwplot.imshow(sample['im'])
             >>> kwplot.show_if_requested()
         """
         tr = self.regions.get_positive(index, rng=rng)
