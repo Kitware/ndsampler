@@ -1,4 +1,14 @@
 # -*- coding: utf-8 -*-
+"""
+Fast access to subregions of images
+
+
+TODO:
+    - [X] Implement npy memmap backend
+    - [X] Implement gdal COG.TIFF backend
+        - [X] Use as COG if input file is a COG
+        - [X] Convert to COG if needed
+"""
 from __future__ import absolute_import, division, print_function, unicode_literals
 import itertools as it
 import numpy as np
@@ -13,9 +23,9 @@ import atomicwrites
 import six
 
 import warnings
-from PIL import Image
 from os.path import exists
 from os.path import join
+from ndsampler.utils import util_gdal
 
 if six.PY2:
     from backports.functools_lru_cache import lru_cache
@@ -28,9 +38,61 @@ class Frames(object):
     Abstract implementation of Frames.
 
     Need to overload constructor and implement _lookup_gpath.
+
+    Example:
+        >>> from ndsampler.abstract_frames import *
+        >>> self = SimpleFrames.demo()
+        >>> file = self.load_image(1)
+        >>> print('file = {!r}'.format(file))
+        >>> self._backend = 'npy'
+        >>> assert self.load_image(1).shape == (512, 512, 3)
+        >>> assert self.load_region(1, (slice(-20), slice(-10))).shape == (492, 502, 3)
+        >>> self._backend = 'cog'
+        >>> assert self.load_image(1).shape == (512, 512, 3)
+        >>> assert self.load_region(1, (slice(-20), slice(-10))).shape == (492, 502, 3)
+
+    Benchmark:
+        >>> import ubelt as ub
+        >>> #
+        >>> ti = ub.Timerit(100, bestof=3, verbose=2)
+        >>> self = SimpleFrames.demo()
+        >>> #
+        >>> self._backend = 'cog'
+        >>> for timer in ti.reset('cog-small-subregion'):
+        >>>     self.load_image(1)[10:42, 10:42]
+        >>> #
+        >>> self._backend = 'npy'
+        >>> for timer in ti.reset('npy-small-subregion'):
+        >>>     self.load_image(1)[10:42, 10:42]
+        >>> print('----')
+        >>> #
+        >>> self._backend = 'cog'
+        >>> for timer in ti.reset('cog-large-subregion'):
+        >>>     self.load_image(1)[3:-3, 3:-3]
+        >>> #
+        >>> self._backend = 'npy'
+        >>> for timer in ti.reset('npy-large-subregion'):
+        >>>     self.load_image(1)[3:-3, 3:-3]
+        >>> print('----')
+        >>> #
+        >>> self._backend = 'cog'
+        >>> for timer in ti.reset('cog-loadimage'):
+        >>>     self.load_image(1)
+        >>> #
+        >>> self._backend = 'npy'
+        >>> for timer in ti.reset('npy-loadimage'):
+        >>>     self.load_image(1)
     """
 
-    def __init__(self, id_to_hashid=None, hashid_mode='PATH', workdir=None):
+    def __init__(self, id_to_hashid=None, hashid_mode='PATH', workdir=None,
+                 backend=None):
+
+        if backend is None:
+            backend = 'cog'
+
+        # self._backend = 'npy'
+        self._backend = backend
+        assert self._backend in ['cog', 'npy']
 
         if id_to_hashid is None:
             id_to_hashid = {}
@@ -58,11 +120,22 @@ class Frames(object):
         Returns the path where cached frame representations will be stored
         """
         if self._cache_dpath is None:
-            self._cache_dpath = ub.ensuredir(join(self.workdir, '_cache/frames'))
+            self._cache_dpath = ub.ensuredir(join(self.workdir, '_cache/frames/' + self._backend))
         return self._cache_dpath
 
     def _lookup_gpath(self, image_id):
         raise NotImplementedError
+
+    @property
+    def image_ids(self):
+        raise NotImplementedError
+
+    def __len__(self):
+        return len(self.image_ids)
+
+    def __getitem__(self, index):
+        image_id = self.image_ids[index]
+        return self.load_image(image_id)
 
     def _lookup_hashid(self, image_id):
         """
@@ -118,27 +191,36 @@ class Frames(object):
             region = tuple(region) + tail
         return region
 
-    @lru_cache(4)  # Keeps frequently accessed memmaps open
     def load_image(self, image_id, bands=None, scale=0, cache=True):
-        """
-        Returns a memmapped reference to the entire image
-        """
         if bands is not None:
             raise NotImplementedError('cannot handle different bands')
 
         if scale != 0:
             raise NotImplementedError('can only handle scale=0')
 
-        gpath = self._lookup_gpath(image_id)
-
         if not cache:
-            raw_data = np.asarray(Image.open(gpath))
+            import kwimage
+            gpath = self._lookup_gpath(image_id)
+            raw_data = kwimage.imread(gpath)
+            # raw_data = np.asarray(Image.open(gpath))
             return raw_data
+        else:
+            if self._backend == 'cog':
+                return self._load_image_cog(image_id)
+            elif self._backend == 'npy':
+                return self._load_image_npy(image_id)
+            else:
+                raise KeyError(self._backend)
 
-        hashid = self._lookup_hashid(image_id)
+    @lru_cache(1)  # Keeps frequently accessed images open
+    def _load_image_npy(self, image_id):
+        """
+        Returns a memmapped reference to the entire image
+        """
+        gpath = self._lookup_gpath(image_id)
+        gpath, cache_gpath = self._gnames(image_id, mode='npy')
+        mem_gpath = cache_gpath
 
-        mem_gname = '{}_{}.npy'.format(image_id, hashid)
-        mem_gpath = join(self.cache_dpath, mem_gname)
         if not exists(mem_gpath):
             self.ensure_npy_representation(gpath, mem_gpath)
 
@@ -182,84 +264,314 @@ class Frames(object):
                 raise
         return file
 
+    def _gnames(self, image_id, mode):
+        gpath = self._lookup_gpath(image_id)
+        hashid = self._lookup_hashid(image_id)
+        fname_base = os.path.basename(gpath).split('.')[0]
+        # We actually don't want to write the image-id in the filename because
+        # the same file may be in different datasets with different ids.
+        if mode == 'cog':
+            # cache_gname = '{}_{}_{}.cog.tiff'.format(image_id, fname_base, hashid)
+            cache_gname = '{}_{}.cog.tiff'.format(fname_base, hashid)
+        elif mode == 'npy':
+            # cache_gname = '{}_{}_{}.npy'.format(image_id, fname_base, hashid)
+            cache_gname = '{}_{}.npy'.format(fname_base, hashid)
+        else:
+            raise KeyError(mode)
+        cache_gpath = join(self.cache_dpath, cache_gname)
+        return gpath, cache_gpath
+
+    @lru_cache(1)  # Keeps frequently accessed images open
+    def _load_image_cog(self, image_id):
+        """
+        Returns a special array-like object with a COG GeoTIFF backend
+        """
+        gpath, cache_gpath = self._gnames(image_id, mode='cog')
+        cog_gpath = cache_gpath
+
+        if not exists(cog_gpath):
+            if not exists(gpath):
+                raise OSError('Source image gpath={!r} for image_id={!r} does not exist!'.format(gpath, image_id))
+
+            # If the file already is a cog, just use it
+            from ndsampler.utils.validate_cog import validate as _validate_cog
+            warnings, errors, details = _validate_cog(gpath)
+
+            if 1:
+                from multiprocessing import current_process
+                from threading import current_thread
+                is_main = (
+                    current_thread().name == 'MainThread' and
+                    current_process().name == 'MainProcess'
+                )
+                DEBUG = 0
+                if is_main:
+                    DEBUG = 2
+            else:
+                DEBUG = 0
+
+            gpath_is_cog = not bool(errors)
+            if gpath_is_cog:
+                # If we already are a cog, then just use it
+                if DEBUG:
+                    print('<DEBUG INFO>')
+                    print('Coco Image is already a cog, symlinking to cache')
+                ub.symlink(gpath, cog_gpath)
+            else:
+                if DEBUG:
+                    print('<DEBUG INFO>')
+                    if DEBUG > 2:
+                        print('details = ' + ub.repr2(details))
+                        print('warnings = ' + ub.repr2(warnings))
+                        print('errors (why we need to ensure) = ' + ub.repr2(errors))
+                    print('BUILDING COG REPRESENTATION')
+                    print('gpath = {!r}'.format(gpath))
+                    if DEBUG > 1:
+                        try:
+                            import netharn as nh
+                            print(' * info(gpath) = ' + ub.repr2(nh.util.get_file_info(gpath)))
+                        except ImportError:
+                            pass
+                self._ensure_cog_representation(gpath, cog_gpath)
+
+            if DEBUG:
+                print('cog_gpath = {!r}'.format(cog_gpath))
+                if DEBUG > 1:
+                    try:
+                        import netharn as nh
+                        print(' * info(cog_gpath) = ' + ub.repr2(nh.util.get_file_info(cog_gpath)))
+                    except ImportError:
+                        pass
+                print('</DEBUG INFO>')
+
+        file = util_gdal.LazyGDalFrameFile(cog_gpath)
+        return file
+
+    @staticmethod
+    def _ensure_cog_representation(gpath, cog_gpath):
+        _locked_cache_write(_cog_cache_write, gpath, cache_gpath=cog_gpath)
+
     @staticmethod
     def ensure_npy_representation(gpath, mem_gpath):
         """
         Ensures that mem_gpath exists in a multiprocessing-safe way
         """
+        _locked_cache_write(_npy_cache_write, gpath, cache_gpath=mem_gpath)
+
+    def prepare(self, workers=0):
+        """
+        Precompute the cached frame conversions
+
+        Args:
+            workers (int, default=0): number of parallel threads for this
+                io-bound task
+
+        Example:
+            >>> from ndsampler.abstract_frames import *
+            >>> workdir = ub.ensure_app_cache_dir('ndsampler/tests/test_cog_precomp')
+            >>> print('workdir = {!r}'.format(workdir))
+            >>> ub.delete(workdir)
+            >>> ub.ensuredir(workdir)
+            >>> self = SimpleFrames.demo(backend='npy', workdir=workdir)
+            >>> print('self = {!r}'.format(self))
+            >>> print('self.cache_dpath = {!r}'.format(self.cache_dpath))
+            >>> _ = ub.cmd('tree ' + workdir, verbose=3)
+            >>> self.prepare()
+            >>> self.prepare()
+            >>> _ = ub.cmd('tree ' + workdir, verbose=3)
+            >>> _ = ub.cmd('ls ' + self.cache_dpath, verbose=3)
+
+        Example:
+            >>> from ndsampler.abstract_frames import *
+            >>> import ndsampler
+            >>> workdir = ub.get_app_cache_dir('ndsampler/tests/test_cog_precomp2')
+            >>> ub.delete(workdir)
+            >>> # TEST NPY
+            >>> #
+            >>> sampler = ndsampler.CocoSampler.demo(workdir=workdir, backend='npy')
+            >>> self = sampler.frames
+            >>> ub.delete(self.cache_dpath)  # reset
+            >>> self.prepare()  # serial, miss
+            >>> self.prepare()  # serial, hit
+            >>> ub.delete(self.cache_dpath)  # reset
+            >>> self.prepare(workers=3)  # parallel, miss
+            >>> self.prepare(workers=3)  # parallel, hit
+            >>> #
+            >>> ## TEST COG
+            >>> sampler = ndsampler.CocoSampler.demo(workdir=workdir, backend='cog')
+            >>> self = sampler.frames
+            >>> ub.delete(self.cache_dpath)  # reset
+            >>> self.prepare()  # serial, miss
+            >>> self.prepare()  # serial, hit
+            >>> ub.delete(self.cache_dpath)  # reset
+            >>> self.prepare(workers=3)  # parallel, miss
+            >>> self.prepare(workers=3)  # parallel, hit
+        """
+        ub.ensuredir(self.cache_dpath)
+        hashid = getattr(self, 'hashid', None)
+
+        # TODO:
+        #     Add some image preprocessing ability here
+        stamp = ub.CacheStamp('prepare_frames_stamp', dpath=self.cache_dpath,
+                              cfgstr=hashid)
+        stamp.cacher.enabled = bool(hashid)
+        if stamp.expired() or hashid is None:
+            from ndsampler import util_futures
+            from concurrent import futures
+            # Use thread mode, because we are mostly in doing io.
+            executor = util_futures.Executor(mode='thread', max_workers=workers)
+            with executor as executor:
+                job_list = []
+                gids = self.image_ids
+                for image_id in ub.ProgIter(gids, desc='Frames: submit prepare jobs'):
+                    job = executor.submit(self.load_image, image_id, cache=True)
+                    job_list.append(job)
+
+                for job in ub.ProgIter(futures.as_completed(job_list), total=len(gids),
+                                       desc='Frames: collect prepare jobs'):
+                    job.result()
+            stamp.renew()
+
+
+def _cog_cache_write(gpath, cache_gpath):
+    """
+    Example:
+        >>> import ndsampler
+        >>> from ndsampler.abstract_frames import *
+        >>> workdir = ub.ensure_app_cache_dir('ndsampler')
+        >>> dset = ndsampler.CocoDataset.demo()
+        >>> imgs = dset.images()
+        >>> id_to_name = imgs.lookup('file_name', keepid=True)
+        >>> id_to_path = {gid: join(dset.img_root, name)
+        >>>               for gid, name in id_to_name.items()}
+        >>> self = SimpleFrames(id_to_path, workdir=workdir)
+        >>> image_id = ub.peek(id_to_name)
+        >>> gpath = self._lookup_gpath(image_id)
+        >>> hashid = self._lookup_hashid(image_id)
+        >>> cog_gname = '{}_{}.cog.tiff'.format(image_id, hashid)
+        >>> cache_gpath = cog_gpath = join(self.cache_dpath, cog_gname)
+        >>> _cog_cache_write(gpath, cache_gpath)
+    """
+    # Load all the image data and dump it to npy format
+    import kwimage
+    raw_data = kwimage.imread(gpath)
+    # TODO: THERE HAS TO BE A CORRECT WAY TO DO THIS.
+    # However, I'm not sure what it is. I extend my appologies to whoever is
+    # maintaining this code. Note: mode MUST be 'w'
+
+    DEBUG = 1
+    if DEBUG:
         import multiprocessing
+        proc = multiprocessing.current_process()
+        def _debug(msg):
+            with open(cache_gpath + '.proxy.debug', 'a') as f:
+                f.write('[{}, {}, {}] '.format(ub.timestamp(), proc, proc.pid) + msg + '\n')
+        _debug('attempts aquire'.format())
 
-        lock_fpath = mem_gpath + '.lock'
-
-        DEBUG = 0
-
+    with atomicwrites.atomic_write(cache_gpath + '.proxy', mode='w', overwrite=True) as file:
         if DEBUG:
-            procid = multiprocessing.current_process()
-            def _debug(msg):
-                with open(lock_fpath + '.debug', 'a') as f:
-                    f.write(msg + '\n')
-            _debug(lock_fpath)
-            _debug('{} attempts aquire'.format(procid))
+            _debug('begin')
+            _debug('gpath = {}'.format(gpath))
+            _debug('cache_gpath = {}'.format(cache_gpath))
+        try:
+            file.write('begin: {}\n'.format(ub.timestamp()))
+            file.write('gpath = {}\n'.format(gpath))
+            file.write('cache_gpath = {}\n'.format(cache_gpath))
+            if not exists(cache_gpath):
+                util_gdal._imwrite_cloud_optimized_geotiff(cache_gpath, raw_data, lossy=True)
+                if DEBUG:
+                    _debug('finished write: {}\n'.format(ub.timestamp()))
+            else:
+                if DEBUG:
+                    _debug('ALREADY EXISTS did not write: {}\n'.format(ub.timestamp()))
+            file.write('end: {}\n'.format(ub.timestamp()))
+        except Exception as ex:
+            file.write('FAILED DUE TO EXCEPTION: {}: {}\n'.format(ex, ub.timestamp()))
+            if DEBUG:
+                _debug('FAILED DUE TO EXCEPTION: {}'.format(ex))
+        finally:
+            if DEBUG:
+                _debug('finally')
 
+    RUN_CORRUPTION_CHECKS = True
+    if RUN_CORRUPTION_CHECKS:
+        # CHECK THAT THE DATA WAS WRITTEN CORRECTLY
+        file = util_gdal.LazyGDalFrameFile(cache_gpath)
+        orig_sum = raw_data.sum()
+        cache_sum = file[:].sum()
+        if DEBUG:
+            _debug('orig_sum = {}'.format(orig_sum))
+            _debug('cache_sum = {}'.format(cache_sum))
+        if orig_sum > 0 and cache_sum == 0:
+            print('FAILED TO WRITE COG FILE')
+            if DEBUG:
+                _debug('FAILED TO WRITE COG FILE')
+            ub.delete(cache_gpath)
+            raise Exception('FAILED TO WRITE COG FILE CORRECTLY')
+
+
+def _npy_cache_write(gpath, cache_gpath):
+    # Load all the image data and dump it to npy format
+    import kwimage
+    raw_data = kwimage.imread(gpath)
+    # raw_data = np.asarray(Image.open(gpath))
+
+    # Even with the file-lock and atomic save there is still a race
+    # condition somewhere. Not sure what it is.
+    # _semi_atomic_numpy_save(cache_gpath, raw_data)
+
+    with atomicwrites.atomic_write(cache_gpath, mode='wb', overwrite=True) as file:
+        np.save(file, raw_data)
+
+
+def _locked_cache_write(_write_func, gpath, cache_gpath):
+    """
+    Ensures that mem_gpath exists in a multiprocessing-safe way
+    """
+    lock_fpath = cache_gpath + '.lock'
+
+    DEBUG = 1
+
+    if DEBUG:
+        import multiprocessing
+        proc = multiprocessing.current_process()
+        def _debug(msg):
+            with open(lock_fpath + '.debug', 'a') as f:
+                f.write('[{}, {}, {}] '.format(ub.timestamp(), proc, proc.pid) + msg + '\n')
+        _debug('lock_fpath = {}'.format(lock_fpath))
+        _debug('attempt aquire')
+
+    try:
         # Ensure that another process doesn't write to the same image
         # FIXME: lockfiles may not be cleaned up gracefully
         # See: https://github.com/harlowja/fasteners/issues/26
-        lock_fpath = mem_gpath + '.lock'
         with fasteners.InterProcessLock(lock_fpath):
 
             if DEBUG:
-                _debug('{} aquires'.format(procid))
+                _debug('aquires')
+                _debug('will read {}'.format(gpath))
+                _debug('will write {}'.format(cache_gpath))
 
-            if not exists(mem_gpath):
-                # Load all the image data and dump it to npy format
-                raw_data = np.asarray(Image.open(gpath))
-
-                # Even with the file-lock and atomic save there is still a race
-                # condition somewhere. Not sure what it is.
-                # _semi_atomic_numpy_save(mem_gpath, raw_data)
-
-                with atomicwrites.atomic_write(mem_gpath, mode='wb', overwrite=True) as file:
-                    np.save(file, raw_data)
+            if not exists(cache_gpath):
+                _write_func(gpath, cache_gpath)
 
                 if DEBUG:
-                    _debug('{} wrote'.format(procid))
+                    _debug('wrote'.format())
             else:
                 if DEBUG:
-                    _debug('{} does not need to write'.format(procid))
+                    _debug('does not need to write'.format())
 
             if DEBUG:
-                _debug('{} releasing'.format(procid))
+                _debug('releasing'.format())
 
         if DEBUG:
-            _debug('{} released'.format(procid))
-
-    _load_subregion = load_region
-
-
-# def _semi_atomic_numpy_save(fpath, data):
-#     """
-#     Save to a temporary file. Then move to `fpath` using an atomic operation.
-
-#     If the file that is being saved to is on the same file system the move
-#     operation is atomic, otherwise it may not be [1].
-
-#     References:
-#         ..[1] https://stackoverflow.com/questions/3716325/is-shutil-move-atomic
-#     """
-
-#     # TODO: use atomicwrites instead
-#     tmp = tempfile.NamedTemporaryFile(delete=False)
-#     try:
-#         # Use temporary files to avoid partially written data
-#         np.save(tmp, data)
-#         tmp.close()
-#         # Use an atomic operation (if possible) to move the temporary saved
-#         # file to the target location.
-#         shutil.move(tmp.name, fpath)
-#     finally:
-#         tmp.close()
-#         if exists(tmp.name):
-#             os.remove(tmp.name)
+            _debug('released'.format())
+    except Exception as ex:
+        if DEBUG:
+            _debug('GOT EXCEPTION: {}'.format(ex))
+    finally:
+        if DEBUG:
+            _debug('finally')
 
 
 class SimpleFrames(Frames):
@@ -270,25 +582,41 @@ class SimpleFrames(Frames):
         id_to_path (Dict): mapping from image-id to image path
 
     Example:
-        >>> import ndsampler
         >>> from ndsampler.abstract_frames import *
-        >>> workdir = ub.ensure_app_cache_dir('ndsampler')
-        >>> dset = ndsampler.CocoDataset.demo()
-        >>> id_to_path = {img['id']: join(dset.img_root, img['file_name'])
-        >>>               for img in dset.imgs.values()}
-        >>> self = SimpleFrames(id_to_path, workdir=workdir)
+        >>> self = SimpleFrames.demo()
+        >>> self._backend == 'npy'
         >>> assert self.load_image(1).shape == (512, 512, 3)
         >>> assert self.load_region(1, (slice(-20), slice(-10))).shape == (492, 502, 3)
     """
     def __init__(self, id_to_path, id_to_hashid=None, hashid_mode='PATH',
-                 workdir=None):
+                 workdir=None, **kw):
         super(SimpleFrames, self).__init__(id_to_hashid=id_to_hashid,
                                            hashid_mode=hashid_mode,
-                                           workdir=workdir)
+                                           workdir=workdir, **kw)
         self.id_to_path = id_to_path
 
     def _lookup_gpath(self, image_id):
         return self.id_to_path[image_id]
+
+    @ub.memoize_property
+    def image_ids(self):
+        return list(self.id_to_path.keys())
+
+    @classmethod
+    def demo(self, **kw):
+        """
+        Get a smple frames object
+        """
+        import ndsampler
+        dset = ndsampler.CocoDataset.demo()
+        imgs = dset.images()
+        id_to_name = imgs.lookup('file_name', keepid=True)
+        id_to_path = {gid: join(dset.img_root, name)
+                      for gid, name in id_to_name.items()}
+        if kw.get('workdir', None) is None:
+            kw['workdir'] = ub.ensure_app_cache_dir('ndsampler')
+        self = SimpleFrames(id_to_path, **kw)
+        return self
 
 
 def __notes__():
@@ -307,6 +635,7 @@ def __notes__():
         # cache directory in npy format. Then any subsequent time the image
         # is needed, we efficiently load it from numpy.
         import kwimage
+        from PIL import Image
         gpath = kwimage.grab_test_image_fpath()
         # Directly load a crop region with PIL (this is slow, why?)
         pil_img = Image.open(gpath)

@@ -31,7 +31,6 @@ import networkx as nx
 import ubelt as ub
 import torch.nn.functional as F
 import numpy as np
-import xdev
 
 
 class CategoryTree(ub.NiceRepr):
@@ -64,7 +63,7 @@ class CategoryTree(ub.NiceRepr):
         >>> class_energy = torch.randn(3, len(self))
         >>> class_probs = self.heirarchical_softmax(class_energy, dim=1)
         >>> print(self)
-        <CategoryTree(nNodes=22, maxDepth=6, maxBreadth=4)>
+        <CategoryTree(nNodes=22, maxDepth=6, maxBreadth=4...)>
     """
     def __init__(self, graph=None):
         """
@@ -75,11 +74,14 @@ class CategoryTree(ub.NiceRepr):
         if graph is None:
             graph = nx.DiGraph()
         else:
-            if not nx.is_directed_acyclic_graph(graph):
-                raise ValueError('The category graph must a DAG')
-            if not nx.is_forest(graph):
-                raise ValueError('The category graph must be a forest')
-        self.graph = graph
+            if len(graph) > 0:
+                if not nx.is_directed_acyclic_graph(graph):
+                    raise ValueError('The category graph must a DAG')
+                if not nx.is_forest(graph):
+                    raise ValueError('The category graph must be a forest')
+            if not isinstance(graph, nx.Graph):
+                raise TypeError('Input to CategoryTree must be a networkx graph not {}'.format(type(graph)))
+        self.graph = graph  # :type: nx.Graph
         # Note: nodes are class names
         self.id_to_node = None
         self.node_to_id = None
@@ -98,7 +100,7 @@ class CategoryTree(ub.NiceRepr):
 
         Example:
             >>> print(CategoryTree.from_mutex(['a', 'b', 'c']))
-            <CategoryTree(nNodes=3, maxDepth=1, maxBreadth=3)>
+            <CategoryTree(nNodes=3, maxDepth=1, maxBreadth=3...)>
         """
         nodes = list(nodes)
         graph = nx.DiGraph()
@@ -165,10 +167,27 @@ class CategoryTree(ub.NiceRepr):
     def cast(cls, data):
         return cls.coerce(data)
 
-    @ub.memoize_method
+    @ub.memoize_property
     def id_to_idx(self):
-        return {cid: self.node_to_idx[node]
-                for cid, node in self.id_to_node.items()}
+        """
+        Example:
+            >>> import ndsampler
+            >>> self = ndsampler.CategoryTree.demo()
+            >>> self.id_to_idx[1]
+        """
+        return _calldict({cid: self.node_to_idx[node]
+                         for cid, node in self.id_to_node.items()})
+
+    @ub.memoize_property
+    def idx_to_id(self):
+        """
+        Example:
+            >>> import ndsampler
+            >>> self = ndsampler.CategoryTree.demo()
+            >>> self.idx_to_id[0]
+        """
+        return [self.node_to_id[node]
+                for node in self.idx_to_node]
 
     @ub.memoize_method
     def idx_to_ancestor_idxs(self, include_self=True):
@@ -245,6 +264,60 @@ class CategoryTree(ub.NiceRepr):
         """
         return self.__getstate__()
 
+    def __getstate__(self):
+        """
+        Serializes information in this class
+
+        Example:
+            >>> from ndsampler.category_tree import *
+            >>> import pickle
+            >>> self = CategoryTree.demo()
+            >>> state = self.__getstate__()
+            >>> serialization = pickle.dumps(self)
+            >>> recon = pickle.loads(serialization)
+            >>> assert recon.__json__() == self.__json__()
+        """
+        state = self.__dict__.copy()
+        for key in list(state.keys()):
+            if key.startswith('_cache'):
+                state.pop(key)
+        state['graph'] = to_directed_nested_tuples(self.graph)
+        if True:
+            # Remove reundant items
+            state.pop('node_to_idx')
+            state.pop('node_to_id')
+            state.pop('idx_groups')
+        return state
+
+    def __setstate__(self, state):
+        graph = from_directed_nested_tuples(state['graph'])
+
+        if True:
+            # Reconstruct redundant items
+            if 'node_to_idx' not in state:
+                state['node_to_idx'] = {node: idx for idx, node in
+                                        enumerate(state['idx_to_node'])}
+            if 'node_to_id' not in state:
+                state['node_to_id'] = {node: id for id, node in
+                                       state['id_to_node'].items()}
+
+            if 'idx_groups' not in state:
+                node_groups = list(traverse_siblings(graph))
+                node_to_idx = state['node_to_idx']
+                state['idx_groups'] = [sorted([node_to_idx[n] for n in group])
+                                       for group in node_groups]
+
+        self.__dict__.update(state)
+        self.graph = graph
+
+    def __nice__(self):
+        return 'nNodes={}, maxDepth={}, maxBreadth={}, nodes={}'.format(
+            self.num_classes,
+            tree_depth(self.graph),
+            max(it.chain([0], map(len, self.idx_groups))),
+            self.idx_to_node,
+        )
+
     def _demo_probs(self, num=5, rng=0, nonrandom=3, hackargmax=True):
         """ dummy probabilities for testing """
         rng = kwarray.ensure_rng(rng)
@@ -278,6 +351,9 @@ class CategoryTree(ub.NiceRepr):
     @classmethod
     def demo(cls, key='coco', **kwargs):
         """
+        Args:
+            key (str): specify which demo dataset to use.
+
         CommandLine:
             xdoctest -m ~/code/ndsampler/ndsampler/category_tree.py CategoryTree.demo
 
@@ -285,7 +361,7 @@ class CategoryTree(ub.NiceRepr):
             >>> from ndsampler.category_tree import *
             >>> self = CategoryTree.demo()
             >>> print('self = {}'.format(self))
-            self = <CategoryTree(nNodes=10, maxDepth=2, maxBreadth=4)>
+            self = <CategoryTree(nNodes=10, maxDepth=2, maxBreadth=4...)>
         """
         if key == 'coco':
             from ndsampler import coco_dataset
@@ -305,34 +381,23 @@ class CategoryTree(ub.NiceRepr):
         self = cls(graph)
         return self
 
-    def __getstate__(self):
+    def to_coco(self):
         """
-        Example:
-            >>> from ndsampler.category_tree import *
-            >>> import pickle
-            >>> self = CategoryTree.demo()
-            >>> state = self.__getstate__()
-            >>> serialization = pickle.dumps(self)
-            >>> recon = pickle.loads(serialization)
-            >>> assert recon.__json__() == self.__json__()
+        Converts to a coco-style data structure
         """
-        state = self.__dict__.copy()
-        for key in list(state.keys()):
-            if key.startswith('_cache'):
-                state.pop(key)
-        state['graph'] = to_directed_nested_tuples(self.graph)
-        return state
-
-    def __setstate__(self, state):
-        self.__dict__.update(state)
-        self.graph = from_directed_nested_tuples(state['graph'])
-
-    def __nice__(self):
-        return 'nNodes={}, maxDepth={}, maxBreadth={}'.format(
-            self.num_classes,
-            tree_depth(self.graph),
-            max(it.chain([0], map(len, self.idx_groups))),
-        )
+        for cid, node in self.id_to_node.items():
+            # Skip if background already added
+            cat = {
+                'id': cid,
+                'name': node,
+            }
+            parents = list(self.graph.predecessors(node))
+            if len(parents) == 1:
+                cat['supercategory'] = parents[0]
+            else:
+                if len(parents) > 1:
+                    raise Exception('not a tree')
+            yield cat
 
     def is_mutex(self):
         """
@@ -354,6 +419,28 @@ class CategoryTree(ub.NiceRepr):
     @property
     def class_names(self):
         return self.idx_to_node
+
+    @property
+    def category_names(self):
+        return self.idx_to_node
+
+    @property
+    def cats(self):
+        """
+        Returns a mapping from category names to category attributes.
+
+        If this category tree was constructed from a coco-dataset, then this
+        will contain the coco category attributes.
+
+        Returns:
+            Dict[str, Dict[str, object]]
+
+        Example:
+            >>> from ndsampler.category_tree import *
+            >>> self = CategoryTree.demo()
+            >>> print('self.categories = {!r}'.format(self.categories))
+        """
+        return dict(self.graph.node)
 
     def index(self, node):
         """ Return the index that corresponds to the category name """
@@ -386,10 +473,13 @@ class CategoryTree(ub.NiceRepr):
         self.node_to_idx = node_to_idx
         self.idx_groups = idx_groups
 
-    @xdev.profile
     def conditional_log_softmax(self, class_energy, dim):
         """
         Computes conditional log probabilities of each class in the category tree
+
+        Args:
+            class_energy (Tensor): raw values output by final network layer
+            dim (int): dimension where each index corresponds to a class
 
         Example:
             >>> from ndsampler.category_tree import *
@@ -418,12 +508,15 @@ class CategoryTree(ub.NiceRepr):
             cond_logits.index_copy_(dim, index, logit_group)
         return cond_logits
 
-    @xdev.profile
     def _apply_logit_chain_rule(self, cond_logits, dim):
         """
         Applies the probability chain rule (in log space, which has better
         numerical properties) to a set of conditional probabilities (wrt this
         heriarchy) to achieve absolute probabilities for each node.
+
+        Args:
+            cond_logits (Tensor): conditional log probabilities for each class
+            dim (int): dimension where each index corresponds to a class
 
         Notes:
             Probability chain rule:
@@ -435,7 +528,7 @@ class CategoryTree(ub.NiceRepr):
         # The dynamic program was faster on the CPU in a dummy test case
         memo = {}
 
-        def log_prob(node):
+        def log_prob(node, memo=memo):
             """ dynamic program to compute absolute class log probability """
             if node in memo:
                 return memo[node]
@@ -459,11 +552,10 @@ class CategoryTree(ub.NiceRepr):
                     class_logits.select(dim, idx)[:] = log_prob(node)
                 else:
                     result = log_prob(node)  # 50% of the time
-                    dest = class_logits.select(dim, idx)  # 8% of the time
-                    dest[:] = result  # 37% of the time
+                    _dest = class_logits.select(dim, idx)  # 8% of the time
+                    _dest[:] = result  # 37% of the time
         return class_logits
 
-    @xdev.profile
     def source_log_softmax(self, class_energy, dim):
         """
         Top-down heirarchical softmax
@@ -508,7 +600,6 @@ class CategoryTree(ub.NiceRepr):
         class_logits = self._apply_logit_chain_rule(cond_logits, dim=dim)
         return class_logits
 
-    @xdev.profile
     def sink_log_softmax(self, class_energy, dim):
         """
         Bottom-up heirarchical softmax
@@ -521,6 +612,12 @@ class CategoryTree(ub.NiceRepr):
 
         Does a regular softmax over all the mutually exclusive leaf nodes, then
         sums their probabilities to get the score for the parent nodes.
+
+        Args:
+            class_energy (Tensor): raw output from network. The values in
+                `class_energy[..., idx]` should correspond to the network
+                activations for the heirarchical class `self.idx_to_node[idx]`
+            dim (int): dimension corresponding to classes (usually 1)
 
         Example:
             >>> from ndsampler.category_tree import *
@@ -620,6 +717,10 @@ class CategoryTree(ub.NiceRepr):
         logits exactly contain the relevant information. In other words as long
         as the log probabilities are computed correctly, then the nothing
         special needs to happen when computing the loss.
+
+        Args:
+            class_logits (Tensor): log probabilities for each class
+            targets (Tensor): true class for each example
 
         Example:
             >>> from ndsampler.category_tree import *
@@ -1123,9 +1224,9 @@ def gini(probs, axis=1, impl=np):
         >>> rng = kwarray.ensure_rng(0)
         >>> probs = torch.softmax(torch.Tensor(rng.rand(3, 10)), 1)
         >>> gini(probs.numpy(), impl=kwarray.ArrayAPI.coerce('numpy'))
-        array([0.896..., 0.890..., 0.892...
+        array...0.896..., 0.890..., 0.892...
         >>> gini(probs, impl=kwarray.ArrayAPI.coerce('torch'))
-        tensor([0.896..., 0.890..., 0.892...
+        tensor...0.896..., 0.890..., 0.892...
     """
     return 1 - impl.sum(probs ** 2, axis=axis)
 
@@ -1138,15 +1239,33 @@ def entropy(probs, axis=1, impl=np):
         >>> rng = kwarray.ensure_rng(0)
         >>> probs = torch.softmax(torch.Tensor(rng.rand(3, 10)), 1)
         >>> entropy(probs.numpy(), impl=kwarray.ArrayAPI.coerce('numpy'))
-        array([3.295..., 3.251..., 3.265...
+        array...3.295..., 3.251..., 3.265...
         >>> entropy(probs, impl=kwarray.ArrayAPI.coerce('torch'))
-        tensor([3.295..., 3.251..., 3.265...
+        tensor...3.295..., 3.251..., 3.265...
     """
     with np.errstate(divide='ignore'):
         logprobs = impl.log2(probs)
         logprobs = impl.nan_to_num(logprobs, copy=False)
         h = -impl.sum(probs * logprobs, axis=axis)
         return h
+
+
+class _calldict(dict):
+    """
+    helper object to maintain backwards compatibility between new and old
+    id_to_idx methods.
+
+    Example:
+        >>> self = _calldict({1: 2})
+        >>> #assert self()[1] == 2
+        >>> assert self[1] == 2
+    """
+
+    def __call__(self):
+        import warnings
+        warnings.warn('Calling id_to_idx as a method has been depricated. '
+                      'Use this dict as a property')
+        return self
 
 
 if __name__ == '__main__':

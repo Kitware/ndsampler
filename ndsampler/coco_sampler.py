@@ -1,4 +1,4 @@
-#d -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
 import ubelt as ub
 import numpy as np
@@ -50,28 +50,31 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
     """
 
     @classmethod
-    def demo(cls, key='shapes', workdir=None, **kw):
-        from ndsampler import toydata
-        if key == 'shapes':
-            dset = coco_dataset.CocoDataset(toydata.demodata_toy_dset(**kw))
-        elif key == 'photos':
-            dset = coco_dataset.CocoDataset.demo(**kw)
+    def demo(cls, key='shapes', workdir=None, backend=None, **kw):
+        """
+        Create a toy coco sampler for testing and demo puposes
+
+        SeeAlso:
+            * ndsampler.CocoDataset.demo
+        """
+        dset = coco_dataset.CocoDataset.demo(key=key, **kw)
+        if key == 'photos':
             toremove = [ann for ann in dset.anns.values() if 'bbox' not in ann]
             dset.remove_annotations(toremove)
             dset.add_category('background', id=0)
-        else:
-            raise KeyError(key)
         if workdir is None:
             workdir = ub.ensure_app_cache_dir('ndsampler')
-        self = CocoSampler(dset, workdir=workdir)
+        self = CocoSampler(dset, workdir=workdir, backend=backend)
         return self
 
-    def __init__(self, dset, workdir=None, autoinit=True, verbose=0):
+    def __init__(self, dset, workdir=None, autoinit=True, backend='cog',
+                 verbose=0):
         super(CocoSampler, self).__init__()
         self.workdir = workdir
         self.dset = dset
         self.regions = None
         self.frames = None
+        self._backend = backend  # save until we init the frames
         self.verbose = verbose
         self.BACKGROUND_CLASS_ID = None
 
@@ -85,9 +88,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         self.regions = coco_regions.CocoRegions(self.dset,
                                                 workdir=self.workdir,
                                                 verbose=self.verbose)
-        self.frames = coco_frames.CocoFrames(self.dset, workdir=self.workdir)
-
-        self.catgraph = self.regions.catgraph
+        self.frames = coco_frames.CocoFrames(
+            self.dset,
+            workdir=self.workdir,
+            backend=self._backend,
+        )
 
         # === Hacked in attributes ===
         self.kp_classes = self.dset.keypoint_categories()
@@ -95,7 +100,15 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
 
     @property
     def classes(self):
-        return self.catgraph
+        if self.regions is None:
+            return None
+        return self.regions.classes
+
+    @property
+    def catgraph(self):
+        if self.regions is None:
+            return None
+        return self.regions.classes
 
     def _depends(self):
         hashid_parts = ub.odict()
@@ -144,6 +157,28 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         return self.regions.preselect(**kwargs)
 
     def load_image_with_annots(self, image_id):
+        """
+        Args:
+            image_id (int): the coco image id
+
+        Returns:
+            Tuple[Dict, List[Dict]]:
+                img: the coco image dict augmented with imdata
+                anns: the coco annotations in this image
+
+        Example:
+            >>> from ndsampler.coco_sampler import *
+            >>> self = CocoSampler.demo()
+            >>> rng = None
+            >>> img, anns = self.load_image_with_annots(1)
+            >>> dets = kwimage.Detections.from_coco_annots(anns, dset=self.dset)
+            >>> # xdoc: +REQUIRES(--show)
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> kwplot.imshow(img['imdata'][:])
+            >>> dets.draw()
+            >>> kwplot.show_if_requested()
+        """
         full_image = self.frames.load_image(image_id)
         gid = image_id
         coco_dset = self.dset
@@ -157,27 +192,36 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         full_image = self.frames.load_image(image_id)
         return full_image
 
-    def load_item(self, index, pad=None, window_dims=None):
+    def load_item(self, index, pad=None, window_dims=None, with_annots=True):
         """
         Loads from positives and then negatives.
         """
         if index < self.n_positives:
-            sample = self.load_positive(index, pad=pad, window_dims=window_dims)
+            sample = self.load_positive(index, pad=pad,
+                                        window_dims=window_dims,
+                                        with_annots=with_annots)
         else:
             index = index - self.n_positives
-            sample = self.load_negative(index, pad=pad, window_dims=window_dims)
+            sample = self.load_negative(index, pad=pad,
+                                        window_dims=window_dims,
+                                        with_annots=with_annots)
         return sample
 
-    def load_positive(self, index=None, pad=None, window_dims=None, rng=None):
+    def load_positive(self, index=None, pad=None, window_dims=None,
+                      with_annots=True, rng=None):
         """
         Args:
             index (int): index of positive target
             pad (tuple): (height, width) extra context to add to each size.
                 This helps prevent augmentation from producing boundary effects
-            window_dims (tuple): (height, width).  overwrite the height/width
-                in tr and extract a window around the center of the object
             window_dims (tuple): (height, width) area around the center
                 of the target object to sample.
+            with_annots (bool | str, default=True):
+                if True, also extracts information about any annotation that
+                overlaps the region of interest (subject to visibility_thresh).
+                Can also be a List[str] that specifies which specific subinfo
+                should be extracted. Valid strings in this list are: keypoints
+                and segmenation.
 
         Returns:
             Dict: sample: dict containing keys
@@ -200,10 +244,12 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> kwplot.show_if_requested()
         """
         tr = self.regions.get_positive(index, rng=rng)
-        sample = self.load_sample(tr, pad=pad, window_dims=window_dims)
+        sample = self.load_sample(tr, pad=pad, window_dims=window_dims,
+                                  with_annots=with_annots)
         return sample
 
-    def load_negative(self, index=None, pad=None, window_dims=None, rng=None):
+    def load_negative(self, index=None, pad=None, window_dims=None,
+                      with_annots=True, rng=None):
         """
         Args:
             index (int): if specified loads a specific negative from the
@@ -213,6 +259,12 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
                 This helps prevent augmentation from producing boundary effects
             window_dims (tuple): (height, width) area around the center
                 of the target negative region to sample.
+            with_annots (bool | str, default=True):
+                if True, also extracts information about any annotation that
+                overlaps the region of interest (subject to visibility_thresh).
+                Can also be a List[str] that specifies which specific subinfo
+                should be extracted. Valid strings in this list are: keypoints
+                and segmenation.
 
         Returns:
             Dict: sample: dict containing keys
@@ -249,11 +301,12 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> kwplot.show_if_requested()
         """
         tr = self.regions.get_negative(index, rng=rng)
-        sample = self.load_sample(tr, pad=pad, window_dims=window_dims)
+        sample = self.load_sample(tr, pad=pad, window_dims=window_dims,
+                                  with_annots=with_annots)
         return sample
 
-    def load_sample(self, tr, pad=None, window_dims=None, visible_thresh=0.1,
-                    padkw={'mode': 'constant'}):
+    def load_sample(self, tr, pad=None, window_dims=None, visible_thresh=0.0,
+                    with_annots=True, padkw={'mode': 'constant'}):
         """
         Loads the volume data associated with the bbox and frame of a target
 
@@ -261,13 +314,31 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             tr (dict): image and bbox info for a positive / negative target.
                 must contain the keys ['cx', 'cy', 'gid'], if `window_dims` is
                 None it must also contain the keys ['width' and 'height'].
+
+                NEW: tr can now contain the key `slices`, which maps a tuple of
+                slices, one slice for each of the n dimensions.  If specified
+                this will overwrite the 'cx', 'cy' keys. The 'gid' key is still
+                required, and `pad` does still have an effect.
+
             pad (tuple): (height, width) extra context to add to window dims.
                 This helps prevent augmentation from producing boundary effects
-            window_dims (tuple): (height, width) overrides the height/width
-                in tr to determine the extracted window size
+
+            window_dims (tuple | str): (height, width) overrides the height/width
+                in tr to determine the extracted window size. Can also be
+                'extent' or 'square', which determines the final size using
+                target information.
+
             visible_thresh (float): does not return annotations with visibility
                 less than this threshold.
+
             padkw (dict): kwargs for `numpy.pad`
+
+            with_annots (bool | str, default=True):
+                if True, also extracts information about any annotation that
+                overlaps the region of interest (subject to visibility_thresh).
+                Can also be a List[str] that specifies which specific subinfo
+                should be extracted. Valid strings in this list are: keypoints
+                and segmenation.
 
         Returns:
             Dict: sample: dict containing keys
@@ -360,29 +431,63 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> kwplot.imshow(sample['im'], colorspace='rgb')
             >>> kwplot.show_if_requested()
         """
+        sample = self._load_slice(tr, window_dims, pad, padkw)
+
+        if with_annots or ub.iterable(with_annots):
+            self._populate_overlap(sample, visible_thresh, with_annots)
+        return sample
+
+    def _load_slice(self, tr, window_dims=None, pad=None,
+                    padkw={'mode': 'constant'}):
+        """
+        Example:
+            >>> # sample an out of bounds target
+            >>> from ndsampler.coco_sampler import *
+            >>> self = CocoSampler.demo()
+            >>> tr = self.regions.get_positive(0)
+            >>> sample = self._load_slice(tr)
+            >>> print('sample = {!r}'.format(ub.map_vals(type, sample)))
+        """
+        import skimage
+        ndim = 2  # number of space-time dimensions (ignore channel)
         if pad is None:
-            pad = (0, 0)
+            pad = 0
+        pad = tuple(_ensure_iterablen(pad, ndim))
+
         gid = tr['gid']
-
-        center = (tr['cy'], tr['cx'])
-
         # Determine the image extent
         img = self.dset.imgs[gid]
         data_dims = (img['height'], img['width'])
 
-        # Determine the requested window size
-        if window_dims is None:
-            window_dims = (tr['height'], tr['width'])
-            window_dims = np.ceil(np.array(window_dims)).astype(np.int)
-            window_dims = tuple(window_dims.tolist())
-        elif isinstance(window_dims, six.string_types) and window_dims == 'square':
-            window_dims = (tr['height'], tr['width'])
-            window_dims = np.ceil(np.array(window_dims)).astype(np.int)
-            window_dims = tuple(window_dims.tolist())
-            maxdim = max(window_dims)
-            window_dims = (maxdim, maxdim)
+        if 'slices' in tr:
+            # Slice was explicitly specified
+            import warnings
+            if bool(set(tr) & {'cx', 'cy', 'height', 'width'}) or window_dims:
+                warnings.warn('data_slice was specified, but ignored keys are present')
+            requested_slice = tr['slices']
+            data_slice, extra_padding = _rectify_slice2(requested_slice, data_dims, pad)
+        else:
+            # A center / width / height was specified
+            center = (tr['cy'], tr['cx'])
+            # Determine the requested window size
+            if window_dims is None:
+                window_dims = 'extent'
 
-        data_slice, extra_padding = _get_slice(data_dims, center, window_dims, pad=pad)
+            if isinstance(window_dims, six.string_types):
+                if window_dims == 'extent':
+                    window_dims = (tr['height'], tr['width'])
+                    window_dims = np.ceil(np.array(window_dims)).astype(np.int)
+                    window_dims = tuple(window_dims.tolist())
+                elif window_dims == 'square':
+                    window_dims = (tr['height'], tr['width'])
+                    window_dims = np.ceil(np.array(window_dims)).astype(np.int)
+                    window_dims = tuple(window_dims.tolist())
+                    maxdim = max(window_dims)
+                    window_dims = (maxdim, maxdim)
+                else:
+                    raise KeyError(window_dims)
+
+            data_slice, extra_padding = _get_slice(data_dims, center, window_dims, pad=pad)
 
         # Load the image data
         im = self.frames.load_region(gid, data_slice)
@@ -391,7 +496,6 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
                 extra_padding = extra_padding + [(0, 0)]  # Handle channels
             im = np.pad(im, extra_padding, **padkw)
 
-        ndim = 2  # number of space-time dimensions (ignore channel)
         st_dims = [(sl.start, sl.stop) for sl in data_slice[0:ndim]]
 
         # Translations for real sub-pixel center positions
@@ -401,9 +505,63 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
                        for (s, t), pad in zip(st_dims, pad_dims)]
 
         (y_start, y_stop), (x_start, x_stop) = st_dims[-2:]
-
-        # tlbr box in original image space around this sampled patch
         sample_tlbr = kwimage.Boxes([x_start, y_start, x_stop, y_stop], 'tlbr')
+
+        offset = np.array([-x_start, -y_start])
+
+        tf_rel_to_abs = skimage.transform.AffineTransform(
+            translation=-offset
+        ).params
+
+        sample = {
+            'im': im,
+            'tr': tr.copy(),
+            'params': {
+                'offset': offset,
+                'tf_rel_to_abs': tf_rel_to_abs,
+                'sample_tlbr': sample_tlbr,
+                'st_dims': st_dims,
+                'data_dims': data_dims,
+                'pad': pad,
+            },
+        }
+        return sample
+
+    def _populate_overlap(self, sample, visible_thresh=0.1, with_annots=True):
+        """
+        Add information about annotations overlapping the sample.
+
+        with_annots can be a + separated string or list of the the special keys:
+            'segmentation' and 'keypoints'.
+
+        Example:
+            >>> # sample an out of bounds target
+            >>> from ndsampler.coco_sampler import *
+            >>> self = CocoSampler.demo()
+            >>> tr = self.regions.get_item(0)
+            >>> sample = self._load_slice(tr)
+            >>> sample = self._populate_overlap(sample)
+            >>> print('sample = {}'.format(ub.repr2(ub.util_dict.dict_diff(sample, ['im']), nl=-1)))
+        """
+
+        if with_annots is True:
+            with_annots = ['segmentation', 'keypoints', 'boxes']
+        elif isinstance(with_annots, six.string_types):
+            with_annots = with_annots.split('+')
+
+        if __debug__:
+            for k in with_annots:
+                assert k in ['segmentation', 'keypoints', 'boxes'], 'k={!r}'.format(k)
+
+        tr = sample['tr']
+        gid = tr['gid']
+
+        params = sample['params']
+        sample_tlbr = params['sample_tlbr']
+        offset = params['offset']
+        data_dims = params['data_dims']
+        # tlbr box in original image space around this sampled patch
+
         # Find which bounding boxes are visible in this region
         overlap_aids = self.regions.overlapping_aids(
             gid, sample_tlbr, visible_thresh=visible_thresh)
@@ -419,51 +577,56 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         # ]
         # Transform spatial information to be relative to the sample
 
-        offset = np.array([-x_start, -y_start])
         rel_boxes = abs_boxes.translate(offset)
 
         # Handle segmentations and keypoints if they exist
         sseg_list = []
         kpts_list = []
 
+        # TODO: make it optional to load these annotions (as it may be slow)
+
         coco_dset = self.dset
         kp_classes = self.kp_classes
         for aid in overlap_aids:
             ann = coco_dset.anns[aid]
-            coco_sseg = ann.get('segmentation', None)
-            coco_kpts = ann.get('keypoints', None)
-            if coco_kpts is not None:
-                kpnames = coco_dset._lookup_kpnames(ann['category_id'])
-                coco_xyf = np.array(coco_kpts).reshape(-1, 3)
-                flags = (coco_xyf.T[2] > 0)
-                xy_pts = coco_xyf[flags, 0:2]
-                kpnames = list(ub.compress(kpnames, flags))
-                kp_class_idxs = np.array([kp_classes.index(n) for n in kpnames])
-                abs_points = kwimage.Points(xy=xy_pts,
-                                            class_idxs=kp_class_idxs,
-                                            classes=kp_classes)
-                rel_points = abs_points.translate(offset)
-            else:
-                rel_points = None
 
-            if coco_sseg is not None:
-                # TODO: implement MultiPolygon coerce instead
-                abs_sseg = kwimage.Mask.coerce(coco_sseg, shape=data_dims)
-                abs_sseg = abs_sseg.to_multi_polygon()
-                rel_sseg = abs_sseg.translate(offset)
-            else:
-                rel_sseg = None
+            # TODO: it should probably be the regions's responsibilty to load
+            # and return these kwimage data structures.
+
+            rel_points = None
+            if 'keypoints' in with_annots:
+                coco_kpts = ann.get('keypoints', None)
+                if coco_kpts is not None:
+                    if len(coco_kpts) and isinstance(ub.peek(coco_kpts), dict):
+                        # new style encoding
+                        # raise NotImplementedError('new-style')
+                        abs_points = kwimage.Points._from_coco(
+                            coco_kpts, classes=kp_classes)
+                    else:
+                        # using old style coco keypoint encoding, we need look up
+                        # keypoint class from object classes and then pass in the
+                        # relevant info
+                        kpnames = coco_dset._lookup_kpnames(ann['category_id'])
+                        kp_class_idxs = np.array([kp_classes.index(n) for n in kpnames])
+                        abs_points = kwimage.Points._from_coco(
+                            coco_kpts, kp_class_idxs, kp_classes)
+                    rel_points = abs_points.translate(offset)
+
+            rel_sseg = None
+            if 'segmentation' in with_annots:
+                coco_sseg = ann.get('segmentation', None)
+                if coco_sseg is not None:
+                    # x = _coerce_coco_segmentation(coco_sseg, data_dims)
+                    # abs_sseg = kwimage.Mask.coerce(coco_sseg, dims=data_dims)
+                    abs_sseg = kwimage.MultiPolygon.coerce(coco_sseg, dims=data_dims)
+                    # abs_sseg = abs_sseg.to_multi_polygon()
+                    rel_sseg = abs_sseg.translate(offset)
 
             kpts_list.append(rel_points)
             sseg_list.append(rel_sseg)
 
-        import skimage
-        tf_rel_to_abs = skimage.transform.AffineTransform(
-            translation=-offset
-        ).params
-
         rel_ssegs = kwimage.PolygonList(sseg_list)
-        rel_kpts = kwimage.PolygonList(kpts_list)
+        rel_kpts = kwimage.PointsList(kpts_list)
         rel_kpts.meta['classes'] = self.kp_classes
 
         annots = {
@@ -479,19 +642,114 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         }
 
         # Note the center coordinates in the padded sample reference frame
-        tr_ = tr.copy()
-        sample = {
-            'im': im,
-            'tr': tr_,
-            'params': {
-                'offset': offset,
-                'tf_rel_to_abs': tf_rel_to_abs,
-                'pad': pad,
-            },
-            'annots': annots
+        tr_ = sample['tr']
 
-        }
+        main_aid = tr_.get('aid', None)
+        if main_aid is not None:
+            # Determine which (if any) index in "annots" corresponds to the
+            # main aid (if we even have a main aid)
+            cand_idxs = np.where(annots['aids'] == main_aid)[0]
+            if len(cand_idxs) == 0:
+                tr_['annot_idx'] = -1
+            elif len(cand_idxs) == 1:
+                tr_['annot_idx'] = cand_idxs[0]
+            else:
+                raise AssertionError('impossible state: len(cand_idxs)={}'.format(len(cand_idxs)))
+        else:
+            tr_['annot_idx'] = -1
+
+        sample['annots'] = annots
         return sample
+
+
+def padded_slice(data, in_slice, ndim=None, pad_slice=None,
+                 pad_mode='constant', **padkw):
+    """
+    Allows slices with out-of-bound coordinates.  Any out of bounds coordinate
+    will be sampled via padding.
+
+    Note:
+        Negative slices have a different meaning here then they usually do.
+        Normally, they indicate a wrap-around or a reversed stride, but here
+        they index into out-of-bounds space (which depends on the pad mode).
+        For example a slice of -2:1 literally samples two pixels to the left of
+        the data and one pixel from the data, so you get two padded values and
+        one data value.
+
+    Args:
+        data (Sliceable[T]): data to slice into. Any channels must be the last dimension.
+        in_slice (Tuple[slice, ...]): slice for each dimensions
+        ndim (int): number of spatial dimensions
+        pad_slice (List[int|Tuple]): additional padding of the slice
+
+    Returns:
+        Tuple[Sliceable, Dict] :
+
+            data_sliced: subregion of the input data (possibly with padding,
+                depending on if the original slice went out of bounds)
+
+            transform : information on how to return to the original coordinates
+
+                Currently a dict containing:
+                    st_dims: a list indicating the low and high space-time
+                        coordinate values of the returned data slice.
+
+    Example:
+        >>> data = np.arange(5)
+        >>> in_slice = [slice(-2, 7)]
+
+        >>> data_sliced, transform = padded_slice(data, in_slice)
+        >>> print(ub.repr2(data_sliced, with_dtype=False))
+        np.array([0, 0, 0, 1, 2, 3, 4, 0, 0])
+
+        >>> data_sliced, transform = padded_slice(data, in_slice, pad_slice=(3, 3))
+        >>> print(ub.repr2(data_sliced, with_dtype=False))
+        np.array([0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 0, 0, 0, 0, 0])
+
+        >>> data_sliced, transform = padded_slice(data, slice(3, 4), pad_slice=[(1, 0)])
+        >>> print(ub.repr2(data_sliced, with_dtype=False))
+        np.array([2, 3])
+
+    """
+    if isinstance(in_slice, slice):
+        in_slice = [in_slice]
+
+    ndim = len(in_slice)
+
+    data_dims = data.shape[:ndim]
+
+    low_dims = [sl.start for sl in in_slice]
+    high_dims = [sl.stop for sl in in_slice]
+
+    data_slice, extra_padding = _rectify_slice(data_dims, low_dims, high_dims,
+                                               pad=pad_slice)
+
+    in_slice_clipped = tuple(slice(*d) for d in data_slice)
+    # Get the parts of the image that are in bounds
+    data_clipped = data[in_slice_clipped]
+
+    # Add any padding that is needed to behave like negative dims exist
+    if sum(map(sum, extra_padding)) == 0:
+        # The slice was completely in bounds
+        data_sliced = data_clipped
+    else:
+        if len(data.shape) != len(extra_padding):
+            extra_padding = extra_padding + [(0, 0)]
+        data_sliced = np.pad(data_clipped, extra_padding, mode=pad_mode,
+                             **padkw)
+
+    st_dims = data_slice[0:ndim]
+    pad_dims = extra_padding[0:ndim]
+
+    st_dims = [(s - pad[0], t + pad[1])
+               for (s, t), pad in zip(st_dims, pad_dims)]
+
+    # TODO: return a better transform back to the original space
+    transform = {
+        'st_dims': st_dims,
+        'st_offset': [d[0] for d in st_dims]
+    }
+    return data_sliced, transform
 
 
 def _get_slice(data_dims, center, window_dims, pad=None):
@@ -548,13 +806,13 @@ def _get_slice(data_dims, center, window_dims, pad=None):
     data_slice, extra_padding = _rectify_slice(data_dims, low_dims,
                                                high_dims, pad)
 
-    data_slice = tuple([slice(low, high) for low, high in data_slice])
+    data_slice = tuple(slice(low, high) for low, high in data_slice)
     if sum(map(sum, extra_padding)) == 0:
         extra_padding = None
     return data_slice, extra_padding
 
 
-def _rectify_slice(data_dims, low_dims, high_dims, pad):
+def _rectify_slice(data_dims, low_dims, high_dims, pad=None):
     """
     Given image dimensions, bounding box dimensions, and a padding get the
     corresponding slice from the image and any extra padding needed to achieve
@@ -564,7 +822,8 @@ def _rectify_slice(data_dims, low_dims, high_dims, pad):
         data_dims (tuple): n-dimension data sizes (e.g. 2d height, width)
         low_dims (tuple): bounding box low values (e.g. 2d ymin, xmin)
         high_dims (tuple): bounding box high values (e.g. 2d ymax, xmax)
-        pad (tuple): padding applied to both sides of each dim
+        pad (tuple): (List[int|Tuple]):
+            pad applied to (left and right) / (both) sides of each slice dim
 
     Returns:
         Tuple:
@@ -592,12 +851,20 @@ def _rectify_slice(data_dims, low_dims, high_dims, pad):
     # Determine the real part of the image that can be sliced out
     data_slice = []
     extra_padding = []
-    for D_img, d_low, d_high, d_pad in zip(data_dims, low_dims, high_dims, pad):
+    if pad is None:
+        pad = 0
+    if isinstance(pad, int):
+        pad = [pad] * len(data_dims)
+    # Normalize to left/right pad value for each dim
+    pad_slice = [p if ub.iterable(p) else [p, p] for p in pad]
+
+    # Determine the real part of the image that can be sliced out
+    for D_img, d_low, d_high, d_pad in zip(data_dims, low_dims, high_dims, pad_slice):
         if d_low > d_high:
             raise ValueError('d_low > d_high: {} > {}'.format(d_low, d_high))
         # Determine where the bounds would be if the image size was inf
-        raw_low = d_low - d_pad
-        raw_high = d_high + d_pad
+        raw_low = d_low - d_pad[0]
+        raw_high = d_high + d_pad[1]
         # Clip the slice positions to the real part of the image
         sl_low = min(D_img, max(0, raw_low))
         sl_high = min(D_img, max(0, raw_high))
@@ -613,6 +880,25 @@ def _rectify_slice(data_dims, low_dims, high_dims, pad):
         extra = (extra_low, extra_high)
         extra_padding.append(extra)
     return data_slice, extra_padding
+
+
+def _rectify_slice2(requested_slice, data_dims, pad=None):
+    low_dims = [s.start for s in requested_slice]
+    high_dims = [s.stop for s in requested_slice]
+    data_slice, extra_padding = _rectify_slice(data_dims, low_dims,
+                                               high_dims, pad)
+    data_slice = tuple(slice(low, high) for low, high in data_slice)
+    if sum(map(sum, extra_padding)) == 0:
+        extra_padding = None
+    return data_slice, extra_padding
+
+
+def _ensure_iterablen(scalar, n):
+    try:
+        iter(scalar)
+    except TypeError:
+        return [scalar] * n
+    return scalar
 
 
 if __name__ == '__main__':

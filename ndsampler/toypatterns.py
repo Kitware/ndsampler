@@ -24,11 +24,12 @@ class CategoryPatterns(object):
         >>> import kwplot
         >>> kwplot.autompl()
         >>> kwplot.imshow(info['data'], pnum=(1, 2, 1), fnum=1, title='chip-space')
-        >>> info['kpts2'].translate(-np.array(offset)).draw(radius=3)
+        >>> kpts = kwimage.Points._from_coco(info['keypoints'])
+        >>> kpts.translate(-np.array(offset)).draw(radius=3)
         >>> #####
         >>> mask = kwimage.Mask.coerce(info['segmentation'])
         >>> kwplot.imshow(mask.to_c_mask().data, pnum=(1, 2, 2), fnum=1, title='img-space')
-        >>> info['kpts2'].draw(radius=3)
+        >>> kpts.draw(radius=3)
         >>> kwplot.show_if_requested()
     """
 
@@ -46,6 +47,14 @@ class CategoryPatterns(object):
         {'name': 'shape', 'id': 10, 'keypoints': []},
     ]
 
+    _default_keypoint_categories = [
+        {'name': 'left_eye', 'id': 1, 'reflection_id': 2},
+        {'name': 'right_eye', 'id': 2, 'reflection_id': 1},
+        {'name': 'top_tip', 'id': 3, 'reflection_id': None},
+        {'name': 'mid_tip', 'id': 4, 'reflection_id': None},
+        {'name': 'bot_tip', 'id': 5, 'reflection_id': None},
+    ]
+
     _default_catnames = [
         # 'circle',
         'star',
@@ -54,18 +63,29 @@ class CategoryPatterns(object):
     ]
 
     @classmethod
-    def coerce(cls, data=None, **kwargs):
-        if isinstance(data, cls):
+    def coerce(CategoryPatterns, data=None, **kwargs):
+        """
+        Construct category patterns from either defaults or only with specific
+        categories. Can accept either an existig category pattern object, a
+        list of known catnames, or mscoco category dictionaries.
+
+        Example:
+            >>> data = ['superstar']
+            >>> self = CategoryPatterns.coerce(data)
+        """
+        if isinstance(data, CategoryPatterns):
             return data
         else:
             if data is None:
-                catnames = cls._default_catnames
-                cname_to_cat = {c['name']: c for c in cls._default_categories}
+                # use defaults
+                catnames = CategoryPatterns._default_catnames
+                cname_to_cat = {c['name']: c for c in CategoryPatterns._default_categories}
                 arg = list(ub.take(cname_to_cat, catnames))
             elif ub.iterable(data) and len(data) > 0:
+                # choose specific catgories
                 if isinstance(data[0], six.string_types):
                     catnames = data
-                    cname_to_cat = {c['name']: c for c in cls._default_categories}
+                    cname_to_cat = {c['name']: c for c in CategoryPatterns._default_categories}
                     arg = list(ub.take(cname_to_cat, catnames))
                 elif isinstance(data[0], dict):
                     arg = data
@@ -73,14 +93,18 @@ class CategoryPatterns(object):
                     raise Exception
             else:
                 raise Exception
-            return cls(categories=arg, **kwargs)
+            return CategoryPatterns(categories=arg, **kwargs)
 
-    def __init__(self, categories=None, fg_scale=0.5, fg_intensity=0.9,
-                 rng=None):
+    def __init__(self, categories=None, fg_scale=0.5, fg_intensity=0.9, rng=None):
+        """
+        Args:
+            categories (List[Dict]): List of coco category dictionaries
+        """
         self.rng = kwarray.ensure_rng(rng)
         self.fg_scale = fg_scale
         self.fg_intensity = fg_intensity
-        self.category_to_elemfunc = {
+
+        self._category_to_elemfunc = {
             'superstar': lambda x: Rasters.superstar(),
             'eff':       lambda x: Rasters.eff(),
             'box':     lambda x: (skimage.morphology.square(x), None),
@@ -93,20 +117,25 @@ class CategoryPatterns(object):
         # Maybe there are too many input combinations for this?
         # If we only allow certain size generations it should be ok
 
-        # for key in self.category_to_elemfunc.keys():
-        #     self.category_to_elemfunc[key] = ub.memoize(self.category_to_elemfunc[key])
+        # for key in self._category_to_elemfunc.keys():
+        #     self._category_to_elemfunc[key] = ub.memoize(self._category_to_elemfunc[key])
 
-        self.categories = categories
         # keep track of which keypoints belong to which categories
-        self.cname_to_kp = {c['name']: c.get('keypoints', []) for c in self.categories}
+        self.categories = categories
+        self.cname_to_kp = {c['name']: c.get('keypoints', [])
+                            for c in self.categories}
 
         self.obj_catnames = sorted([c['name'] for c in self.categories])
-        self.kp_classes = sorted(ub.flatten(self.cname_to_kp.values()))
+        self.kp_catnames = sorted(ub.flatten(self.cname_to_kp.values()))
+
+        kpname_to_cat = {c['name']: c for c in CategoryPatterns._default_keypoint_categories}
+        self.keypoint_categories = list(ub.take(kpname_to_cat, self.kp_catnames))
 
         # flatten list of all keypoint categories
-        self.kp_classes = list(
-            ub.flatten([self.cname_to_kp.get(cname, []) for cname in self.obj_catnames])
-        )
+        # self.kp_catnames = list(
+        #     ub.flatten([self.cname_to_kp.get(cname, [])
+        #                 for cname in self.obj_catnames])
+        # )
         self.cname_to_cid = {
             cat['name']: cat['id'] for cat in self.categories
         }
@@ -115,7 +144,7 @@ class CategoryPatterns(object):
         }
 
     def __len__(self):
-        return len(self.categories)
+        return len(self.obj_catnames)
 
     def __getitem__(self, index):
         return self.categories[index]
@@ -136,13 +165,26 @@ class CategoryPatterns(object):
             except KeyError:
                 return default
 
-    def random_category(self, chip, xy_offset=None, dims=None):
+    def random_category(self, chip, xy_offset=None, dims=None,
+                        newstyle=True):
+        """
+        Ignore:
+            import xdev
+            globals().update(xdev.get_func_kwargs(self.random_category))
+
+        Example:
+            >>> self = CategoryPatterns.coerce(['superstar'])
+            >>> chip = np.random.rand(64, 64)
+            >>> info = self.random_category(chip)
+        """
         cname = self.rng.choice(self.obj_catnames)
         data, mask, kpts = self._from_elem(cname, chip)
-        info = self._package_info(cname, data, mask, kpts, xy_offset, dims)
+        info = self._package_info(cname, data, mask, kpts, xy_offset, dims,
+                                  newstyle)
         return info
 
-    def _package_info(self, cname, data, mask, kpts, xy_offset, dims):
+    def _package_info(self, cname, data, mask, kpts, xy_offset, dims,
+                      newstyle):
         """ packages data from _from_elem into coco-like annotation """
         import kwimage
         segmentation = kwimage.Mask(mask, 'c_mask').to_array_rle()
@@ -153,21 +195,22 @@ class CategoryPatterns(object):
         segmentation = segmentation.to_bytes_rle()
         segmentation.data['counts'] = segmentation.data['counts'].decode('utf8')
 
-        keypoints = list(ub.flatten([
-            (x, y, 2) for x, y in kpts.data['xy'].data.tolist()]))
+        if newstyle:
+            keypoints = kpts._to_coco('new')
+        else:
+            # old style keypoints
+            keypoints = kpts._to_coco('orig').tolist()
 
         info = {
             'name': cname,
             'data': data,
             'segmentation': segmentation.data,
             'keypoints': keypoints,
-            # [cx, cy, 2],
-            'kpts2': kpts,
         }
         return info
 
     def _from_elem(self, cname, chip):
-        elem_func = self.category_to_elemfunc[cname]
+        elem_func = self._category_to_elemfunc[cname]
         x = max(chip.shape[0:2])
         # x = int(2 ** np.floor(np.log2(x)))
         elem, kpts_yx = elem_func(x)
@@ -175,13 +218,17 @@ class CategoryPatterns(object):
         size = tuple(map(int, chip.shape[0:2][::-1]))
 
         if kpts_yx is not None:
+            kp_catnames = list(kpts_yx.keys())
             xy = np.array([yx[::-1] for yx in kpts_yx.values()])
-            kpts = kwimage.Points(xy=xy)
+            kpts = kwimage.Points(xy=xy, class_idxs=np.arange(len(xy)),
+                                  classes=kp_catnames)
             sf = np.array(size) / np.array(elem.shape[0:2][::-1])
             kpts = kpts.scale(sf)
         else:
+            kpts = None
             # center
-            kpts = kwimage.Points(xy=np.array([[.5, .5]]))
+            kpts = kwimage.Points(xy=np.array([]))
+            # kpts = kwimage.Points(xy=np.array([[.5, .5]]))
             kpts = kpts.scale(size)
 
         template = cv2.resize(elem, size).astype(np.float32)

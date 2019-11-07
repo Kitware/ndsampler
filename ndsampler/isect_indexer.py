@@ -14,7 +14,6 @@ class FrameIntersectionIndex(object):
     Build spatial tree for each frame so we can quickly determine if a random
     negative is too close to a positive. For each frame/image we built a qtree.
 
-
     Example:
         >>> from ndsampler.isect_indexer import *
         >>> import ndsampler
@@ -40,10 +39,33 @@ class FrameIntersectionIndex(object):
         """
         Args:
             dset (ndsampler.CocoDataset): positive annotation data
+
+        Returns:
+            FrameIntersectionIndex
         """
         self = cls()
         self.qtrees = self._build_index(dset)
         self.all_gids = sorted(self.qtrees.keys())
+        return self
+
+    @classmethod
+    def demo(cls, *args, **kwargs):
+        """
+        Create a demo intersection index.
+
+        Args:
+            *args: see ndsampler.CocoDataset.demo
+            **kwargs: see ndsampler.CocoDataset.demo
+
+        Returns:
+            FrameIntersectionIndex
+        """
+        import ndsampler
+        dset = ndsampler.CocoDataset.demo(*args, **kwargs)
+        dset._ensure_imgsize()
+        dset.remove_annotations([ann for ann in dset.anns.values()
+                                 if 'bbox' not in ann])
+        self = cls.from_coco(dset)
         return self
 
     @staticmethod
@@ -65,12 +87,52 @@ class FrameIntersectionIndex(object):
         return qtrees
 
     def overlapping_aids(self, gid, box):
+        """
+        Find all annotation-ids within an image that have some overlap with a
+        bounding box.
+
+        Args:
+            gid (int): an image id
+            box (kwimage.Boxes): the specified region
+
+        Returns:
+            List[int]: list of annotation ids
+
+        Example:
+            >>> self = FrameIntersectionIndex.demo('shapes128')
+            >>> for gid, qtree in self.qtrees.items():
+            >>>     box = kwimage.Boxes([0, 0, qtree.width, qtree.height], 'xywh')
+            >>>     self.overlapping_aids(gid, box)
+        """
         qtree = self.qtrees[gid]
         query = box.to_tlbr().data
-        isect_aids = sorted(qtree.intersect(query))
+        isect_aids = sorted(set(qtree.intersect(query)))
+        # isect_aids_ = set(isect_aids)
+        # if len(isect_aids_) != len(isect_aids):
+        #     if True:
+        #         # Hack in a fix
+        #         import warnings
+        #         warnings.warn('Is pyqtree bugged. Got duplicate aids. Hacking in a fix.')
+        #         isect_aids = sorted(isect_aids_)
+        #         print('isect_aids = {!r}'.format(isect_aids))
+        #     else:
+        #         raise RuntimeError('Got duplicate aids')
         return isect_aids
 
     def ious(self, gid, box):
+        """
+        Find overlaping annotations in a specific image and their intersection
+        over union with a a query box.
+
+        Args:
+            gid (int): an image id
+            box (kwimage.Boxes): the specified region
+
+        Returns:
+            Tuple[List[int], ndarray]:
+                isect_aids: list of annotation ids
+                ious: jaccard score for each returned annotation id
+        """
         isect_aids = self.overlapping_aids(gid, box)
         if len(isect_aids):
             boxes1 = box[None, :]

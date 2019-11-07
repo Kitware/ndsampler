@@ -18,6 +18,11 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
     """
     Generates positive and negative samples on the fly.
 
+    Note:
+        Its probably more robust to generate a static fixed-size dataset with
+        'demodata_toy_dset' or `ndsampler.CocoDataset.demo`. However, if you
+        need a sampler that dynamically generates toydata, this is for you.
+
     Ignore:
         >>> from ndsampler.toydata import *
         >>> self = DynamicToySampler()
@@ -49,12 +54,12 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
 
     def __init__(self, n_positives=1e5, seed=None, gsize=(416, 416),
                  categories=None):
-        self.categories = CategoryPatterns.coerce(categories)
 
-        self.kp_classes = self.categories.kp_classes
+        self.catpats = CategoryPatterns.coerce(categories)
+        self.kp_catnames = self.catpats.kp_catnames
 
         self.cname_to_cid = {
-            cat['name']: cat['id'] for cat in self.categories
+            cat['name']: cat['id'] for cat in self.catpats
         }
         self.cname_to_cid['background'] = 0
         self.cid_to_cname = {
@@ -76,7 +81,7 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
         self.gray = True
         self._n_annots_pos = (1, 100)
         self._n_annots_neg = (0, 10)
-        # self.catpats = CategoryPatterns.coerce(self.categories)
+        # self.catpats = CategoryPatterns.coerce(self.catpats)
         # fg_scale=fg_scale, fg_intensity=fg_intensity, rng=rng)
 
     def load_item(self, index, pad=None, window_dims=None):
@@ -124,13 +129,13 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
 
     def _lookup_kpnames(self, class_id):
         cname = self.lookup_class_name(class_id)
-        return self.categories.cname_to_kp[cname]
+        return self.catpats.cname_to_kp[cname]
         # if cname is not None:
         #     return ['center']
 
     @property
     def n_categories(self):
-        return len(self.categories) + 1
+        return len(self.catpats) + 1
 
     def preselect(self, n_pos=None, n_neg=None, neg_to_pos_ratio=None,
                   window_dims=None, rng=None, verbose=0):
@@ -151,7 +156,7 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
             rng = kwarray.ensure_rng(self.seed * len(self) + image_id)
         rng = kwarray.ensure_rng(rng)
         img, anns = demodata_toy_img(gsize=self._full_imgsize,
-                                     categories=self.categories,
+                                     categories=self.catpats,
                                      gray=self.gray,
                                      rng=rng, n_annots=(0, 10))
         _node_to_id = self.catgraph.node_to_id
@@ -179,7 +184,7 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
 
         img, anns = demodata_toy_img(gsize=gsize,
                                      rng=rng,
-                                     categories=self.categories,
+                                     categories=self.catpats,
                                      gray=self.gray,
                                      centerobj=centerobj, n_annots=n_annots)
         im = img['imdata']
@@ -191,6 +196,7 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
             cname = ann['category_name']
             cid = self.cname_to_cid[cname]
             aid = 1
+
         tr_ = {
             'aid': aid,
             # 'gid': guuid,
@@ -209,29 +215,30 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
         sseg_list = []
         kpts_list = []
 
-        kp_classes = self.categories.kp_classes
+        kp_catnames = self.catpats.kp_catnames
         for ann in anns:
             coco_sseg = ann.get('segmentation', None)
             coco_kpts = ann.get('keypoints', None)
             if coco_kpts is not None:
                 cid = self.lookup_class_id(ann['category_name'])
-                kpnames = self._lookup_kpnames(cid)
-                coco_xyf = np.array(coco_kpts).reshape(-1, 3)
-                flags = (coco_xyf.T[2] > 0)
-                xy_pts = coco_xyf[flags, 0:2]
-                kpnames = list(ub.compress(kpnames, flags))
-                kp_class_idxs = np.array([kp_classes.index(n) for n in kpnames])
-                rel_points = kwimage.Points(xy=xy_pts,
-                                            class_idxs=kp_class_idxs,
-                                            classes=kp_classes)
-                # rel_points = abs_points.translate(offset)
+                # kpnames = self._lookup_kpnames(cid)
+                rel_points = kwimage.Points._from_coco(coco_kpts,
+                                                       classes=kp_catnames)
+                # coco_xyf = np.array(coco_kpts).reshape(-1, 3)
+                # flags = (coco_xyf.T[2] > 0)
+                # xy_pts = coco_xyf[flags, 0:2]
+                # kpnames = list(ub.compress(kpnames, flags))
+                # kp_class_idxs = np.array([kp_catnames.index(n) for n in kpnames])
+                # rel_points = kwimage.Points(xy=xy_pts,
+                #                             class_idxs=kp_class_idxs,
+                #                             classes=kp_catnames)
             else:
                 rel_points = None
 
             if coco_sseg is not None:
                 # TODO: implement MultiPolygon coerce instead
                 data_dims = gsize[::-1]
-                abs_sseg = kwimage.Mask.coerce(coco_sseg, shape=data_dims)
+                abs_sseg = kwimage.Mask.coerce(coco_sseg, dims=data_dims)
                 rel_sseg = abs_sseg.to_multi_polygon()
             else:
                 rel_sseg = None
@@ -241,7 +248,7 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
 
         rel_ssegs = kwimage.PolygonList(sseg_list)
         rel_kpts = kwimage.PolygonList(kpts_list)
-        rel_kpts.meta['classes'] = self.categories.kp_classes
+        rel_kpts.meta['classes'] = self.catpats.kp_catnames
 
         rel_boxes = kwimage.Boxes([a['bbox'] for a in anns], 'xywh').to_cxywh()
 
@@ -302,7 +309,8 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
 def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
                      n_annots=(0, 50), fg_scale=0.5, bg_scale=0.8,
                      bg_intensity=0.1, fg_intensity=0.9,
-                     gray=True, centerobj=None, exact=False, rng=None):
+                     gray=True, centerobj=None, exact=False,
+                     newstyle=True, rng=None):
     r"""
     Generate a single image with non-overlapping toy objects of available
     categories.
@@ -332,6 +340,8 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
         exact (bool): if True, ensures that exactly the number of specified
             annots are generated.
 
+        newstyle (bool): use new-sytle mscoco format
+
         rng (RandomState): the random state used to seed the process
 
     CommandLine:
@@ -352,19 +362,19 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
         }
         anns = [{'bbox': [15, 10, 9, 8],
           'category_name': 'star',
-          'keypoints': [19.5, 14.0, 2],
+          'keypoints': [],
           'segmentation': {'counts': '[`06j0000O20N1000e8', 'size': [32, 32]},},
          {'bbox': [11, 20, 7, 7],
-          'category_name': 'eff',
-          'keypoints': [14.5, 23.5, 2],
-          'segmentation': {'counts': 'd<7i0O1LWO0j00VOOk012O]=', 'size': [32, 32]},},
-         {'bbox': [4, 4, 8, 6],
           'category_name': 'star',
-          'keypoints': [8.0, 7.0, 2],
-          'segmentation': {'counts': 'U54l00O2O01N10kd0', 'size': [32, 32]},},
+          'keypoints': [],
+          'segmentation': {'counts': 'g;1m04N0O20N102L[=', 'size': [32, 32]},},
+         {'bbox': [4, 4, 8, 6],
+          'category_name': 'superstar',
+          'keypoints': [{'keypoint_category': 'left_eye', 'xy': [7.25, 6.8125]}, {'keypoint_category': 'right_eye', 'xy': [8.75, 6.8125]}],
+          'segmentation': {'counts': 'U4210j0300O01010O00MVO0ed0', 'size': [32, 32]},},
          {'bbox': [3, 20, 6, 7],
           'category_name': 'star',
-          'keypoints': [6.0, 23.5, 2],
+          'keypoints': [],
           'segmentation': {'counts': 'g31m04N000002L[f0', 'size': [32, 32]},},]
 
     Example:
@@ -386,9 +396,6 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
     anchors = np.asarray(anchors)
 
     rng = kwarray.ensure_rng(rng)
-    # if isinstance(categories, CategoryPatterns) or hasattr(categories, 'obj_catnames'):
-    #     catpats = categories
-    # else:
     catpats = CategoryPatterns.coerce(categories, fg_scale=fg_scale,
                                       fg_intensity=fg_intensity, rng=rng)
 
@@ -484,7 +491,8 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
         chip_index = tuple([slice(tl_y, br_y), slice(tl_x, br_x)])
         chip = imdata[chip_index]
         xy_offset = (tl_x, tl_y)
-        info = catpats.random_category(chip, xy_offset, dims)
+        info = catpats.random_category(chip, xy_offset, dims,
+                                       newstyle=newstyle)
         fgdata = info['data']
         if gray:
             fgdata = fgdata.mean(axis=2, keepdims=True)
@@ -515,15 +523,26 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
     return img, anns
 
 
-def demodata_toy_dset(gsize=(600, 600), n_imgs=5):
+def demodata_toy_dset(gsize=(600, 600), n_imgs=5, verbose=3, rng=0,
+                      newstyle=True):
     """
     Create a toy detection problem
+
+    Args:
+        gsize (Tuple): size of the images
+        n_img (int): number of images to generate
+        rng (int | RandomState): random number generator or seed
+        newstyle (bool, default=True): create newstyle mscoco data
 
     Returns:
         dict: dataset in mscoco format
 
     CommandLine:
         xdoctest -m ndsampler.toydata demodata_toy_dset --show
+
+    Ignore:
+        import xdev
+        globals().update(xdev.get_func_kwargs(demodata_toy_dset))
 
     Example:
         >>> from ndsampler.toydata import *
@@ -540,11 +559,8 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5):
     """
     dpath = ub.ensure_app_cache_dir('ndsampler', 'toy_dset')
 
-    # gsize = (104, 104)
-    # gsize = (300, 300)
-    # gsize = (600, 600)
-
-    rng = np.random.RandomState(0)
+    import kwarray
+    rng = kwarray.ensure_rng(rng)
 
     catpats = CategoryPatterns.coerce([
         # 'box',
@@ -569,23 +585,27 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5):
         'anchors': anchors,
         'gsize': gsize,
         'n_imgs': n_imgs,
-        'categories': catpats,
+        'categories': catpats.categories,
+        'keypoint_categories': catpats.keypoint_categories,
+        'rng': ub.hash_data(rng),
     }
     cacher = ub.Cacher('toy_dset_v3', dpath=ub.ensuredir(dpath, 'cache'),
-                       cfgstr=ub.repr2(cfg), verbose=3, enabled=0)
+                       cfgstr=ub.repr2(cfg), verbose=verbose, enabled=0)
 
     img_dpath = ub.ensuredir((dpath, 'imgs_{}_{}'.format(
         cfg['n_imgs'], cacher._condense_cfgstr())))
+    print('img_dpath = {!r}'.format(img_dpath))
 
     n_have = len(list(glob.glob(join(img_dpath, '*.png'))))
-    # Only allow cache loading if the data seems to exist
+    print('n_have = {!r}'.format(n_have))
+    # Hack: Only allow cache loading if the data seems to exist
     cacher.enabled = n_have == n_imgs
 
     bg_intensity = .1
     fg_scale = 0.5
     bg_scale = 0.8
 
-    dataset = cacher.tryload()
+    dataset = cacher.tryload(on_error='clear')
     if dataset is None:
         ub.delete(img_dpath)
         ub.ensuredir(img_dpath)
@@ -601,14 +621,23 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5):
         })
 
         name_to_cid = {}
-        for i, cat in enumerate(catpats, start=1):
+        for cat in catpats.categories:
             dataset['categories'].append(cat)
             name_to_cid[cat['name']] = cat['id']
+
+        if newstyle:
+            # Add newstyle keypoint categories
+            kpname_to_id = {}
+            dataset['keypoint_categories'] = []
+            for kpcat in catpats.keypoint_categories:
+                dataset['keypoint_categories'].append(kpcat)
+                kpname_to_id[kpcat['name']] = kpcat['id']
 
         for i in ub.ProgIter(range(n_imgs), label='creating data'):
             img, anns = demodata_toy_img(anchors, gsize=gsize,
                                          categories=catpats,
-                                         fg_scale=fg_scale, bg_scale=bg_scale,
+                                         newstyle=newstyle, fg_scale=fg_scale,
+                                         bg_scale=bg_scale,
                                          bg_intensity=bg_intensity, rng=rng)
             imdata = img.pop('imdata')
 
@@ -621,6 +650,11 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5):
 
             dataset['images'].append(img)
             for ann in anns:
+                if newstyle:
+                    # rectify newstyle keypoint ids
+                    for kpdict in ann.get('keypoints', []):
+                        kpname = kpdict.pop('keypoint_category')
+                        kpdict['keypoint_category_id'] = kpname_to_id[kpname]
                 cid = name_to_cid[ann.pop('category_name')]
                 ann.update({
                     'id': len(dataset['annotations']) + 1,
