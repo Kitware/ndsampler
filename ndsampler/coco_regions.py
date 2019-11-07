@@ -244,10 +244,19 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
             cacher = self._cacher('neg_anchors')
             neg_anchors = cacher.tryload(on_error='clear')
             if neg_anchors is None:
-                neg_anchors = np.vstack([
-                    self.targets['width'] / self.targets['img_width'],
-                    self.targets['height'] / self.targets['img_height']
-                ]).T
+                if False:
+                    # FIXME: this is not the right way to normalize anchors
+                    neg_anchors = np.vstack([
+                        self.targets['width'] / self.targets['img_width'],
+                        self.targets['height'] / self.targets['img_height']
+                    ]).T
+                else:
+                    z = np.minimum(self.targets['img_width'],
+                                   self.targets['img_height'])
+                    neg_anchors = np.vstack([self.targets['width'],
+                                             self.targets['height']]).T
+                    neg_anchors = neg_anchors / z[:, None]
+
                 rng = kwarray.ensure_rng(0)
                 rng.shuffle(neg_anchors)
                 neg_anchors = neg_anchors[0:1000]
@@ -435,13 +444,25 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
 
         Args:
             num (int): number of negatives to sample
+
             exact (bool): if True, we will try to find exactly `num` negatives,
                 otherwise the number returned is approximate.
-            thresh (float): amount of overlap allowed between positives and
-                negatives.
+
+            neg_anchors (): prior normalized aspect ratios for negative boxes.
+                Mutually exclusive with `window_size`.
+
+            window_size (Tuple): absolute box size (width, height)
+                used to sample negative regions. If not specified the relative
+                anchor strategy will be used to randomly choose potentially
+                non-square regions relative to the image size.
+
+            thresh (float): overlap area threshold as a percentage of the
+                negative box size. When thresh=0.0, that means negatives cannot
+                overlap any positive, when threh=1.0, there are no constrains
+                on negative placement.
 
         Returns:
-            targets: pd.DataFrame: contains negative targets information
+            DataFrameArray: targets - contains negative target information
 
         Example:
             >>> from ndsampler.coco_regions import *
@@ -484,7 +505,7 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
     def _preselect_positives(self, num=None, window_dims=None, rng=None,
                              verbose=None):
         """"
-        preload a bunch of negatives
+        preload a bunch of positives
 
         Example:
             >>> from ndsampler.coco_regions import *
@@ -531,10 +552,31 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
 
         return n_pos
 
-    def _preselect_negatives(self, num, window_dims=None, rng=None,
-                             thresh=0.3, verbose=None):
-        """"
-        preload a bunch of negatives
+    def _preselect_negatives(self, num, window_dims=None, thresh=0.3, rng=None,
+                             verbose=None):
+        """
+        Preselect a set of random regions to be used as negative examples.
+
+        Args:
+            num (int): number of desired negatives to preselect. In some cases
+                achieving this number may not be possible.
+
+            window_dims (Tuple): absolute dimensions (height, width)
+                used to sample negative regions. If not specified the relative
+                anchor strategy will be used to randomly choose potentially
+                non-square regions relative to the image size.
+
+            thresh (float): overlap area threshold as a percentage of the
+                negative box size. When thresh=0.0, that means negatives cannot
+                overlap any positive, when threh=1.0, there are no constrains
+                on negative placement.
+
+            rng (int | RandomState): random seed / state
+
+            verbose (int): verbosity level
+
+        Returns:
+            int : number of negatives actually chosen
 
         Example:
             >>> from ndsampler.coco_regions import *
@@ -554,11 +596,6 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
 
         rng = kwarray.ensure_rng(rng)
         if window_dims is not None:
-            # TODO: neg_anchors are supposed to be in normalized coordinates IT
-            # IS NOT POSSIBLE TO GET NORMALIZE COORDS FROM ABS WINDOW_DIMS HOW
-            # DO WE SPECIFY A WINDOW HERE. PROBABLY HAVE TO ADD OPTION FOR
-            # ABSOLUTE COORDINATES, WHICH MEANS GENERATING RANDOM BOXES ON A
-            # PER-IMAGE BASIS
             window_size = window_dims[::-1]
             neg_anchors = None
         else:

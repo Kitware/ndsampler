@@ -50,9 +50,10 @@ def validate(ds, check_tiled=True):
       check_tiled: Set to False to ignore missing tiling.
 
     Returns:
-      A tuple, whose first element is an array of error messages
-      (empty if there is no error), and the second element, a dictionary
-      with the structure of the GeoTIFF file.
+      Tuple[List, List, Dict] - warnings, errors, details - A tuple, whose first
+          element is an array of error messages (empty if there is no error),
+          and the second element, a dictionary with the structure of the
+          GeoTIFF file.
 
     Raises:
       ValidateCloudOptimizedGeoTIFFException: Unable to open the file or the
@@ -160,7 +161,12 @@ def validate(ds, check_tiled=True):
     details['data_offsets']['main'] = data_offset
     for i in range(ovr_count):
         ovr_band = ds.GetRasterBand(1).GetOverview(i)
-        data_offset = int(ovr_band.GetMetadataItem('BLOCK_OFFSET_0_0', 'TIFF'))
+        data_offset_code = ovr_band.GetMetadataItem('BLOCK_OFFSET_0_0', 'TIFF')
+        try:
+            data_offset = int(data_offset_code)
+        except TypeError:
+            # metadata = ovr_band.GetMetadata()
+            raise TypeError('data_offset_code={} was not an integer'.format(data_offset_code))
         data_offsets.append(data_offset)
         details['data_offsets']['overview_%d' % i] = data_offset
 

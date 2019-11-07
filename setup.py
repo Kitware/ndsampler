@@ -1,24 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""
-Installation:
-    pip install git+https://github.com/Erotemic/ndsampler.git
-
-Developing:
-    git clone https://github.com/Erotemic/ndsampler.git
-    pip install -e ndsampler
-
-Pypi:
-     # Presetup
-     pip install twine
-
-     # First tag the source-code
-     VERSION=$(python -c "import setup; print(setup.version)")
-     echo $VERSION
-     git tag $VERSION -m "tarball tag $VERSION"
-     git push --tags origin master
-"""
 from setuptools import setup
+from setuptools import find_packages
 import sys
 
 
@@ -76,23 +59,6 @@ def parse_description():
     return ''
 
 
-def parse_requirements_alt(fname='requirements.txt'):
-    """
-    pip install requirements-parser
-    fname='requirements.txt'
-    """
-    import requirements
-    from os.path import dirname, join, exists
-    require_fpath = join(dirname(__file__), fname)
-    if exists(require_fpath):
-        # Dont use until this handles platform specific dependencies
-        with open(require_fpath, 'r') as file:
-            requires = list(requirements.parse(file))
-        packages = [r.name for r in requires]
-        return packages
-    return []
-
-
 def parse_requirements(fname='requirements.txt'):
     """
     Parse the package dependencies listed in a requirements file but strips
@@ -104,23 +70,30 @@ def parse_requirements(fname='requirements.txt'):
     CommandLine:
         python -c "import setup; print(setup.parse_requirements())"
     """
-    from os.path import dirname, join, exists
+    from os.path import exists
     import re
-    require_fpath = join(dirname(__file__), fname)
+    require_fpath = fname
 
     def parse_line(line):
         """
         Parse information from a line in a requirements text file
         """
-        info = {}
-        if line.startswith('-e '):
+        if line.startswith('-r '):
+            # Allow specifying requirements in other files
+            target = line.split(' ')[1]
+            for info in parse_require_file(target):
+                yield info
+        elif line.startswith('-e '):
+            info = {}
             info['package'] = line.split('#egg=')[1]
+            yield info
         else:
             # Remove versioning from the package
             pat = '(' + '|'.join(['>=', '==', '>']) + ')'
             parts = re.split(pat, line, maxsplit=1)
             parts = [p.strip() for p in parts]
 
+            info = {}
             info['package'] = parts[0]
             if len(parts) > 1:
                 op, rest = parts[1:]
@@ -132,25 +105,28 @@ def parse_requirements(fname='requirements.txt'):
                 else:
                     version = rest  # NOQA
                 info['version'] = (op, version)
-        return info
+            yield info
 
-    # This breaks on pip install, so check that it exists.
-    if exists(require_fpath):
-        with open(require_fpath, 'r') as f:
-            packages = []
+    def parse_require_file(fpath):
+        with open(fpath, 'r') as f:
             for line in f.readlines():
                 line = line.strip()
                 if line and not line.startswith('#'):
-                    info = parse_line(line)
-                    package = info['package']
-                    if not sys.version.startswith('3.4'):
-                        # apparently package_deps are broken in 3.4
-                        platform_deps = info.get('platform_deps')
-                        if platform_deps is not None:
-                            package += ';' + platform_deps
-                    packages.append(package)
-            return packages
-    return []
+                    for info in parse_line(line):
+                        yield info
+
+    # This breaks on pip install, so check that it exists.
+    packages = []
+    if exists(require_fpath):
+        for info in parse_require_file(require_fpath):
+            package = info['package']
+            if not sys.version.startswith('3.4'):
+                # apparently package_deps are broken in 3.4
+                platform_deps = info.get('platform_deps')
+                if platform_deps is not None:
+                    package += ';' + platform_deps
+            packages.append(package)
+    return packages
 
 
 version = parse_version('ndsampler')  # needs to be a global var for git tags
@@ -167,7 +143,7 @@ if __name__ == '__main__':
             'all': parse_requirements('requirements.txt')
         },
         license='Apache 2',
-        packages=['ndsampler'],
+        packages=find_packages(include='ndsampler.*'),
         classifiers=[
             # List of classifiers available at:
             # https://pypi.python.org/pypi?%3Aaction=list_classifiers

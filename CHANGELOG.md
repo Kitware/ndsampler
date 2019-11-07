@@ -4,7 +4,26 @@ This changelog follows the specifications detailed in: [Keep a Changelog](https:
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
 
-## Version 0.2.0
+## Version 0.3.0
+
+
+### Added
+
+* Can now remove keypoint categories (implementation is not optimized)
+
+### Changed
+* `CategoryTree` now serializes graph node attributes
+* `backend` default is now `auto` instead of `None`. Setting `backend=None` now disables backend caching which might cause the entire image to be loaded in order to load any region.
+
+### Fixed
+* Negative regions now have correct aspect ratios.
+* Coco union now properly handles basic keypoint categories. 
+* `rename_categories` now handles different merge policies.
+* The `_next_ids` attribute was incorrectly shallow copied on deep copy.
+
+
+
+## Version 0.2.0 - [Finalized 2019 June 9th]
 
 ### Added
 * Add `CocoDataset.load_annot_sample`, which helps load a chip for a specific annotation. (Note: this is less efficient than using the CocoSampler)
@@ -36,6 +55,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Fixes for larger images (maybe need to do something else besides memmap)
 * Fixes for kwimage 0.4.0 api changes
 * Fixed issue in region caches when using python 2 and 3
+* CocoDataset union now respects `img_root` that is common to all operands.
 
 
 ## Version 0.1.0

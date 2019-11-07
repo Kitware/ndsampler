@@ -1,4 +1,47 @@
 # -*- coding: utf-8 -*-
+"""
+Example:
+    >>> # Imagine you have some images
+    >>> import kwimage
+    >>> image_paths = [
+    >>>     kwimage.grab_test_image_fpath('astro'),
+    >>>     kwimage.grab_test_image_fpath('carl'),
+    >>>     kwimage.grab_test_image_fpath('airport'),
+    >>> ]  # xdoc: +IGNORE_WANT
+    ['~/.cache/kwimage/demodata/KXhKM72.png',
+     '~/.cache/kwimage/demodata/flTHWFD.png',
+     '~/.cache/kwimage/demodata/Airport.jpg']
+    >>> # And you want to randomly load subregions of them in O(1) time
+    >>> import ndsampler
+    >>> # First make a COCO dataset that refers to your images (and possibly annotations)
+    >>> dataset = {
+    >>>     'images': [{'id': i, 'file_name': fpath} for i, fpath in enumerate(image_paths)],
+    >>>     'annotations': [],
+    >>>     'categories': [],
+    >>> }
+    >>> coco_dset = ndsampler.CocoDataset(dataset)
+    >>> print(coco_dset)
+    <CocoDataset(tag=None, n_anns=0, n_imgs=3, n_cats=0)>
+    >>> # Now pass the dataset to a sampler and tell it where it can store temporary files
+    >>> workdir = ub.ensure_app_cache_dir('ndsampler/demo')
+    >>> sampler = ndsampler.CocoSampler(coco_dset, workdir=workdir)
+    >>> # Now you can load arbirary samples by specifing a target dictionary
+    >>> # with an image_id (gid) center location (cx, cy) and width, height.
+    >>> target = {'gid': 0, 'cx': 200, 'cy': 200, 'width': 100, 'height': 100}
+    >>> sample = sampler.load_sample(target)
+    >>> # The sample contains the image data, any visible annotations, a reference
+    >>> # to the original target, and params of the transform used to sample this
+    >>> # patch
+    >>> print(sorted(sample.keys()))
+    ['annots', 'im', 'params', 'tr']
+    >>> im = sample['im']
+    >>> print(im.shape)
+    (100, 100, 3)
+    >>> # The load sample function is at the core of what ndsampler does
+    >>> # There are other helper functions like load_positive / load_negative
+    >>> # which deal with annotations. See those for more details.
+    >>> # For random negative sampling see coco_regions.
+"""
 from __future__ import absolute_import, division, print_function, unicode_literals
 import ubelt as ub
 import numpy as np
@@ -21,6 +64,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
 
     Args:
         dset (ndsampler.CocoDataset): a coco-formatted dataset
+
+        backend (str | Dict): either 'cog' or 'npy', or a dict with
+            `{'type': str, 'config': Dict}`. See AbstractFrames for more
+            details.
 
     Example:
         >>> from ndsampler.coco_sampler import *
@@ -50,7 +97,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
     """
 
     @classmethod
-    def demo(cls, key='shapes', workdir=None, backend=None, **kw):
+    def demo(cls, key='shapes', workdir=None, backend='auto', **kw):
         """
         Create a toy coco sampler for testing and demo puposes
 
@@ -74,7 +121,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         self.dset = dset
         self.regions = None
         self.frames = None
-        self._backend = backend  # save until we init the frames
+
+        # save at least until we init the frames / regions
+        self._backend = backend
+
         self.verbose = verbose
         self.BACKGROUND_CLASS_ID = None
 
@@ -106,6 +156,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
 
     @property
     def catgraph(self):
+        """
+        DEPRICATED, use self.classes instead
+        """
         if self.regions is None:
             return None
         return self.regions.classes
@@ -156,10 +209,14 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
     def preselect(self, **kwargs):
         return self.regions.preselect(**kwargs)
 
-    def load_image_with_annots(self, image_id):
+    def load_image_with_annots(self, image_id, cache=True):
         """
         Args:
             image_id (int): the coco image id
+
+            cache (bool, default=True): if True returns the fast
+                subregion-indexable file reference. Otherwise, eagerly loads
+                the entire image.
 
         Returns:
             Tuple[Dict, List[Dict]]:
@@ -179,22 +236,80 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> dets.draw()
             >>> kwplot.show_if_requested()
         """
-        full_image = self.frames.load_image(image_id)
-        gid = image_id
+        full_image = self.load_image(image_id, cache=cache)
         coco_dset = self.dset
-        img = coco_dset.imgs[gid].copy()
-        aids = coco_dset.index.gid_to_aids[gid]
-        anns = [coco_dset.anns[aid] for aid in aids]
+        img = coco_dset.imgs[image_id].copy()
+        anns = self.load_annotations(image_id)
         img['imdata'] = full_image
         return img, anns
 
-    def load_image(self, image_id):
-        full_image = self.frames.load_image(image_id)
+    def load_annotations(self, image_id):
+        """
+        Loads the annotations within an image
+
+        Args:
+            image_id (int): the coco image id
+
+        Returns:
+            List[Dict]: list of coco annotation dictionaries
+        """
+        coco_dset = self.dset
+        aids = coco_dset.index.gid_to_aids[image_id]
+        anns = [coco_dset.anns[aid] for aid in aids]
+        return anns
+
+    def load_image(self, image_id, cache=True):
+        """
+        Loads the annotations within an image
+
+        Args:
+            image_id (int): the coco image id
+
+            cache (bool, default=True): if True returns the fast
+                subregion-indexable file reference. Otherwise, eagerly loads
+                the entire image.
+
+        Returns:
+            ArrayLike: either ndarray data or a indexable reference
+        """
+        full_image = self.frames.load_image(image_id, cache=cache)
         return full_image
 
     def load_item(self, index, pad=None, window_dims=None, with_annots=True):
         """
-        Loads from positives and then negatives.
+        Loads item from either positive or negative regions pool.
+
+        Lower indexes will return positive regions and higher indexes will
+        return negative regions.
+
+        The main paradigm of the sampler is that sampler.regions maintains a
+        pool of target regions, you can influence what that pool is at any
+        point by calling sampler.regions.preselect (usually either at the start
+        of learning, or maybe after every epoch, etc..), and you use load_item
+        to load the index-th item from that preselected pool. Depending on how
+        you preselected the pool, the returned item might correspond to a
+        positive or negative region.
+
+        Args:
+            index (int): index of target region
+            pad (tuple): (height, width) extra context to add to each size.
+                This helps prevent augmentation from producing boundary effects
+            window_dims (tuple): (height, width) area around the center
+                of the target region to sample.
+            with_annots (bool | str, default=True):
+                if True, also extracts information about any annotation that
+                overlaps the region of interest (subject to visibility_thresh).
+                Can also be a List[str] that specifies which specific subinfo
+                should be extracted. Valid strings in this list are: keypoints
+                and segmenation.
+
+        Returns:
+            Dict: sample: dict containing keys
+                im (ndarray): image data
+                tr (dict): contains the same input items as tr but additionally
+                    specifies rel_cx and rel_cy, which gives the center
+                    of the target w.r.t the returned **padded** sample.
+                annots (dict): Dict of aids, cids, and rel/abs boxes
         """
         if index < self.n_positives:
             sample = self.load_positive(index, pad=pad,
@@ -210,6 +325,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
     def load_positive(self, index=None, pad=None, window_dims=None,
                       with_annots=True, rng=None):
         """
+        Load an item from the the positive pool of regions.
+
         Args:
             index (int): index of positive target
             pad (tuple): (height, width) extra context to add to each size.
@@ -240,7 +357,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> # xdoc: +REQUIRES(--show)
             >>> import kwplot
             >>> kwplot.autompl()
-            >>> kwplot.imshow(sample)
+            >>> kwplot.imshow(sample['im'])
             >>> kwplot.show_if_requested()
         """
         tr = self.regions.get_positive(index, rng=rng)
@@ -251,6 +368,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
     def load_negative(self, index=None, pad=None, window_dims=None,
                       with_annots=True, rng=None):
         """
+        Load an item from the the negative pool of regions.
+
         Args:
             index (int): if specified loads a specific negative from the
                 presampled pool, otherwise the next negative in the pool is
@@ -583,8 +702,6 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         sseg_list = []
         kpts_list = []
 
-        # TODO: make it optional to load these annotions (as it may be slow)
-
         coco_dset = self.dset
         kp_classes = self.kp_classes
         for aid in overlap_aids:
@@ -592,14 +709,12 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
 
             # TODO: it should probably be the regions's responsibilty to load
             # and return these kwimage data structures.
-
             rel_points = None
             if 'keypoints' in with_annots:
                 coco_kpts = ann.get('keypoints', None)
-                if coco_kpts is not None:
-                    if len(coco_kpts) and isinstance(ub.peek(coco_kpts), dict):
-                        # new style encoding
-                        # raise NotImplementedError('new-style')
+                if coco_kpts is not None and len(coco_kpts) > 0:
+                    if isinstance(ub.peek(coco_kpts), dict):
+                        # new style coco keypoint encoding
                         abs_points = kwimage.Points._from_coco(
                             coco_kpts, classes=kp_classes)
                     else:
