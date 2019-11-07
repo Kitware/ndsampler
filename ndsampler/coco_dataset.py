@@ -22,7 +22,7 @@ Dataset Spec:
                 'id': int,
                 'image_id': int,
                 'category_id': int,
-                'bbox': [tl_x, tl_y, w, h],  # optional (tlwh / xywh format)
+                'bbox': [tl_x, tl_y, w, h],  # optional (xywh format)
             },
             ...
         ],
@@ -257,7 +257,7 @@ class Annots(ObjectList1D):
         Example:
             >>> self = CocoDataset.demo().annots([1, 2, 11])
             >>> print(self.boxes)
-            <Boxes(tlwh,
+            <Boxes(xywh,
                 array([[ 10,  10, 360, 490],
                        [350,   5, 130, 290],
                        [124,  96,  45,  18]]))>
@@ -275,7 +275,7 @@ class Annots(ObjectList1D):
         Example:
             >>> self = CocoDataset.demo().annots([1, 2, 11])
             >>> print(self.boxes)
-            <Boxes(tlwh,
+            <Boxes(xywh,
                 array([[ 10,  10, 360, 490],
                        [350,   5, 130, 290],
                        [124,  96,  45,  18]]))>

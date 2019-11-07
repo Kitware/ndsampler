@@ -214,6 +214,8 @@ class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
         This design needs a bit more thought.
         """
         if self._targets is None:
+            if self.verbose:
+                print('Building targets from coco dataset')
             cacher = self._cacher('targets', enabled=True)
             _targets = cacher.tryload()
             if _targets is None:
@@ -581,7 +583,7 @@ def tabular_coco_targets(dset):
         xywh = np.array(xywh, dtype=np.float32)
 
     boxes = kwil.Boxes(xywh, 'xywh')
-    cxywhs = boxes.to_cxywh().data
+    cxywhs = boxes.to_cxywh().data.reshape(-1, 4)
 
     aids = [ann['id'] for ann in anns]
     gids = [ann['image_id'] for ann in anns]

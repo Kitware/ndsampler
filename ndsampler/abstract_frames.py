@@ -100,8 +100,9 @@ class Frames(object):
         if region is None:
             region = tuple([])
         if len(region) < 2:
-            tail = [slice(None)] * (2 - len(region))
-            region = tuple(list(region) + tail)
+            # Add empty dimensions
+            tail = tuple([slice(None)] * (2 - len(region)))
+            region = tuple(region) + tail
 
         file = self.load_image(image_id, bands=bands, scale=scale)
         im = file[region]
@@ -132,8 +133,11 @@ class Frames(object):
         try:
             file = np.load(mem_gpath, mmap_mode='r')
         except ValueError:
+            print('\n\n')
+            print('ERROR')
             print('mem_gpath = {!r}'.format(mem_gpath))
             print('exists(mem_gpath) = {!r}'.format(exists(mem_gpath)))
+            print('\n\n')
             raise
         return file
 

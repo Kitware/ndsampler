@@ -1,0 +1,20 @@
+Version 0.0.3
+-------------
+* added `index` to CategoryTree
+* Fixed CategoryTree.decision when the tree is rooted
+* Add ignore_class_idxs to CategoryTree.decision
+* Add always_refine_idxs to CategoryTree.decision
+* Fix torch incompatibility in CategoryTree.decision
+
+
+Version 0.0.2
+-------------
+* Minor test fixes
+
+
+Version 0.0.1
+-------------
+* Initial code for 2D O(1) chip sampling
+* Initial code for CategoryTree
+* Initial code for CocoDataset
+* Initial code for dummy detection toydata

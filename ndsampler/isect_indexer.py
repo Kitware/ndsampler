@@ -57,8 +57,8 @@ class FrameIntersectionIndex(object):
             if 'bbox' in ann:
                 aid = ann['id']
                 qtree = qtrees[ann['image_id']]
-                tlwh_box = kwil.Boxes(ann['bbox'], 'tlwh')
-                tlbr_box = tlwh_box.to_tlbr().data
+                xywh_box = kwil.Boxes(ann['bbox'], 'xywh')
+                tlbr_box = xywh_box.to_tlbr().data
                 qtree.insert(aid, tlbr_box)
                 qtree.aid_to_tlbr[aid] = tlbr_box
         return qtrees

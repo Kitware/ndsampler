@@ -139,7 +139,7 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
         raise NotImplementedError
 
     def load_image(self, image_id=None, rng=None):
-        img = self.load_image_with_annots(image_id=image_id, rng=rng)
+        img, anns = self.load_image_with_annots(image_id=image_id, rng=rng)
         return img['imdata']
 
     def load_image_with_annots(self, image_id=None, rng=None):
@@ -430,7 +430,7 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
 
     while True:
         boxes = kwil.Boxes.random(
-            num=num, scale=1.0, format='tlwh', rng=rng, anchors=anchors)
+            num=num, scale=1.0, format='xywh', rng=rng, anchors=anchors)
         boxes = boxes.scale(gsize)
         bw, bh = boxes.components[2:4]
         ar = np.maximum(bw, bh) / np.minimum(bw, bh)
@@ -506,7 +506,7 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
         'imdata': imdata,
     }
     anns = []
-    for catname, bbox in zip(catnames, boxes.to_tlwh().data):
+    for catname, bbox in zip(catnames, boxes.to_xywh().data):
         anns.append({
             'category_name': catname,
             'bbox': bbox.tolist(),
