@@ -1,5 +1,18 @@
-Version 0.0.3
+Version 0.1.0
 -------------
+* The CocoDataset "key" now defaults to the full basename instead of only the first part.
+* Working on better support for keypoints and segmentations, and possible extensions
+* Removed support for "fine-ids"
+* Renamed arguments to add_image, add_annotation, and add_category to be consistent with data internals
+
+
+Version 0.0.4
+-------------
+* Add a hacky fix for a race condition in AbstractFrames. We should try to fix this more robustly.
+* Rework construction of CocoDataset.hashid
+* Invalidate the CocoDataset.hashid on modification
+* Fix issue with modifying CocoDataset subsets
+* CategoryTree now prefers coerce over cast
 * added `index` to CategoryTree
 * Fixed CategoryTree.decision when the tree is rooted
 * Add ignore_class_idxs to CategoryTree.decision

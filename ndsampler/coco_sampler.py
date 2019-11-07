@@ -1,8 +1,8 @@
-# -*- coding: utf-8 -*-
+#d -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
 import ubelt as ub
 import numpy as np
-import kwil
+import kwimage
 import six
 from ndsampler import coco_dataset
 from ndsampler import coco_regions
@@ -27,11 +27,26 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         >>> self = CocoSampler.demo('photos')
         ...
         >>> print(sorted(self.class_ids))
-        [0, 1, 2, 3, 4, 5, 6, 7]
+        [0, 1, 2, 3, 4, 5, 6, 7, 8]
         >>> print(self.n_positives)
         4
-        >>> sample = self.load_positive()
-        >>> sample = self.load_negative()
+
+    Example:
+        >>> import ndsampler
+        >>> self = ndsampler.CocoSampler.demo('photos')
+        >>> p_sample = self.load_positive()
+        >>> n_sample = self.load_negative()
+        >>> self = ndsampler.CocoSampler.demo('shapes')
+        >>> p_sample2 = self.load_positive()
+        >>> n_sample2 = self.load_negative()
+        >>> for sample in [p_sample, n_sample, p_sample2, n_sample2]:
+        >>>     assert 'annots' in sample
+        >>>     assert 'im' in sample
+        >>>     assert 'rel_boxes' in sample['annots']
+        >>>     assert 'rel_ssegs' in sample['annots']
+        >>>     assert 'rel_kpts' in sample['annots']
+        >>>     assert 'cids' in sample['annots']
+        >>>     assert 'aids' in sample['annots']
     """
 
     @classmethod
@@ -43,7 +58,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             dset = coco_dataset.CocoDataset.demo(**kw)
             toremove = [ann for ann in dset.anns.values() if 'bbox' not in ann]
             dset.remove_annotations(toremove)
-            dset.add_category('background', cid=0)
+            dset.add_category('background', id=0)
         else:
             raise KeyError(key)
         if workdir is None:
@@ -71,8 +86,16 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
                                                 workdir=self.workdir,
                                                 verbose=self.verbose)
         self.frames = coco_frames.CocoFrames(self.dset, workdir=self.workdir)
+
         self.catgraph = self.regions.catgraph
+
+        # === Hacked in attributes ===
+        self.kp_classes = self.dset.keypoint_categories()
         self.BACKGROUND_CLASS_ID = self.regions.BACKGROUND_CLASS_ID  # currently hacked in
+
+    @property
+    def classes(self):
+        return self.catgraph
 
     def _depends(self):
         hashid_parts = ub.odict()
@@ -171,9 +194,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> sample = self.load_positive(pad=(10, 10), window_dims=(3, 3))
             >>> assert sample['im'].shape[0] == 23
             >>> # xdoc: +REQUIRES(--show)
-            >>> kwil.autompl()
-            >>> kwil.imshow(sample)
-            >>> kwil.show_if_requested()
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> kwplot.imshow(sample)
+            >>> kwplot.show_if_requested()
         """
         tr = self.regions.get_positive(index, rng=rng)
         sample = self.load_sample(tr, pad=pad, window_dims=window_dims)
@@ -202,25 +226,27 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo()
             >>> rng = None
-            >>> sample, tr, annots = self.load_negative(rng=rng, pad=(0, 0))
+            >>> sample = self.load_negative(rng=rng, pad=(0, 0))
             >>> # xdoc: +REQUIRES(--show)
-            >>> kwil.autompl()
-            >>> box = kwil.Boxes(tr.reindex(['rel_cx', 'rel_cy', 'width', 'height']).values, 'cxywh')
-            >>> kwil.imshow(sample)
-            >>> kwil.draw_boxes(box)
-            >>> kwil.show_if_requested()
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> box = kwimage.Boxes(tr.reindex(['rel_cx', 'rel_cy', 'width', 'height']).values, 'cxywh')
+            >>> kwplot.imshow(sample)
+            >>> kwplot.draw_boxes(box)
+            >>> kwplot.show_if_requested()
 
         Example:
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo()
             >>> rng = None
-            >>> sample, tr, annots = self.load_negative(rng=rng, pad=(0, 0), window_dims=(64, 64))
+            >>> sample = self.load_negative(rng=rng, pad=(0, 0), window_dims=(64, 64))
             >>> # xdoc: +REQUIRES(--show)
-            >>> kwil.autompl()
-            >>> box = kwil.Boxes(tr.reindex(['rel_cx', 'rel_cy', 'width', 'height']).values, 'cxywh')
-            >>> kwil.imshow(sample, fnum=1, doclf=True)
-            >>> kwil.draw_boxes(box)
-            >>> kwil.show_if_requested()
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> box = kwimage.Boxes(tr.reindex(['rel_cx', 'rel_cy', 'width', 'height']).values, 'cxywh')
+            >>> kwplot.imshow(sample, fnum=1, doclf=True)
+            >>> kwplot.draw_boxes(box)
+            >>> kwplot.show_if_requested()
         """
         tr = self.regions.get_negative(index, rng=rng)
         sample = self.load_sample(tr, pad=pad, window_dims=window_dims)
@@ -249,7 +275,18 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
                 tr (dict): contains the same input items as tr but additionally
                     specifies rel_cx and rel_cy, which gives the center
                     of the target w.r.t the returned **padded** sample.
-                annots (dict): Dict of aids, cids, and rel/abs boxes
+                annots (dict): containing items:
+                    aids (list): annotation ids
+                    cids (list): category ids
+                    rel_cxywh (ndarray): boxes relative to the sample
+                    rel_ssegs (ndarray): segmentations relative to the sample
+                    rel_kpts (ndarray): keypoints relative to the sample
+
+        CommandLine:
+            xdoctest -m ndsampler.coco_sampler CocoSampler.load_sample:2 --show
+
+            xdoctest -m ndsampler.coco_sampler CocoSampler.load_sample:1 --show
+            xdoctest -m ndsampler.coco_sampler CocoSampler.load_sample:3 --show
 
         Example:
             >>> from ndsampler.coco_sampler import *
@@ -273,9 +310,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> print('im.shape = {!r}'.format(sample['im'].shape))
             im.shape = (52, 85, 3)
             >>> # xdoc: +REQUIRES(--show)
-            >>> kwil.autompl()
-            >>> kwil.imshow(sample['im'])
-            >>> kwil.show_if_requested()
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> kwplot.imshow(sample['im'])
+            >>> kwplot.show_if_requested()
 
         Example:
             >>> # sample an out of bounds target
@@ -283,25 +321,30 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> self = CocoSampler.demo()
             >>> tr = self.regions.get_positive(0)
             >>> window_dims = None
-            >>> window_dims = (64, 64)
+            >>> window_dims = (364, 364)
             >>> sample = self.load_sample(tr, window_dims=window_dims)
             >>> annots = sample['annots']
             >>> assert len(annots['aids']) > 0
             >>> assert len(annots['rel_cxywh']) == len(annots['aids'])
             >>> # xdoc: +REQUIRES(--show)
-            >>> kwil.autompl()
-            >>> abs_frame = self.frames.load_image(tr_['gid'])
-            >>> abs_box = kwil.Boxes(annots['abs_cxywh'], 'cxywh')
-            >>> rel_box = kwil.Boxes(annots['rel_cxywh'], 'cxywh')
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> abs_frame = self.frames.load_image(sample['tr']['gid'])
+            >>> tf_rel_to_abs = sample['params']['tf_rel_to_abs']
+            >>> abs_boxes = annots['rel_boxes'].warp(tf_rel_to_abs)
+            >>> abs_ssegs = annots['rel_ssegs'].warp(tf_rel_to_abs)
+            >>> abs_kpts = annots['rel_kpts'].warp(tf_rel_to_abs)
             >>> # Draw box in original image context
-            >>> from matplotlib import pyplot as plt
-            >>> kwil.imshow(abs_frame, pnum=(1, 2, 1), fnum=1)
-            >>> kwil.draw_boxes(abs_box.translate([-.5, -.5]))
-            >>> plt.scatter(*(abs_box.xy_center.T - .5))
+            >>> kwplot.imshow(abs_frame, pnum=(1, 2, 1), fnum=1)
+            >>> abs_boxes.translate([-.5, -.5]).draw()
+            >>> abs_kpts.draw(color='green', radius=10)
+            >>> abs_ssegs.draw(color='red', alpha=.5)
             >>> # Draw box in relative sample context
-            >>> kwil.imshow(sample['im'], pnum=(1, 2, 2), fnum=1)
-            >>> kwil.draw_boxes(rel_box.translate([-.5, -.5]))
-            >>> plt.scatter(*(rel_box.xy_center.T - .5))
+            >>> kwplot.imshow(sample['im'], pnum=(1, 2, 2), fnum=1)
+            >>> annots['rel_boxes'].translate([-.5, -.5]).draw()
+            >>> annots['rel_ssegs'].draw(color='red', alpha=.6)
+            >>> annots['rel_kpts'].draw(color='green', alpha=.4, radius=10)
+            >>> kwplot.show_if_requested()
 
         Example:
             >>> from ndsampler.coco_sampler import *
@@ -312,9 +355,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             >>> sample = self.load_sample(tr, pad, window_dims=window_dims)
             >>> assert sample['im'].shape[0:2] == window_dims
             >>> # xdoc: +REQUIRES(--show)
-            >>> kwil.autompl()
-            >>> kwil.imshow(sample['im'], colorspace='rgb')
-            >>> kwil.show_if_requested()
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> kwplot.imshow(sample['im'], colorspace='rgb')
+            >>> kwplot.show_if_requested()
         """
         if pad is None:
             pad = (0, 0)
@@ -359,29 +403,94 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         (y_start, y_stop), (x_start, x_stop) = st_dims[-2:]
 
         # tlbr box in original image space around this sampled patch
-        sample_tlbr = kwil.Boxes([x_start, y_start, x_stop, y_stop], 'tlbr')
+        sample_tlbr = kwimage.Boxes([x_start, y_start, x_stop, y_stop], 'tlbr')
         # Find which bounding boxes are visible in this region
         overlap_aids = self.regions.overlapping_aids(
             gid, sample_tlbr, visible_thresh=visible_thresh)
 
         # Get info about all annotations inside this window
         overlap_annots = self.dset.annots(overlap_aids)
-        abs_boxes = overlap_annots.boxes
         overlap_cids = overlap_annots.cids
-        rel_boxes = abs_boxes.translate([-x_start, -y_start])
+
+        abs_boxes = overlap_annots.boxes
+
+        # overlap_keypoints = [
+        #     for aid in overlap_aids
+        # ]
+        # Transform spatial information to be relative to the sample
+
+        offset = np.array([-x_start, -y_start])
+        rel_boxes = abs_boxes.translate(offset)
+
+        # Handle segmentations and keypoints if they exist
+        sseg_list = []
+        kpts_list = []
+
+        coco_dset = self.dset
+        kp_classes = self.kp_classes
+        for aid in overlap_aids:
+            ann = coco_dset.anns[aid]
+            coco_sseg = ann.get('segmentation', None)
+            coco_kpts = ann.get('keypoints', None)
+            if coco_kpts is not None:
+                kpnames = coco_dset._lookup_kpnames(ann['category_id'])
+                coco_xyf = np.array(coco_kpts).reshape(-1, 3)
+                flags = (coco_xyf.T[2] > 0)
+                xy_pts = coco_xyf[flags, 0:2]
+                kpnames = list(ub.compress(kpnames, flags))
+                kp_class_idxs = np.array([kp_classes.index(n) for n in kpnames])
+                abs_points = kwimage.Points(xy=xy_pts,
+                                            class_idxs=kp_class_idxs,
+                                            classes=kp_classes)
+                rel_points = abs_points.translate(offset)
+            else:
+                rel_points = None
+
+            if coco_sseg is not None:
+                # TODO: implement MultiPolygon coerce instead
+                abs_sseg = kwimage.Mask.coerce(coco_sseg, shape=data_dims)
+                abs_sseg = abs_sseg.to_multi_polygon()
+                rel_sseg = abs_sseg.translate(offset)
+            else:
+                rel_sseg = None
+
+            kpts_list.append(rel_points)
+            sseg_list.append(rel_sseg)
+
+        import skimage
+        tf_rel_to_abs = skimage.transform.AffineTransform(
+            translation=-offset
+        ).params
+
+        rel_ssegs = kwimage.PolygonList(sseg_list)
+        rel_kpts = kwimage.PolygonList(kpts_list)
+        rel_kpts.meta['classes'] = self.kp_classes
+
         annots = {
             'aids': np.array(overlap_aids),
             'cids': np.array(overlap_cids),
+
             'rel_cxywh': rel_boxes.to_cxywh().data,
             'abs_cxywh': abs_boxes.to_cxywh().data,
+
+            'rel_boxes': rel_boxes,
+            'rel_ssegs': rel_ssegs,
+            'rel_kpts': rel_kpts,
         }
 
         # Note the center coordinates in the padded sample reference frame
         tr_ = tr.copy()
-        # tr_['rel_cy'] = tr['cy'] - y_start
-        # tr_['rel_cx'] = tr['cx'] - x_start
+        sample = {
+            'im': im,
+            'tr': tr_,
+            'params': {
+                'offset': offset,
+                'tf_rel_to_abs': tf_rel_to_abs,
+                'pad': pad,
+            },
+            'annots': annots
 
-        sample = {'im': im, 'tr': tr_, 'annots': annots}
+        }
         return sample
 
 
