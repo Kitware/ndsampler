@@ -56,6 +56,7 @@ stages:
             - dist/*.whl
 
 
+# TODO: Make a test target that tests gdal 
 .test_template: &test_template
     <<: 
         - *common_template
