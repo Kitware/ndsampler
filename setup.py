@@ -1,34 +1,19 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+from os.path import exists
 from setuptools import setup
 from setuptools import find_packages
 import sys
 
 
-def parse_version(package):
+def parse_version(fpath):
     """
-    Statically parse the version number from __init__.py
-
-    CommandLine:
-        python -c "import setup; print(setup.parse_version('ndsampler'))"
+    Statically parse the version number from a python file
     """
-    from os.path import dirname, join, exists
     import ast
-
-    # Check if the package is a single-file or multi-file package
-    _candiates = [
-        join(dirname(__file__), package + '.py'),
-        join(dirname(__file__), package, '__init__.py'),
-    ]
-    _found = [init_fpath for init_fpath in _candiates if exists(init_fpath)]
-    if len(_found) > 0:
-        init_fpath = _found[0]
-    elif len(_found) > 1:
-        raise Exception('parse_version found multiple init files')
-    elif len(_found) == 0:
-        raise Exception('Cannot find package init file')
-
-    with open(init_fpath) as file_:
+    if not exists(fpath):
+        raise ValueError('fpath={!r} does not exist'.format(fpath))
+    with open(fpath, 'r') as file_:
         sourcecode = file_.read()
     pt = ast.parse(sourcecode)
     class VersionVisitor(ast.NodeVisitor):
@@ -129,18 +114,23 @@ def parse_requirements(fname='requirements.txt'):
     return packages
 
 
-version = parse_version('ndsampler')  # needs to be a global var for git tags
+version = parse_version('ndsampler/__init__.py')  # needs to be a global var for git tags
 
 if __name__ == '__main__':
     setup(
         name='ndsampler',
         version=version,
         author='Jon Crall',
+        author_email='jon.crall@kitware.com',
         description='Fast sampling from large images',
         long_description=parse_description(),
+        long_description_content_type='text/x-rst',
         install_requires=parse_requirements('requirements/runtime.txt'),
         extras_require={
-            'all': parse_requirements('requirements.txt')
+            'all': parse_requirements('requirements.txt'),
+            'tests': parse_requirements('requirements/tests.txt'),
+            'build': parse_requirements('requirements/build.txt'),
+            'optional': parse_requirements('requirements/optional.txt'),
         },
         license='Apache 2',
         packages=find_packages(include='ndsampler.*'),

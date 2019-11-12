@@ -1,2 +1,6 @@
 -r requirements/runtime.txt
 -r requirements/tests.txt
+-r requirements/build.txt
+
+# TODO: ensure this works
+# -r requirements/optional.txt

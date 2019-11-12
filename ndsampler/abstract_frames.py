@@ -39,8 +39,8 @@ else:
 #     profile = ub.identity
 
 
-DEBUG_COG_ATOMIC_WRITE = 1
-DEBUG_FILE_LOCK_CACHE_WRITE = 1
+DEBUG_COG_ATOMIC_WRITE = 0
+DEBUG_FILE_LOCK_CACHE_WRITE = 0
 DEBUG_LOAD_COG = 1
 RUN_COG_CORRUPTION_CHECKS = True
 
@@ -579,6 +579,7 @@ class Frames(object):
             >>> self.prepare(workers=3)  # parallel, hit
             >>> #
             >>> ## TEST COG
+            >>> # xdoctest: +REQUIRES(module:gdal)
             >>> sampler = ndsampler.CocoSampler.demo(workdir=workdir, backend='cog')
             >>> self = sampler.frames
             >>> ub.delete(self.cache_dpath)  # reset
@@ -634,6 +635,7 @@ def _cog_cache_write(gpath, cache_gpath, config=None):
         xdoctest -m ndsampler.abstract_frames _cog_cache_write
 
     Example:
+        >>> # xdoctest: +REQUIRES(module:gdal)
         >>> import ndsampler
         >>> from ndsampler.abstract_frames import *
         >>> workdir = ub.ensure_app_cache_dir('ndsampler')

@@ -10,6 +10,7 @@ atomicwrites >= 1.3.0
 
 # opencv?
 # scikit-image?
+scikit-learn >= 0.19.1
 
 Pillow
 pyqtree >= 1.0.0

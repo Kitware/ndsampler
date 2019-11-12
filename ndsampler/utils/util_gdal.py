@@ -162,7 +162,7 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, compress='JPEG',
     CommandLine:
         xdoctest -m ndsampler.utils.util_gdal _imwrite_cloud_optimized_geotiff
 
-    Example
+    Example:
         >>> # xdoctest: +REQUIRES(module:gdal)
         >>> from ndsampler.utils.util_gdal import *  # NOQA
         >>> from ndsampler.utils.util_gdal import _imwrite_cloud_optimized_geotiff
@@ -584,6 +584,7 @@ def validate_gdal_file(file):
     May fail on all-black images
 
     Example:
+        >>> # xdoctest: +REQUIRES(module:gdal)
         >>> from ndsampler.utils.util_gdal import LazyGDalFrameFile
         >>> import kwimage
         >>> gpath = kwimage.grab_test_image_fpath()
