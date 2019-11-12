@@ -4,7 +4,6 @@
 # GITLAB LINTER
 # https://gitlab.kitware.com/computer-vision/ndsampler/-/ci/lint
 
-
 # This CI file has 4 types of jobs:
 # (1) in the build stage we we build the wheels on a manylinux docker image
 # (2) then in the test stage we install the wheels, run unit tests, and measure coverage
