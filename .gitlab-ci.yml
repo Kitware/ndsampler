@@ -78,7 +78,7 @@ stages:
         - ls dist
         - VERSION=$(python -c "import setup; print(setup.version)")
         - MB_PYTHON_TAG="py2.py3-none-any"
-        - BDIST_WHEEL_PATH=dist/ndsampler-${VERSION}-${MB_PYTHON_TAG}*.whl
+        - BDIST_WHEEL_PATH=dist/ndsampler-${VERSION}-${MB_PYTHON_TAG}.whl
         - pip install $BDIST_WHEEL_PATH
         - pip install pygments
         # Hack to test the installed wheel. TODO: make run_tests work better in this case.
@@ -149,7 +149,7 @@ stages:
         - ls dist
         - VERSION=$(python -c "import setup; print(setup.version)")
         - MB_PYTHON_TAG="py2.py3-none-any"
-        - BDIST_WHEEL_PATH=dist/ndsampler-${VERSION}-${MB_PYTHON_TAG}*.whl
+        - BDIST_WHEEL_PATH=dist/ndsampler-${VERSION}-${MB_PYTHON_TAG}.whl
         # Decrypt and import GPG Keys / trust
         - export GPG_EXECUTABLE=gpg
         - export GPG_KEYID=D297D757
@@ -194,7 +194,7 @@ stages:
         - ls dist
         - VERSION=$(python -c "import setup; print(setup.version)")
         - MB_PYTHON_TAG="py2.py3-none-any"
-        - BDIST_WHEEL_PATH=dist/ndsampler-${VERSION}-${MB_PYTHON_TAG}*.whl
+        - BDIST_WHEEL_PATH=dist/ndsampler-${VERSION}-${MB_PYTHON_TAG}.whl
         - pip install six pyopenssl ndg-httpsclient pyasn1 -U 
         - pip install requests[security] twine 
         - echo "Checking wheels"
