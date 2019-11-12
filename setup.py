@@ -140,7 +140,9 @@ if __name__ == '__main__':
         long_description=parse_description(),
         install_requires=parse_requirements('requirements/runtime.txt'),
         extras_require={
-            'all': parse_requirements('requirements.txt')
+            'all': parse_requirements('requirements.txt'),
+            'tests': parse_requirements('requirements/tests.txt'),
+            'build': parse_requirements('requirements/build.txt')
         },
         license='Apache 2',
         packages=find_packages(include='ndsampler.*'),
