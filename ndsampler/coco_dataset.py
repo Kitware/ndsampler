@@ -1600,6 +1600,7 @@ class MixinCocoStats(object):
             >>> from ndsampler.coco_dataset import *
             >>> self = CocoDataset.demo('shapes')
             >>> hist = self.keypoint_annotation_frequency()
+            >>> hist = ub.odict(sorted(hist.items()))
             >>> print(ub.repr2(hist))
             {
                 'bot_tip': 6,

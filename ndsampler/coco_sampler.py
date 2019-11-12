@@ -114,7 +114,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
         self = CocoSampler(dset, workdir=workdir, backend=backend)
         return self
 
-    def __init__(self, dset, workdir=None, autoinit=True, backend='cog',
+    def __init__(self, dset, workdir=None, autoinit=True, backend='auto',
                  verbose=0):
         super(CocoSampler, self).__init__()
         self.workdir = workdir
