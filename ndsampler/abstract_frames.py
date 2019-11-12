@@ -579,6 +579,7 @@ class Frames(object):
             >>> self.prepare(workers=3)  # parallel, hit
             >>> #
             >>> ## TEST COG
+            >>> # xdoctest: +REQUIRES(module:gdal)
             >>> sampler = ndsampler.CocoSampler.demo(workdir=workdir, backend='cog')
             >>> self = sampler.frames
             >>> ub.delete(self.cache_dpath)  # reset
