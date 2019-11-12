@@ -1,7 +1,7 @@
 ndsampler
 =========
 
-|GitlabCIPipeline| |GitlabCICoverage| |Appveyor| |Pypi| |Downloads| 
+|GitlabCIPipeline| |GitlabCICoverage| |Pypi| |Downloads| 
 
 Built with detection related tasks in mind, but also useful for classification
 tasks.
@@ -140,8 +140,8 @@ Also possible to use system packages
     :target: http://ndsampler.readthedocs.io/en/latest/
 
 .. # See: https://ci.appveyor.com/project/jon.crall/ndsampler/settings/badges
-.. |Appveyor| image:: https://ci.appveyor.com/api/projects/status/py3s2d6tyfjc8lm3/branch/master?svg=true
-   :target: https://ci.appveyor.com/project/jon.crall/ndsampler/branch/master
+.. .. |Appveyor| image:: https://ci.appveyor.com/api/projects/status/py3s2d6tyfjc8lm3/branch/master?svg=true
+.. :target: https://ci.appveyor.com/project/jon.crall/ndsampler/branch/master
 
 .. |GitlabCIPipeline| image:: https://gitlab.kitware.com/computer-vision/ndsampler/badges/master/pipeline.svg
    :target: https://gitlab.kitware.com/computer-vision/ndsampler/-/jobs
