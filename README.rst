@@ -1,6 +1,8 @@
 ndsampler
 =========
 
+|GitlabCIPipeline| |GitlabCICoverage| |Appveyor| |Pypi| |Downloads| 
+
 Built with detection related tasks in mind, but also useful for classification
 tasks.
 
@@ -126,3 +128,23 @@ Also possible to use system packages
 
     # Test that this works
     python -c "from osgeo import gdal; print(gdal)"
+
+
+.. |Pypi| image:: https://img.shields.io/pypi/v/ndsampler.svg
+   :target: https://pypi.python.org/pypi/ndsampler
+
+.. |Downloads| image:: https://img.shields.io/pypi/dm/ndsampler.svg
+   :target: https://pypistats.org/packages/ndsampler
+
+.. |ReadTheDocs| image:: https://readthedocs.org/projects/ndsampler/badge/?version=latest
+    :target: http://ndsampler.readthedocs.io/en/latest/
+
+.. # See: https://ci.appveyor.com/project/jon.crall/ndsampler/settings/badges
+.. |Appveyor| image:: https://ci.appveyor.com/api/projects/status/py3s2d6tyfjc8lm3/branch/master?svg=true
+   :target: https://ci.appveyor.com/project/jon.crall/ndsampler/branch/master
+
+.. |GitlabCIPipeline| image:: https://gitlab.kitware.com/computer-vision/ndsampler/badges/master/pipeline.svg
+   :target: https://gitlab.kitware.com/computer-vision/ndsampler/-/jobs
+
+.. |GitlabCICoverage| image:: https://gitlab.kitware.com/computer-vision/ndsampler/badges/master/coverage.svg?job=coverage
+    :target: https://gitlab.kitware.com/computer-vision/ndsampler/commits/master
