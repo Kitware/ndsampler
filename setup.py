@@ -122,6 +122,7 @@ if __name__ == '__main__':
         version=version,
         author='Jon Crall',
         author_email='jon.crall@kitware.com',
+        url='https://gitlab.kitware.com/computer-vision/ndsampler',
         description='Fast sampling from large images',
         long_description=parse_description(),
         long_description_content_type='text/x-rst',
