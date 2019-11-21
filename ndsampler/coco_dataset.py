@@ -1698,7 +1698,7 @@ class MixinCocoStats(object):
         return ub.odict([
             ('annots_per_img', mapping_stats(self.gid_to_aids)),
             # ('cats_per_img', mapping_stats(self.cid_to_gids)),
-            ('cats_per_annot', mapping_stats(self.cid_to_aids)),
+            ('annots_per_cat', mapping_stats(self.cid_to_aids)),
         ])
 
 

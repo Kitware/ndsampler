@@ -431,7 +431,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
 
         Args:
             tr (dict): image and bbox info for a positive / negative target.
-                must contain the keys ['cx', 'cy', 'gid'], if `window_dims` is
+                must contain the keys ['gid', 'cx', 'cy'], if `window_dims` is
                 None it must also contain the keys ['width' and 'height'].
 
                 NEW: tr can now contain the key `slices`, which maps a tuple of
