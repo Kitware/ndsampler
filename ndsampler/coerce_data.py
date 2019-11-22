@@ -5,6 +5,12 @@ def coerce_datasets(config, build_hashid=False, verbose=1):
     """
     Coerce train / val / test datasets from standard netharn config keys
 
+    This only looks at the following keys in config:
+        * datasets
+        * train_dataset
+        * vali_dataset
+        * test_dataset
+
     Example:
         >>> import ndsampler.coerce_data
         >>> config = {'datasets': 'special:shapes'}
