@@ -70,3 +70,39 @@ def test_copy_nextids():
     dset.add_category('b')
     new_cid = dset.name_to_cat['b']['id']
     assert new_cid == 2
+
+
+def test_only_null_category_id():
+    import ndsampler
+    orig_dset = ndsampler.CocoDataset()
+
+    gid = orig_dset.add_image(file_name='foo')
+
+    orig_dset.add_annotation(image_id=gid, bbox=[0, 0, 10, 10])
+    orig_dset.add_annotation(image_id=gid, bbox=[0, 2, 10, 10])
+
+    new_dset = orig_dset.union(orig_dset)
+    orig_dset._check_pointers()
+
+    cat_hist = ub.dict_hist([ann['category_id'] for ann in new_dset.anns.values()])
+    assert cat_hist == {None: 4}
+    assert new_dset.category_annotation_frequency() == ub.odict([(None, 4)])
+
+
+def test_partial_null_category_id():
+    import ndsampler
+    orig_dset = ndsampler.CocoDataset()
+    orig_dset.add_category('a')
+
+    gid = orig_dset.add_image(file_name='foo')
+
+    orig_dset.add_annotation(image_id=gid, bbox=[0, 0, 10, 10])
+    orig_dset.add_annotation(image_id=gid, bbox=[0, 2, 10, 10])
+    orig_dset.add_annotation(image_id=gid, category_id=1, bbox=[0, 2, 10, 10])
+
+    new_dset = orig_dset.union(orig_dset)
+    orig_dset._check_pointers()
+
+    cat_hist = ub.dict_hist([ann['category_id'] for ann in new_dset.anns.values()])
+    assert cat_hist == {None: 4, 1: 2}
+    assert new_dset.category_annotation_frequency() == ub.odict([('a', 2), (None, 4)])

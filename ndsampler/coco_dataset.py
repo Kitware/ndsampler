@@ -1088,7 +1088,10 @@ class MixinCocoExtras(object):
             >>> self._alias_to_cat('person')
             >>> cat['alias'] = 'person'
             >>> self._alias_to_cat('person')
+            >>> assert self._alias_to_cat(None) is None
         """
+        if alias_catname is None:
+            return None
         if self.name_to_cat and alias_catname in self.name_to_cat:
             fixed_catname = alias_catname
             fixed_cat = self.name_to_cat[fixed_catname]
@@ -1641,8 +1644,9 @@ class MixinCocoStats(object):
                 'star': 5,
             }
         """
-        catname_to_nannots = ub.map_keys(lambda x: self.cats[x]['name'],
-                                         ub.map_vals(len, self.cid_to_aids))
+        catname_to_nannots = ub.map_keys(
+            lambda x: None if x is None else self.cats[x]['name'],
+            ub.map_vals(len, self.cid_to_aids))
         catname_to_nannots = ub.odict(sorted(catname_to_nannots.items(),
                                              key=lambda kv: (kv[1], kv[0])))
         return catname_to_nannots
@@ -1841,8 +1845,13 @@ class MixinCocoDraw(object):
             else:
                 raise Exception('no bbox, line, or keypoint position')
 
-            cat = self.cats[ann['category_id']]
-            catname = cat['name']
+            cid = ann['category_id']
+            if cid is not None:
+                cat = self.cats[cid]
+                catname = cat['name']
+            else:
+                cat = None
+                catname = 'None'
             textkw = {
                 'horizontalalignment': 'left',
                 'verticalalignment': 'top',
@@ -1885,7 +1894,10 @@ class MixinCocoDraw(object):
             if 'segmentation' in ann and kwargs.get('show_segmentation', True):
                 sseg = ann['segmentation']
                 # Respect the 'color' attribute of categories
-                catcolor = cat.get('color', None)
+                if cat is not None:
+                    catcolor = cat.get('color', None)
+                else:
+                    catcolor = None
 
                 HAVE_KWIMAGE = True
                 if HAVE_KWIMAGE:
@@ -1907,7 +1919,7 @@ class MixinCocoDraw(object):
                         try:
                             # hack
                             poly.area = sseg.to_shapely().area
-                        except Exception as ex:
+                        except Exception:
                             pass
                         sseg_polys.append(poly)
                 else:
@@ -2047,7 +2059,7 @@ class MixinCocoAddRemove(object):
         self._invalidate_hashid()
         return id
 
-    def add_annotation(self, image_id, category_id, bbox=None, id=None, **kw):
+    def add_annotation(self, image_id, category_id=None, bbox=None, id=None, **kw):
         """
         Add an annotation to the dataset (dynamically updates the index)
 
@@ -2073,7 +2085,7 @@ class MixinCocoAddRemove(object):
         ann = _dict()
         ann['id'] = int(id)
         ann['image_id'] = int(image_id)
-        ann['category_id'] = int(category_id)
+        ann['category_id'] = None if category_id is None else int(category_id)
         if bbox is not None:
             try:
                 import kwimage
@@ -2705,10 +2717,10 @@ class CocoIndex(object):
             else:
                 cid_to_aids[cid].add(aid)
 
-                if not isinstance(cid, INT_TYPES):
+                if not isinstance(cid, INT_TYPES) and cid is not None:
                     raise TypeError('bad cid={} type={}'.format(cid, type(cid)))
 
-                if cid not in cats:
+                if cid not in cats and cid is not None:
                     warnings.warn('Annotation {} in {} references '
                                   'unknown category_id'.format(ann, parent))
 
@@ -3081,7 +3093,8 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
             gid = ann['image_id']
 
             if cid not in self.cats:
-                errors.append('aid={} references bad cid={}'.format(aid, cid))
+                if cid is not None:
+                    errors.append('aid={} references bad cid={}'.format(aid, cid))
             else:
                 if self.cats[cid]['id'] != cid:
                     errors.append('cid={} has a bad index'.format(cid))
@@ -3170,7 +3183,7 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
 
             for subdir, old_dset in relative_dsets:
                 # Create temporary indexes to map from old to new
-                cat_id_map = {}
+                cat_id_map = {None: None}
                 img_id_map = {}
                 kpcat_id_map = {}
 
@@ -3248,9 +3261,10 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
                 for old_annot in old_dset['annotations']:
                     old_cat_id = old_annot['category_id']
                     old_img_id = old_annot['image_id']
-                    new_cat_id = cat_id_map.get(old_cat_id, None)
+                    new_cat_id = cat_id_map.get(old_cat_id, ub.NoParam)
                     new_img_id = img_id_map.get(old_img_id, None)
-                    if new_cat_id is None:
+                    if new_cat_id is ub.NoParam:
+                        # NOTE: category_id is allowed to be None
                         warnings.warn('annot {} in {} has bad category-id {}'.format(
                             old_annot, subdir, old_cat_id))
                         # raise Exception
