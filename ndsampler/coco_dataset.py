@@ -3150,7 +3150,6 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
             dset_12._keypoint_category_names()
             dset_21._keypoint_category_names()
         """
-        print('---')
         if self.__class__ is type:
             # Method called as classmethod
             cls = self
