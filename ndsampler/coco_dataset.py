@@ -2713,7 +2713,8 @@ class CocoIndex(object):
                     warnings.warn('Annotation {} in {} is missing '
                                   'a category_id'.format(ann, parent))
                 else:
-                    raise KeyError('Annotation does not have category id {}'.format(ann))
+                    raise KeyError(
+                        'Annotation does not have category id {}'.format(ann))
             else:
                 cid_to_aids[cid].add(aid)
 
@@ -2746,7 +2747,8 @@ class CocoIndex(object):
         self.gid_to_aids = gid_to_aids
         self.cid_to_aids = cid_to_aids
         self.name_to_cat = {cat['name']: cat for cat in self.cats.values()}
-        self.file_name_to_img = {img['file_name']                                 : img for img in self.imgs.values()}
+        self.file_name_to_img = {
+            img['file_name']: img for img in self.imgs.values()}
 
 
 class MixinCocoIndex(object):
