@@ -208,9 +208,6 @@ class ObjectList1D(ub.NiceRepr):
         newself = self.__class__(subids, self._dset)
         return newself
 
-    def _lookup(self, key):
-        raise NotImplementedError('must be implemented')
-
     def peek(self):
         return ub.peek(self._id_to_obj.values())
 
@@ -244,25 +241,69 @@ class ObjectList1D(ub.NiceRepr):
             >>> self.lookup(key=['foo'], default=None, keepid=True)
             >>> self.lookup(key=['id', 'image_id'], keepid=True)
         """
+        # Note: while the old _lookup code was slightly faster than this, the
+        # difference is extremely negligable (179us vs 178us).
         if ub.iterable(key):
             return {k: self.lookup(k, default, keepid) for k in key}
         else:
             _lut = self._id_to_obj
-            _no_default = default is ub.NoParam
             if keepid:
-                if _no_default:
+                if default is ub.NoParam:
                     attr_list = {_id: _lut[_id][key] for _id in self._ids}
                 else:
                     attr_list = {_id: _lut[_id].get(key, default) for _id in self._ids}
             else:
-                if _no_default:
+                if default is ub.NoParam:
                     attr_list = [_lut[_id][key] for _id in self._ids]
                 else:
                     attr_list = [_lut[_id].get(key, default) for _id in self._ids]
             return attr_list
 
-    def _ilookup(self, key):
-        raise NotImplementedError('must be implemented')
+    def _lookup(self, key, default=ub.NoParam):
+        """
+        Benchmark:
+            >>> import ndsampler
+            >>> dset = ndsampler.CocoDataset.demo('shapes256')
+            >>> self = annots = dset.annots()
+
+            >>> import timerit
+            >>> ti = timerit.Timerit(100, bestof=10, verbose=2)
+
+            for timer in ti.reset('lookup'):
+                with timer:
+                    self.lookup('image_id')
+
+            for timer in ti.reset('_lookup'):
+                with timer:
+                    self._lookup('image_id')
+
+            for timer in ti.reset('image_id'):
+                with timer:
+                    self.image_id
+
+            for timer in ti.reset('raw1'):
+                with timer:
+                    key = 'image_id'
+                    [self._dset.anns[_id][key] for _id in self._ids]
+
+            for timer in ti.reset('raw2'):
+                with timer:
+                    anns = self._dset.anns
+                    key = 'image_id'
+                    [anns[_id][key] for _id in self._ids]
+
+            for timer in ti.reset('lut-gen'):
+                with timer:
+                    _lut = self._obj_lut
+                    objs = (_lut[_id] for _id in self._ids)
+                    [obj[key] for obj in objs]
+
+            for timer in ti.reset('lut-gen-single'):
+                with timer:
+                    _lut = self._obj_lut
+                    [_lut[_id][key] for _id in self._ids]
+        """
+        return self.lookup(key, default=default)
 
 
 class ObjectGroups(ub.NiceRepr):
@@ -273,10 +314,10 @@ class ObjectGroups(ub.NiceRepr):
         self._groups = groups
 
     def _lookup(self, key):
-        return [group._lookup(key) for group in self._groups]
+        return self._lookup(key)
 
-    def _ilookup(self, key):
-        return (group._lookup(key) for group in self._groups)
+    def lookup(self, key, default=ub.NoParam):
+        return [group.lookup(key, default) for group in self._groups]
 
     def __nice__(self):
         # import timerit
@@ -304,15 +345,9 @@ class Images(ObjectList1D):
     def gids(self):
         return self._ids
 
-    def _lookup(self, key):
-        return [img[key] for img in ub.take(self._dset.imgs, self._ids)]
-
-    def _ilookup(self, key):
-        return (img[key] for img in ub.take(self._dset.imgs, self._ids))
-
     @property
     def gname(self):
-        return self._lookup('file_name')
+        return self.lookup('file_name')
 
     @property
     def gpath(self):
@@ -321,11 +356,11 @@ class Images(ObjectList1D):
 
     @property
     def width(self):
-        return self._lookup('width')
+        return self.lookup('width')
 
     @property
     def height(self):
-        return self._lookup('height')
+        return self.lookup('height')
 
     @property
     def size(self):
@@ -337,7 +372,7 @@ class Images(ObjectList1D):
             >>> print(self.size)
             [(512, 512), (300, 250), (256, 256)]
         """
-        return list(zip(self._ilookup('width'), self._ilookup('height')))
+        return list(zip(self.lookup('width'), self.lookup('height')))
 
     @property
     def area(self):
@@ -349,7 +384,7 @@ class Images(ObjectList1D):
             >>> print(self.area)
             [262144, 75000, 65536]
         """
-        return [w * h for w, h in zip(self._ilookup('width'), self._ilookup('height'))]
+        return [w * h for w, h in zip(self.lookup('width'), self.lookup('height'))]
 
     @property
     def n_annots(self):
@@ -406,6 +441,14 @@ class Annots(ObjectList1D):
         return self._dset.images(self.gids)
 
     @property
+    def image_id(self):
+        return self.lookup('image_id')
+
+    @property
+    def category_id(self):
+        return self.lookup('category_id')
+
+    @property
     def gids(self):
         """
         Get the column of image-ids
@@ -413,7 +456,7 @@ class Annots(ObjectList1D):
         Returns:
             List[int]: list of image ids
         """
-        return self._lookup('image_id')
+        return self.lookup('image_id')
 
     @property
     def cids(self):
@@ -423,7 +466,7 @@ class Annots(ObjectList1D):
         Returns:
             List[int]
         """
-        return self._lookup('category_id')
+        return self.lookup('category_id')
 
     @property
     def cnames(self):
@@ -434,12 +477,6 @@ class Annots(ObjectList1D):
             List[int]
         """
         return [cat['name'] for cat in ub.take(self._dset.cats, self.cids)]
-
-    def _lookup(self, key):
-        return [ann[key] for ann in ub.take(self._dset.anns, self._ids)]
-
-    def _ilookup(self, key):
-        return (ann[key] for ann in ub.take(self._dset.anns, self._ids))
 
     @property
     def boxes(self):
@@ -455,7 +492,7 @@ class Annots(ObjectList1D):
                        [124,  96,  45,  18]]))>
         """
         import kwimage
-        xywh = self._lookup('bbox')
+        xywh = self.lookup('bbox')
         boxes = kwimage.Boxes(xywh, 'xywh')
         return boxes
 
@@ -468,14 +505,14 @@ class Annots(ObjectList1D):
             >>> self = CocoDataset.demo().annots([1, 2, 11])
             >>> print(self.xywh)
         """
-        xywh = self._lookup('bbox')
+        xywh = self.lookup('bbox')
         return xywh
 
 
 class AnnotGroups(ObjectGroups):
     @property
     def cids(self):
-        return self._lookup('category_id')
+        return self.lookup('category_id')
 
 
 class ImageGroups(ObjectGroups):
@@ -769,7 +806,7 @@ class MixinCocoExtras(object):
                     'num': 8,
                 },
             }
-            self.hashid = '19e7b38f12783eaba1ab...
+            self.hashid = '19e7b38f12783ea...
 
         Doctest:
             >>> self = CocoDataset.demo()
@@ -807,7 +844,7 @@ class MixinCocoExtras(object):
             if not hashid_parts['images'].get('pixels', None):
                 gids = sorted(self.imgs.keys())
                 gpaths = [join(self.img_root, gname)
-                          for gname in self.images(gids)._lookup('file_name')]
+                          for gname in self.images(gids).lookup('file_name')]
                 gpath_sha512s = [
                     ub.hash_file(gpath, hasher='sha512')
                     for gpath in ub.ProgIter(gpaths, desc='hashing images',
@@ -2434,7 +2471,7 @@ class MixinCocoAddRemove(object):
             >>> from ndsampler.coco_dataset import *
             >>> self = CocoDataset.demo()
             >>> assert len(self.dataset['images']) == 3
-            >>> gids_or_imgs = [self.imgs[2], 'KXhKM72.png']
+            >>> gids_or_imgs = [self.imgs[2], 'astro.png']
             >>> self.remove_images(gids_or_imgs)  # xdoc: +IGNORE_WANT
             {'annotations': 11, 'images': 2}
             >>> assert len(self.dataset['images']) == 1
@@ -3385,8 +3422,8 @@ def demo_coco_data():
     Ignore:
         # code for getting a segmentation polygon
         kwimage.grab_test_image_fpath('astro')
-        labelme /home/joncrall/.cache/kwimage/demodata/KXhKM72.png
-        cat /home/joncrall/.cache/kwimage/demodata/KXhKM72.json
+        labelme /home/joncrall/.cache/kwimage/demodata/astro.png
+        cat /home/joncrall/.cache/kwimage/demodata/astro.json
 
     Example:
         >>> # xdoctest: +REQUIRES(--show)

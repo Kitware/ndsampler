@@ -9,6 +9,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 * `CocoDataset` now allows for `category_id` to be `None`.
+* `_lookup` now uses the for `lookup` function.
+* `_ilookup` is deprecated. 
 
 
 ## Version 0.5.0
