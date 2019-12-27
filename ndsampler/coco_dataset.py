@@ -935,6 +935,22 @@ class MixinCocoExtras(object):
         if any('width' not in img or 'height' not in img
                for img in self.dataset['images']):
             from PIL import Image
+
+            def _find_imgsize(gpath):
+                try:
+                    pil_img = Image.open(gpath)
+                    w, h = pil_img.size
+                    pil_img.close()
+                except Exception as pil_ex:
+                    try:
+                        import gdal
+                        dset = gdal.Open(gpath, gdal.GA_ReadOnly)
+                        w = dset.RasterXSize
+                        h = dset.RasterYSize
+                    except ImportError:
+                        raise pil_ex
+                return w, h
+
             if self.tag:
                 desc = 'populate imgsize for ' + self.tag
             else:
@@ -943,9 +959,7 @@ class MixinCocoExtras(object):
                                    verbose=verbose):
                 gpath = join(self.img_root, img['file_name'])
                 if 'width' not in img:
-                    pil_img = Image.open(gpath)
-                    w, h = pil_img.size
-                    pil_img.close()
+                    w, h = _find_imgsize(gpath)
                     img['width'] = w
                     img['height'] = h
 
