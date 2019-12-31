@@ -2956,6 +2956,20 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
         if autobuild:
             self._build_index()
 
+    @classmethod
+    def from_image_paths(cls, gpaths):
+        """
+        Create a coco dataset from a list of images paths
+
+        Example:
+            >>> coco_dset = CocoDataset.from_image_paths(['a.png', 'b.png'])
+            >>> assert coco_dset.n_images == 2
+        """
+        coco_dset = cls()
+        for gpath in gpaths:
+            coco_dset.add_image(gpath)
+        return coco_dset
+
     def copy(self):
         """
         Deep copies this object
