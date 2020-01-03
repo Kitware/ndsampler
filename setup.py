@@ -114,11 +114,12 @@ def parse_requirements(fname='requirements.txt'):
     return packages
 
 
-version = parse_version('ndsampler/__init__.py')  # needs to be a global var for git tags
+NAME = 'ndsampler'
+VERSION = version = parse_version('ndsampler/__init__.py')  # needs to be a global var for git tags
 
 if __name__ == '__main__':
     setup(
-        name='ndsampler',
+        name=NAME,
         version=version,
         author='Jon Crall',
         author_email='jon.crall@kitware.com',
