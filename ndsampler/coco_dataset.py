@@ -208,9 +208,6 @@ class ObjectList1D(ub.NiceRepr):
         newself = self.__class__(subids, self._dset)
         return newself
 
-    def _lookup(self, key):
-        raise NotImplementedError('must be implemented')
-
     def peek(self):
         return ub.peek(self._id_to_obj.values())
 
@@ -244,25 +241,69 @@ class ObjectList1D(ub.NiceRepr):
             >>> self.lookup(key=['foo'], default=None, keepid=True)
             >>> self.lookup(key=['id', 'image_id'], keepid=True)
         """
+        # Note: while the old _lookup code was slightly faster than this, the
+        # difference is extremely negligable (179us vs 178us).
         if ub.iterable(key):
             return {k: self.lookup(k, default, keepid) for k in key}
         else:
             _lut = self._id_to_obj
-            _no_default = default is ub.NoParam
             if keepid:
-                if _no_default:
+                if default is ub.NoParam:
                     attr_list = {_id: _lut[_id][key] for _id in self._ids}
                 else:
                     attr_list = {_id: _lut[_id].get(key, default) for _id in self._ids}
             else:
-                if _no_default:
+                if default is ub.NoParam:
                     attr_list = [_lut[_id][key] for _id in self._ids]
                 else:
                     attr_list = [_lut[_id].get(key, default) for _id in self._ids]
             return attr_list
 
-    def _ilookup(self, key):
-        raise NotImplementedError('must be implemented')
+    def _lookup(self, key, default=ub.NoParam):
+        """
+        Benchmark:
+            >>> import ndsampler
+            >>> dset = ndsampler.CocoDataset.demo('shapes256')
+            >>> self = annots = dset.annots()
+
+            >>> import timerit
+            >>> ti = timerit.Timerit(100, bestof=10, verbose=2)
+
+            for timer in ti.reset('lookup'):
+                with timer:
+                    self.lookup('image_id')
+
+            for timer in ti.reset('_lookup'):
+                with timer:
+                    self._lookup('image_id')
+
+            for timer in ti.reset('image_id'):
+                with timer:
+                    self.image_id
+
+            for timer in ti.reset('raw1'):
+                with timer:
+                    key = 'image_id'
+                    [self._dset.anns[_id][key] for _id in self._ids]
+
+            for timer in ti.reset('raw2'):
+                with timer:
+                    anns = self._dset.anns
+                    key = 'image_id'
+                    [anns[_id][key] for _id in self._ids]
+
+            for timer in ti.reset('lut-gen'):
+                with timer:
+                    _lut = self._obj_lut
+                    objs = (_lut[_id] for _id in self._ids)
+                    [obj[key] for obj in objs]
+
+            for timer in ti.reset('lut-gen-single'):
+                with timer:
+                    _lut = self._obj_lut
+                    [_lut[_id][key] for _id in self._ids]
+        """
+        return self.lookup(key, default=default)
 
 
 class ObjectGroups(ub.NiceRepr):
@@ -273,10 +314,10 @@ class ObjectGroups(ub.NiceRepr):
         self._groups = groups
 
     def _lookup(self, key):
-        return [group._lookup(key) for group in self._groups]
+        return self._lookup(key)
 
-    def _ilookup(self, key):
-        return (group._lookup(key) for group in self._groups)
+    def lookup(self, key, default=ub.NoParam):
+        return [group.lookup(key, default) for group in self._groups]
 
     def __nice__(self):
         # import timerit
@@ -304,15 +345,9 @@ class Images(ObjectList1D):
     def gids(self):
         return self._ids
 
-    def _lookup(self, key):
-        return [img[key] for img in ub.take(self._dset.imgs, self._ids)]
-
-    def _ilookup(self, key):
-        return (img[key] for img in ub.take(self._dset.imgs, self._ids))
-
     @property
     def gname(self):
-        return self._lookup('file_name')
+        return self.lookup('file_name')
 
     @property
     def gpath(self):
@@ -321,11 +356,11 @@ class Images(ObjectList1D):
 
     @property
     def width(self):
-        return self._lookup('width')
+        return self.lookup('width')
 
     @property
     def height(self):
-        return self._lookup('height')
+        return self.lookup('height')
 
     @property
     def size(self):
@@ -337,7 +372,7 @@ class Images(ObjectList1D):
             >>> print(self.size)
             [(512, 512), (300, 250), (256, 256)]
         """
-        return list(zip(self._ilookup('width'), self._ilookup('height')))
+        return list(zip(self.lookup('width'), self.lookup('height')))
 
     @property
     def area(self):
@@ -349,7 +384,7 @@ class Images(ObjectList1D):
             >>> print(self.area)
             [262144, 75000, 65536]
         """
-        return [w * h for w, h in zip(self._ilookup('width'), self._ilookup('height'))]
+        return [w * h for w, h in zip(self.lookup('width'), self.lookup('height'))]
 
     @property
     def n_annots(self):
@@ -406,6 +441,14 @@ class Annots(ObjectList1D):
         return self._dset.images(self.gids)
 
     @property
+    def image_id(self):
+        return self.lookup('image_id')
+
+    @property
+    def category_id(self):
+        return self.lookup('category_id')
+
+    @property
     def gids(self):
         """
         Get the column of image-ids
@@ -413,7 +456,7 @@ class Annots(ObjectList1D):
         Returns:
             List[int]: list of image ids
         """
-        return self._lookup('image_id')
+        return self.lookup('image_id')
 
     @property
     def cids(self):
@@ -423,7 +466,7 @@ class Annots(ObjectList1D):
         Returns:
             List[int]
         """
-        return self._lookup('category_id')
+        return self.lookup('category_id')
 
     @property
     def cnames(self):
@@ -434,12 +477,6 @@ class Annots(ObjectList1D):
             List[int]
         """
         return [cat['name'] for cat in ub.take(self._dset.cats, self.cids)]
-
-    def _lookup(self, key):
-        return [ann[key] for ann in ub.take(self._dset.anns, self._ids)]
-
-    def _ilookup(self, key):
-        return (ann[key] for ann in ub.take(self._dset.anns, self._ids))
 
     @property
     def boxes(self):
@@ -455,7 +492,7 @@ class Annots(ObjectList1D):
                        [124,  96,  45,  18]]))>
         """
         import kwimage
-        xywh = self._lookup('bbox')
+        xywh = self.lookup('bbox')
         boxes = kwimage.Boxes(xywh, 'xywh')
         return boxes
 
@@ -468,14 +505,14 @@ class Annots(ObjectList1D):
             >>> self = CocoDataset.demo().annots([1, 2, 11])
             >>> print(self.xywh)
         """
-        xywh = self._lookup('bbox')
+        xywh = self.lookup('bbox')
         return xywh
 
 
 class AnnotGroups(ObjectGroups):
     @property
     def cids(self):
-        return self._lookup('category_id')
+        return self.lookup('category_id')
 
 
 class ImageGroups(ObjectGroups):
@@ -714,6 +751,8 @@ class MixinCocoExtras(object):
 
         Args:
             key (str): either photos or shapes
+            **kw : if key is shapes, these arguments are passed to toydata
+                generation
 
         Example:
             >>> print(CocoDataset.demo('photos'))
@@ -761,7 +800,7 @@ class MixinCocoExtras(object):
                 },
                 'images': {
                     'pixels': '67d741fefc8...',
-                    'json': '92b7b764ce248...',
+                    'json': '6a446126490aa...',
                     'num': 3,
                 },
                 'categories': {
@@ -769,7 +808,7 @@ class MixinCocoExtras(object):
                     'num': 8,
                 },
             }
-            self.hashid = '19e7b38f12783eaba1ab...
+            self.hashid = '4769119614e921...
 
         Doctest:
             >>> self = CocoDataset.demo()
@@ -807,7 +846,7 @@ class MixinCocoExtras(object):
             if not hashid_parts['images'].get('pixels', None):
                 gids = sorted(self.imgs.keys())
                 gpaths = [join(self.img_root, gname)
-                          for gname in self.images(gids)._lookup('file_name')]
+                          for gname in self.images(gids).lookup('file_name')]
                 gpath_sha512s = [
                     ub.hash_file(gpath, hasher='sha512')
                     for gpath in ub.ProgIter(gpaths, desc='hashing images',
@@ -830,7 +869,18 @@ class MixinCocoExtras(object):
                 aids = sorted(self.anns.keys())
                 _anns_ordered = (self.anns[aid] for aid in aids)
                 anns_ordered = [_ditems(ann) for ann in _anns_ordered]
-                anns_text = json.dumps(anns_ordered)
+                try:
+                    anns_text = json.dumps(anns_ordered)
+                except TypeError:
+                    if __debug__:
+                        for ann in anns_ordered:
+                            try:
+                                json.dumps(ann)
+                            except TypeError:
+                                print('FAILED TO ENCODE ann = {!r}'.format(ann))
+                                break
+                    raise
+
                 hashid_parts['annotations']['json'] = ub.hash_data(
                     anns_text, hasher='sha512')
                 hashid_parts['annotations']['num'] = len(aids)
@@ -898,6 +948,22 @@ class MixinCocoExtras(object):
         if any('width' not in img or 'height' not in img
                for img in self.dataset['images']):
             from PIL import Image
+
+            def _find_imgsize(gpath):
+                try:
+                    pil_img = Image.open(gpath)
+                    w, h = pil_img.size
+                    pil_img.close()
+                except Exception as pil_ex:
+                    try:
+                        import gdal
+                        dset = gdal.Open(gpath, gdal.GA_ReadOnly)
+                        w = dset.RasterXSize
+                        h = dset.RasterYSize
+                    except ImportError:
+                        raise pil_ex
+                return w, h
+
             if self.tag:
                 desc = 'populate imgsize for ' + self.tag
             else:
@@ -906,9 +972,7 @@ class MixinCocoExtras(object):
                                    verbose=verbose):
                 gpath = join(self.img_root, img['file_name'])
                 if 'width' not in img:
-                    pil_img = Image.open(gpath)
-                    w, h = pil_img.size
-                    pil_img.close()
+                    w, h = _find_imgsize(gpath)
                     img['width'] = w
                     img['height'] = h
 
@@ -1088,7 +1152,10 @@ class MixinCocoExtras(object):
             >>> self._alias_to_cat('person')
             >>> cat['alias'] = 'person'
             >>> self._alias_to_cat('person')
+            >>> assert self._alias_to_cat(None) is None
         """
+        if alias_catname is None:
+            return None
         if self.name_to_cat and alias_catname in self.name_to_cat:
             fixed_catname = alias_catname
             fixed_cat = self.name_to_cat[fixed_catname]
@@ -1641,8 +1708,9 @@ class MixinCocoStats(object):
                 'star': 5,
             }
         """
-        catname_to_nannots = ub.map_keys(lambda x: self.cats[x]['name'],
-                                         ub.map_vals(len, self.cid_to_aids))
+        catname_to_nannots = ub.map_keys(
+            lambda x: None if x is None else self.cats[x]['name'],
+            ub.map_vals(len, self.cid_to_aids))
         catname_to_nannots = ub.odict(sorted(catname_to_nannots.items(),
                                              key=lambda kv: (kv[1], kv[0])))
         return catname_to_nannots
@@ -1698,7 +1766,7 @@ class MixinCocoStats(object):
         return ub.odict([
             ('annots_per_img', mapping_stats(self.gid_to_aids)),
             # ('cats_per_img', mapping_stats(self.cid_to_gids)),
-            ('cats_per_annot', mapping_stats(self.cid_to_aids)),
+            ('annots_per_cat', mapping_stats(self.cid_to_aids)),
         ])
 
 
@@ -1841,8 +1909,13 @@ class MixinCocoDraw(object):
             else:
                 raise Exception('no bbox, line, or keypoint position')
 
-            cat = self.cats[ann['category_id']]
-            catname = cat['name']
+            cid = ann['category_id']
+            if cid is not None:
+                cat = self.cats[cid]
+                catname = cat['name']
+            else:
+                cat = None
+                catname = 'None'
             textkw = {
                 'horizontalalignment': 'left',
                 'verticalalignment': 'top',
@@ -1885,7 +1958,10 @@ class MixinCocoDraw(object):
             if 'segmentation' in ann and kwargs.get('show_segmentation', True):
                 sseg = ann['segmentation']
                 # Respect the 'color' attribute of categories
-                catcolor = cat.get('color', None)
+                if cat is not None:
+                    catcolor = cat.get('color', None)
+                else:
+                    catcolor = None
 
                 HAVE_KWIMAGE = True
                 if HAVE_KWIMAGE:
@@ -1907,7 +1983,7 @@ class MixinCocoDraw(object):
                         try:
                             # hack
                             poly.area = sseg.to_shapely().area
-                        except Exception as ex:
+                        except Exception:
                             pass
                         sseg_polys.append(poly)
                 else:
@@ -2047,7 +2123,7 @@ class MixinCocoAddRemove(object):
         self._invalidate_hashid()
         return id
 
-    def add_annotation(self, image_id, category_id, bbox=None, id=None, **kw):
+    def add_annotation(self, image_id, category_id=None, bbox=None, id=None, **kw):
         """
         Add an annotation to the dataset (dynamically updates the index)
 
@@ -2073,7 +2149,7 @@ class MixinCocoAddRemove(object):
         ann = _dict()
         ann['id'] = int(id)
         ann['image_id'] = int(image_id)
-        ann['category_id'] = int(category_id)
+        ann['category_id'] = None if category_id is None else int(category_id)
         if bbox is not None:
             try:
                 import kwimage
@@ -2422,7 +2498,7 @@ class MixinCocoAddRemove(object):
             >>> from ndsampler.coco_dataset import *
             >>> self = CocoDataset.demo()
             >>> assert len(self.dataset['images']) == 3
-            >>> gids_or_imgs = [self.imgs[2], 'KXhKM72.png']
+            >>> gids_or_imgs = [self.imgs[2], 'astro.png']
             >>> self.remove_images(gids_or_imgs)  # xdoc: +IGNORE_WANT
             {'annotations': 11, 'images': 2}
             >>> assert len(self.dataset['images']) == 1
@@ -2701,14 +2777,15 @@ class CocoIndex(object):
                     warnings.warn('Annotation {} in {} is missing '
                                   'a category_id'.format(ann, parent))
                 else:
-                    raise KeyError('Annotation does not have category id {}'.format(ann))
+                    raise KeyError(
+                        'Annotation does not have category id {}'.format(ann))
             else:
                 cid_to_aids[cid].add(aid)
 
-                if not isinstance(cid, INT_TYPES):
+                if not isinstance(cid, INT_TYPES) and cid is not None:
                     raise TypeError('bad cid={} type={}'.format(cid, type(cid)))
 
-                if cid not in cats:
+                if cid not in cats and cid is not None:
                     warnings.warn('Annotation {} in {} references '
                                   'unknown category_id'.format(ann, parent))
 
@@ -2734,7 +2811,8 @@ class CocoIndex(object):
         self.gid_to_aids = gid_to_aids
         self.cid_to_aids = cid_to_aids
         self.name_to_cat = {cat['name']: cat for cat in self.cats.values()}
-        self.file_name_to_img = {img['file_name']                                 : img for img in self.imgs.values()}
+        self.file_name_to_img = {
+            img['file_name']: img for img in self.imgs.values()}
 
 
 class MixinCocoIndex(object):
@@ -2890,6 +2968,20 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
 
         if autobuild:
             self._build_index()
+
+    @classmethod
+    def from_image_paths(cls, gpaths):
+        """
+        Create a coco dataset from a list of images paths
+
+        Example:
+            >>> coco_dset = CocoDataset.from_image_paths(['a.png', 'b.png'])
+            >>> assert coco_dset.n_images == 2
+        """
+        coco_dset = cls()
+        for gpath in gpaths:
+            coco_dset.add_image(gpath)
+        return coco_dset
 
     def copy(self):
         """
@@ -3081,7 +3173,8 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
             gid = ann['image_id']
 
             if cid not in self.cats:
-                errors.append('aid={} references bad cid={}'.format(aid, cid))
+                if cid is not None:
+                    errors.append('aid={} references bad cid={}'.format(aid, cid))
             else:
                 if self.cats[cid]['id'] != cid:
                     errors.append('cid={} has a bad index'.format(cid))
@@ -3137,7 +3230,6 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
             dset_12._keypoint_category_names()
             dset_21._keypoint_category_names()
         """
-        print('---')
         if self.__class__ is type:
             # Method called as classmethod
             cls = self
@@ -3170,7 +3262,7 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
 
             for subdir, old_dset in relative_dsets:
                 # Create temporary indexes to map from old to new
-                cat_id_map = {}
+                cat_id_map = {None: None}
                 img_id_map = {}
                 kpcat_id_map = {}
 
@@ -3248,9 +3340,10 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
                 for old_annot in old_dset['annotations']:
                     old_cat_id = old_annot['category_id']
                     old_img_id = old_annot['image_id']
-                    new_cat_id = cat_id_map.get(old_cat_id, None)
+                    new_cat_id = cat_id_map.get(old_cat_id, ub.NoParam)
                     new_img_id = img_id_map.get(old_img_id, None)
-                    if new_cat_id is None:
+                    if new_cat_id is ub.NoParam:
+                        # NOTE: category_id is allowed to be None
                         warnings.warn('annot {} in {} has bad category-id {}'.format(
                             old_annot, subdir, old_cat_id))
                         # raise Exception
@@ -3370,8 +3463,8 @@ def demo_coco_data():
     Ignore:
         # code for getting a segmentation polygon
         kwimage.grab_test_image_fpath('astro')
-        labelme /home/joncrall/.cache/kwimage/demodata/KXhKM72.png
-        cat /home/joncrall/.cache/kwimage/demodata/KXhKM72.json
+        labelme /home/joncrall/.cache/kwimage/demodata/astro.png
+        cat /home/joncrall/.cache/kwimage/demodata/astro.json
 
     Example:
         >>> # xdoctest: +REQUIRES(--show)

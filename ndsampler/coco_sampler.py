@@ -300,8 +300,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
                 if True, also extracts information about any annotation that
                 overlaps the region of interest (subject to visibility_thresh).
                 Can also be a List[str] that specifies which specific subinfo
-                should be extracted. Valid strings in this list are: keypoints
-                and segmenation.
+                should be extracted. Valid strings in this list are: boxes,
+                keypoints, and segmenation.
 
         Returns:
             Dict: sample: dict containing keys
@@ -337,8 +337,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
                 if True, also extracts information about any annotation that
                 overlaps the region of interest (subject to visibility_thresh).
                 Can also be a List[str] that specifies which specific subinfo
-                should be extracted. Valid strings in this list are: keypoints
-                and segmenation.
+                should be extracted. Valid strings in this list are: boxes,
+                keypoints, and segmenation.
 
         Returns:
             Dict: sample: dict containing keys
@@ -382,8 +382,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
                 if True, also extracts information about any annotation that
                 overlaps the region of interest (subject to visibility_thresh).
                 Can also be a List[str] that specifies which specific subinfo
-                should be extracted. Valid strings in this list are: keypoints
-                and segmenation.
+                should be extracted. Valid strings in this list are: boxes,
+                keypoints, and segmenation.
 
         Returns:
             Dict: sample: dict containing keys
@@ -431,7 +431,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
 
         Args:
             tr (dict): image and bbox info for a positive / negative target.
-                must contain the keys ['cx', 'cy', 'gid'], if `window_dims` is
+                must contain the keys ['gid', 'cx', 'cy'], if `window_dims` is
                 None it must also contain the keys ['width' and 'height'].
 
                 NEW: tr can now contain the key `slices`, which maps a tuple of
@@ -456,8 +456,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
                 if True, also extracts information about any annotation that
                 overlaps the region of interest (subject to visibility_thresh).
                 Can also be a List[str] that specifies which specific subinfo
-                should be extracted. Valid strings in this list are: keypoints
-                and segmenation.
+                should be extracted. Valid strings in this list are: boxes,
+                keypoints, and segmenation.
 
         Returns:
             Dict: sample: dict containing keys
@@ -556,27 +556,15 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             self._populate_overlap(sample, visible_thresh, with_annots)
         return sample
 
-    def _load_slice(self, tr, window_dims=None, pad=None,
-                    padkw={'mode': 'constant'}):
+    def _rectify_tr(self, tr, data_dims, window_dims=None, pad=None):
         """
-        Example:
-            >>> # sample an out of bounds target
-            >>> from ndsampler.coco_sampler import *
-            >>> self = CocoSampler.demo()
-            >>> tr = self.regions.get_positive(0)
-            >>> sample = self._load_slice(tr)
-            >>> print('sample = {!r}'.format(ub.map_vals(type, sample)))
+        Use the target to compute the actual slice within the image as well as
+        what additional padding is needed, if any.
         """
-        import skimage
         ndim = 2  # number of space-time dimensions (ignore channel)
         if pad is None:
             pad = 0
         pad = tuple(_ensure_iterablen(pad, ndim))
-
-        gid = tr['gid']
-        # Determine the image extent
-        img = self.dset.imgs[gid]
-        data_dims = (img['height'], img['width'])
 
         if 'slices' in tr:
             # Slice was explicitly specified
@@ -608,14 +596,41 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
 
             data_slice, extra_padding = _get_slice(data_dims, center, window_dims, pad=pad)
 
+        st_dims = [(sl.start, sl.stop) for sl in data_slice[0:ndim]]
+
+        return data_slice, extra_padding, st_dims
+
+    def _load_slice(self, tr, window_dims=None, pad=None,
+                    padkw={'mode': 'constant'}):
+        """
+        Example:
+            >>> # sample an out of bounds target
+            >>> from ndsampler.coco_sampler import *
+            >>> self = CocoSampler.demo()
+            >>> tr = self.regions.get_positive(0)
+            >>> sample = self._load_slice(tr)
+            >>> print('sample = {!r}'.format(ub.map_vals(type, sample)))
+        """
+        import skimage
+        ndim = 2  # number of space-time dimensions (ignore channel)
+        if pad is None:
+            pad = 0
+        pad = tuple(_ensure_iterablen(pad, ndim))
+
+        gid = tr['gid']
+        # Determine the image extent
+        img = self.dset.imgs[gid]
+        data_dims = (img['height'], img['width'])
+
+        data_slice, extra_padding, st_dims = self._rectify_tr(
+            tr, data_dims, window_dims=window_dims, pad=pad)
+
         # Load the image data
         im = self.frames.load_region(gid, data_slice)
         if extra_padding:
             if im.ndim != len(extra_padding):
                 extra_padding = extra_padding + [(0, 0)]  # Handle channels
             im = np.pad(im, extra_padding, **padkw)
-
-        st_dims = [(sl.start, sl.stop) for sl in data_slice[0:ndim]]
 
         # Translations for real sub-pixel center positions
         if extra_padding:
@@ -715,7 +730,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
                 if coco_kpts is not None and len(coco_kpts) > 0:
                     if isinstance(ub.peek(coco_kpts), dict):
                         # new style coco keypoint encoding
-                        abs_points = kwimage.Points._from_coco(
+                        abs_points = kwimage.Points.from_coco(
                             coco_kpts, classes=kp_classes)
                     else:
                         # using old style coco keypoint encoding, we need look up
@@ -723,7 +738,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
                         # relevant info
                         kpnames = coco_dset._lookup_kpnames(ann['category_id'])
                         kp_class_idxs = np.array([kp_classes.index(n) for n in kpnames])
-                        abs_points = kwimage.Points._from_coco(
+                        abs_points = kwimage.Points.from_coco(
                             coco_kpts, kp_class_idxs, kp_classes)
                     rel_points = abs_points.translate(offset)
 
