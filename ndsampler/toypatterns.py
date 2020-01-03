@@ -196,10 +196,11 @@ class CategoryPatterns(object):
         segmentation.data['counts'] = segmentation.data['counts'].decode('utf8')
 
         if newstyle:
-            keypoints = kpts._to_coco('new')
+            keypoints = kpts.to_coco('new')
         else:
             # old style keypoints
-            keypoints = kpts._to_coco('orig').tolist()
+            import kwarray
+            keypoints = kwarray.ArrayAPI.tolist(kpts.to_coco('orig'))
 
         info = {
             'name': cname,

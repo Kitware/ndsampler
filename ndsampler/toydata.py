@@ -439,16 +439,14 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
     box_priority = np.arange(boxes.shape[0])[::-1].astype(np.float32)
     boxes.ious(boxes)
 
+    nms_impls = ub.oset(['cython_cpu', 'numpy'])
+    nms_impls = nms_impls & kwimage.algo.available_nms_impls()
+    nms_impl = nms_impls[0]
+
     if len(boxes) > 1:
         tlbr_data = boxes.to_tlbr().data
-        try:
-            keep = kwimage.non_max_supression(
-                tlbr_data, scores=box_priority, thresh=0.0, impl='cpu')
-        except KeyError:
-            import warnings
-            warnings.warn('missing cpu impl, trying numpy')
-            keep = kwimage.non_max_supression(
-                tlbr_data, scores=box_priority, thresh=0.0, impl='py')
+        keep = kwimage.non_max_supression(
+            tlbr_data, scores=box_priority, thresh=0.0, impl=nms_impl)
         boxes = boxes[keep]
 
     if centerobj == 'neg':
@@ -504,6 +502,7 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
             'segmentation': info['segmentation'],
             'keypoints': info['keypoints'],
             'bbox': xywh,
+            'area': float(xywh[2] * xywh[3]),
         }
         anns.append(ann)
 
@@ -524,7 +523,7 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
 
 
 def demodata_toy_dset(gsize=(600, 600), n_imgs=5, verbose=3, rng=0,
-                      newstyle=True):
+                      newstyle=True, dpath=None):
     """
     Create a toy detection problem
 
@@ -533,6 +532,8 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5, verbose=3, rng=0,
         n_img (int): number of images to generate
         rng (int | RandomState): random number generator or seed
         newstyle (bool, default=True): create newstyle mscoco data
+        dpath (str): path to the output image directory, defaults to using
+            ndsampler cache dir
 
     Returns:
         dict: dataset in mscoco format
@@ -557,7 +558,10 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5, verbose=3, rng=0,
         >>> dset.show_image(gid=1)
         >>> ub.startfile(dpath)
     """
-    dpath = ub.ensure_app_cache_dir('ndsampler', 'toy_dset')
+    if dpath is None:
+        dpath = ub.ensure_app_cache_dir('ndsampler', 'toy_dset')
+    else:
+        ub.ensuredir(dpath)
 
     import kwarray
     rng = kwarray.ensure_rng(rng)
@@ -586,6 +590,7 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5, verbose=3, rng=0,
         'gsize': gsize,
         'n_imgs': n_imgs,
         'categories': catpats.categories,
+        'newstyle': newstyle,
         'keypoint_categories': catpats.keypoint_categories,
         'rng': ub.hash_data(rng),
     }

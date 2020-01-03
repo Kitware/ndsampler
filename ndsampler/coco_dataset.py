@@ -751,6 +751,8 @@ class MixinCocoExtras(object):
 
         Args:
             key (str): either photos or shapes
+            **kw : if key is shapes, these arguments are passed to toydata
+                generation
 
         Example:
             >>> print(CocoDataset.demo('photos'))
@@ -798,7 +800,7 @@ class MixinCocoExtras(object):
                 },
                 'images': {
                     'pixels': '67d741fefc8...',
-                    'json': '92b7b764ce248...',
+                    'json': '6a446126490aa...',
                     'num': 3,
                 },
                 'categories': {
@@ -806,7 +808,7 @@ class MixinCocoExtras(object):
                     'num': 8,
                 },
             }
-            self.hashid = '19e7b38f12783ea...
+            self.hashid = '4769119614e921...
 
         Doctest:
             >>> self = CocoDataset.demo()
@@ -867,7 +869,18 @@ class MixinCocoExtras(object):
                 aids = sorted(self.anns.keys())
                 _anns_ordered = (self.anns[aid] for aid in aids)
                 anns_ordered = [_ditems(ann) for ann in _anns_ordered]
-                anns_text = json.dumps(anns_ordered)
+                try:
+                    anns_text = json.dumps(anns_ordered)
+                except TypeError:
+                    if __debug__:
+                        for ann in anns_ordered:
+                            try:
+                                json.dumps(ann)
+                            except TypeError:
+                                print('FAILED TO ENCODE ann = {!r}'.format(ann))
+                                break
+                    raise
+
                 hashid_parts['annotations']['json'] = ub.hash_data(
                     anns_text, hasher='sha512')
                 hashid_parts['annotations']['num'] = len(aids)
