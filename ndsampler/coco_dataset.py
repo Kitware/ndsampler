@@ -2211,6 +2211,19 @@ class MixinCocoAddRemove(object):
         self._invalidate_hashid(['categories'])
         return id
 
+    def ensure_category(self, name, supercategory=None, id=None, **kw):
+        """
+        Like add_category, but returns the existing category id if it already
+        exists instead of failing. In this case all metadata is ignored.
+        """
+        try:
+            id = self.add_category(name=name, supercategory=supercategory,
+                                   id=id, **kw)
+        except ValueError:
+            cat = self.index.name_to_cat[name]
+            id = cat['id']
+        return id
+
     def add_annotations(self, anns):
         """
         Faster less-safe multi-item alternative
