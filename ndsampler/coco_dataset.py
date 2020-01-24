@@ -2559,6 +2559,16 @@ class MixinCocoAddRemove(object):
 class CocoIndex(object):
     """
     Fast lookup index for the COCO dataset with dynamic modification
+
+    Attributes:
+        imgs (Dict[int, dict]):
+            mapping between image ids and the image dictionaries
+
+        anns (Dict[int, dict]):
+            mapping between annotation ids and the annotation dictionaries
+
+        cats (Dict[int, dict]):
+            mapping between category ids and the category dictionaries
     """
 
     # _set = ub.oset  # many operations are much slower for oset
@@ -2896,6 +2906,30 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
         line, and/or, keypoints fields. In this case we may also specify a
         field roi_shape, which denotes which field is the "main" annotation
         type.
+
+    Attributes:
+        dataset (Dict): raw json data structure. This is the base dictionary
+            that contains {'annotations': List, 'images': List,
+            'categories': List}
+
+        index (CocoIndex): an efficient lookup index into the coco data
+            structure. The index defines its own attributes like
+            `anns`, `cats`, `imgs`, etc. See :class:`CocoIndex` for more
+            details on which attributes are available.
+
+        fpath (PathLike | None):
+            if known, this stores the filepath the dataset was loaded from
+
+        tag (str):
+            A tag indicating the name of the dataset.
+
+        img_root (PathLike | None) :
+            If known, this is the root path that all image file names are
+            relative to. This can also be manually overwritten by the user.
+
+        hashid (str | None) :
+            If computed, this will be a hash uniquely identifing the dataset.
+            To ensure this is computed see  :func:`_build_hashid`.
 
     References:
         http://cocodataset.org/#format
