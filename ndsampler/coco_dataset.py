@@ -1365,7 +1365,10 @@ class MixinCocoExtras(object):
 
         Example:
             >>> self = CocoDataset.demo()
-            >>> self.rename_categories({'astronomer': 'person', 'astronaut': 'person', 'mouth': 'person', 'helmet': 'hat'}, preserve=0)
+            >>> self.rename_categories({'astronomer': 'person',
+            >>>                         'astronaut': 'person',
+            >>>                         'mouth': 'person',
+            >>>                         'helmet': 'hat'}, preserve=0)
             >>> assert 'hat' in self.name_to_cat
             >>> assert 'helmet' not in self.name_to_cat
             >>> # Test merge case
@@ -1606,6 +1609,61 @@ class MixinCocoExtras(object):
         pycoco.dataset = self.dataset
         pycoco.createIndex()
         return pycoco
+
+    def rebase(self, img_root=None, absolute=False, check=True):
+        """
+        Rebase image paths onto a new image root.
+
+        Args:
+            img_root (str, default=None):
+                New image root. If unspecified the current root is used.
+
+            absolute (bool, default=False):
+                if True, file names are stored as absolute paths, otherwise
+                they are relative to the image root.
+
+            check (bool, default=True):
+                if True, checks that the images all exist
+
+        Example:
+            >>> import ndsampler
+            >>> self = ndsampler.CocoDataset.demo()
+
+            >>> # Change base relative directory
+            >>> img_root = ub.expandpath('~')
+            >>> self.rebase(img_root)
+            >>> assert self.imgs[1]['file_name'].startswith('.cache')
+
+            >>> # Use absolute paths
+            >>> self.rebase(absolute=True)
+            >>> assert self.imgs[1]['file_name'].startswith(img_root)
+
+            >>> # Switch back to relative paths
+            >>> self.rebase()
+            >>> assert self.imgs[1]['file_name'].startswith('.cache')
+        """
+        from os.path import exists, relpath
+
+        old_img_root = self.img_root
+        new_img_root = img_root
+        if new_img_root is None:
+            new_img_root = old_img_root
+
+        for img in self.imgs.values():
+            abs_file_path = join(old_img_root, img['file_name'])
+
+            if absolute:
+                img['file_name'] = abs_file_path
+            else:
+                img['file_name'] = relpath(abs_file_path, new_img_root)
+
+            if check:
+                abs_gpath = join(new_img_root, img['file_name'])
+                if not exists(abs_gpath):
+                    raise Exception(
+                        'Image does not exist: {!r}'.format(abs_gpath))
+
+        self.img_root = new_img_root
 
 
 class MixinCocoAttrs(object):
