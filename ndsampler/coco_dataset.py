@@ -2380,12 +2380,15 @@ class MixinCocoAddRemove(object):
         self.index.clear()
         self._invalidate_hashid(['annotations'])
 
-    def remove_annotations(self, aids_or_anns, verbose=0):
+    def remove_annotations(self, aids_or_anns, verbose=0, safe=True):
         """
         Remove multiple annotations from the dataset.
 
         Args:
             anns_or_aids (List): list of annotation dicts or ids
+
+            safe (bool, default=True): if True, we perform checks to remove
+                duplicates and non-existing identifiers.
 
         Returns:
             Dict: num_removed: information on the number of items removed
@@ -2410,6 +2413,8 @@ class MixinCocoAddRemove(object):
                 for index, ann in enumerate(self.dataset['annotations'])
             }
             remove_aids = list(map(self._resolve_to_id, aids_or_anns))
+            if safe:
+                remove_aids = sorted(set(remove_aids))
             remove_info['annotations'] = len(remove_aids)
 
             # Lookup the indices to remove, sort in descending order
@@ -2423,7 +2428,8 @@ class MixinCocoAddRemove(object):
             self._invalidate_hashid(['annotations'])
         return remove_info
 
-    def remove_categories(self, cat_identifiers, keep_annots=False, verbose=0):
+    def remove_categories(self, cat_identifiers, keep_annots=False, verbose=0,
+                          safe=True):
         """
         Remove categories and all annotations in those categories.
         Currently does not change any hierarchy information
@@ -2433,6 +2439,9 @@ class MixinCocoAddRemove(object):
 
             keep_annots (bool, default=False):
                 if True, keeps annotations, but removes category labels.
+
+            safe (bool, default=True): if True, we perform checks to remove
+                duplicates and non-existing identifiers.
 
         Returns:
             Dict: num_removed: information on the number of items removed
@@ -2450,7 +2459,17 @@ class MixinCocoAddRemove(object):
             if verbose > 1:
                 print('Removing annots of removed categories')
 
-            remove_cids = list(map(self._resolve_to_cid, cat_identifiers))
+            if safe:
+                remove_cids = set()
+                for identifier in cat_identifiers:
+                    try:
+                        cid = self._resolve_to_cid(identifier)
+                        remove_cids.add(cid)
+                    except Exception:
+                        pass
+                remove_cids = sorted(remove_cids)
+            else:
+                remove_cids = list(map(self._resolve_to_cid, cat_identifiers))
             # First remove any annotation that belongs to those categories
             if self.cid_to_aids:
                 remove_aids = list(it.chain(*[self.cid_to_aids[cid]
@@ -2481,6 +2500,67 @@ class MixinCocoAddRemove(object):
 
             self.index._remove_categories(remove_cids, verbose=verbose)
             self._invalidate_hashid(['categories', 'annotations'])
+
+        return remove_info
+
+    def remove_images(self, gids_or_imgs, verbose=0, safe=True):
+        """
+        Args:
+            gids_or_imgs (List): list of image dicts, names, or ids
+
+            safe (bool, default=True): if True, we perform checks to remove
+                duplicates and non-existing identifiers.
+
+        Returns:
+            Dict: num_removed: information on the number of items removed
+
+        Example:
+            >>> from ndsampler.coco_dataset import *
+            >>> self = CocoDataset.demo()
+            >>> assert len(self.dataset['images']) == 3
+            >>> gids_or_imgs = [self.imgs[2], 'astro.png']
+            >>> self.remove_images(gids_or_imgs)  # xdoc: +IGNORE_WANT
+            {'annotations': 11, 'images': 2}
+            >>> assert len(self.dataset['images']) == 1
+            >>> self._check_index()
+            >>> gids_or_imgs = [3]
+            >>> self.remove_images(gids_or_imgs)
+            >>> assert len(self.dataset['images']) == 0
+            >>> self._check_index()
+        """
+        remove_info = {'annotations': None, 'images': None}
+        if gids_or_imgs:
+
+            if verbose > 1:
+                print('Removing annots of removed images')
+
+            remove_gids = list(map(self._resolve_to_gid, gids_or_imgs))
+            if safe:
+                remove_gids = sorted(set(remove_gids))
+            # First remove any annotation that belongs to those images
+            if self.gid_to_aids:
+                remove_aids = list(it.chain(*[self.gid_to_aids[gid]
+                                              for gid in remove_gids]))
+            else:
+                remove_aids = [ann['id'] for ann in self.dataset['annotations']
+                               if ann['image_id'] in remove_gids]
+
+            rminfo = self.remove_annotations(remove_aids, verbose=verbose)
+            remove_info.update(rminfo)
+
+            remove_info['images'] = len(remove_gids)
+            if verbose > 1:
+                print('Removing {} image entries'.format(len(remove_gids)))
+            gid_to_index = {
+                img['id']: index
+                for index, img in enumerate(self.dataset['images'])
+            }
+            # Lookup the indices to remove, sort in descending order
+            remove_idxs = list(ub.take(gid_to_index, remove_gids))
+            delitems(self.dataset['images'], remove_idxs)
+
+            self.index._remove_images(remove_gids, verbose=verbose)
+            self._invalidate_hashid(['images', 'annotations'])
 
         return remove_info
 
@@ -2555,62 +2635,6 @@ class MixinCocoAddRemove(object):
 
         remove_info['reflection_ids'] = remove_reflect_ids
         remove_info['keypoint_categories'] = len(remove_kpcats)
-        return remove_info
-
-    def remove_images(self, gids_or_imgs, verbose=0):
-        """
-        Args:
-            gids_or_imgs (List): list of image dicts, names, or ids
-
-        Returns:
-            Dict: num_removed: information on the number of items removed
-
-        Example:
-            >>> from ndsampler.coco_dataset import *
-            >>> self = CocoDataset.demo()
-            >>> assert len(self.dataset['images']) == 3
-            >>> gids_or_imgs = [self.imgs[2], 'astro.png']
-            >>> self.remove_images(gids_or_imgs)  # xdoc: +IGNORE_WANT
-            {'annotations': 11, 'images': 2}
-            >>> assert len(self.dataset['images']) == 1
-            >>> self._check_index()
-            >>> gids_or_imgs = [3]
-            >>> self.remove_images(gids_or_imgs)
-            >>> assert len(self.dataset['images']) == 0
-            >>> self._check_index()
-        """
-        remove_info = {'annotations': None, 'images': None}
-        if gids_or_imgs:
-
-            if verbose > 1:
-                print('Removing annots of removed images')
-
-            remove_gids = list(map(self._resolve_to_gid, gids_or_imgs))
-            # First remove any annotation that belongs to those images
-            if self.gid_to_aids:
-                remove_aids = list(it.chain(*[self.gid_to_aids[gid]
-                                              for gid in remove_gids]))
-            else:
-                remove_aids = [ann['id'] for ann in self.dataset['annotations']
-                               if ann['image_id'] in remove_gids]
-
-            rminfo = self.remove_annotations(remove_aids, verbose=verbose)
-            remove_info.update(rminfo)
-
-            remove_info['images'] = len(remove_gids)
-            if verbose > 1:
-                print('Removing {} image entries'.format(len(remove_gids)))
-            gid_to_index = {
-                img['id']: index
-                for index, img in enumerate(self.dataset['images'])
-            }
-            # Lookup the indices to remove, sort in descending order
-            remove_idxs = list(ub.take(gid_to_index, remove_gids))
-            delitems(self.dataset['images'], remove_idxs)
-
-            self.index._remove_images(remove_gids, verbose=verbose)
-            self._invalidate_hashid(['images', 'annotations'])
-
         return remove_info
 
 
@@ -3549,6 +3573,11 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
 
 
 def delitems(items, remove_idxs, thresh=750):
+    """
+    Args:
+        items (List): list which will be modified
+        remove_idxs (List[int]): integers to remove (MUST BE UNIQUE)
+    """
     if len(remove_idxs) > thresh:
         # Its typically faster to just make a new list when there are
         # lots and lots of items to remove.

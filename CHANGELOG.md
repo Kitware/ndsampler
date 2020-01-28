@@ -11,6 +11,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * `CocoDataset.rebase` for changing the image root.
 
 
+### Changed
+* `CocoDataset.remove_` methods now have a safe kwarg to prevent bad things from happening when there is a duplicate inputs.
+
+
 ## Version 0.5.1
 
 
