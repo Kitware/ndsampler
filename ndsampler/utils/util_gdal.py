@@ -131,7 +131,7 @@ def _benchmark_cog_conversions():
 
 
 @profile
-def _imwrite_cloud_optimized_geotiff(fpath, data, compress='JPEG',
+def _imwrite_cloud_optimized_geotiff(fpath, data, compress='auto',
                                      blocksize=256):
     """
     Args:
@@ -140,8 +140,11 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, compress='JPEG',
         data (ndarray[ndim=3]): Raw HWC image data to save. Dimensions should
             be height, width, channels.
 
-        compress (bool, default='JPEG'): Can be JPEG (lossy) or LZW (lossless),
-            or DEFLATE (lossless).
+        compress (bool, default='auto'): Can be JPEG (lossy) or LZW (lossless),
+            or DEFLATE (lossless). Can also be 'auto', which will try to
+            hueristically choose a sensible choice.
+
+        blocksize (int, default=256): size of tiled blocks
 
     References:
         https://geoexamples.com/other/2019/02/08/cog-tutorial.html#create-a-cog-using-gdal-python
@@ -211,7 +214,12 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, compress='JPEG',
 
     y_size, x_size, num_bands = data.shape
 
-    assert compress in ['JPEG', 'LZW', 'DEFLATE', 'RAW'], 'unknown compress'
+    data_set = None
+    if compress == 'auto':
+        compress = _auto_compress(data=data)
+
+    if compress not in ['JPEG', 'LZW', 'DEFLATE', 'RAW']:
+        raise KeyError('unknown compress={}'.format(compress))
 
     if compress == 'JPEG' and num_bands >= 5:
         raise ValueError('Cannot use JPEG with more than 4 channels (got {})'.format(num_bands))
@@ -270,12 +278,98 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, compress='JPEG',
     return fpath
 
 
-def _cli_convert_cloud_optimized_geotiff(src_fpath, dst_fpath, compress='JPEG',
+def _dtype_equality(dtype1, dtype2):
+    """
+    Check for numpy dtype equality
+
+    References:
+        https://stackoverflow.com/questions/26921836/correct-way-to-test-for-numpy-dtype
+
+    Example:
+        dtype1 = np.empty(0, dtype=np.uint8).dtype
+        dtype2 = np.uint8
+        _dtype_equality(dtype1, dtype2)
+    """
+    dtype1_ = getattr(dtype1, 'type', dtype1)
+    dtype2_ = getattr(dtype2, 'type', dtype2)
+    return dtype1_ == dtype2_
+
+
+def _auto_compress(src_fpath=None, data=None, data_set=None):
+    """
+    Heuristic for automatically choosing compression type
+
+    Args:
+        src_fpath (str): path to source image if known
+        data (ndarray): data pixels if known
+        data_set (gdal.Dataset): gdal dataset if known
+
+    Returns:
+        str: gdal compression code
+
+    Example:
+        >>> assert _auto_compress(src_fpath='foo.jpg') == 'JPEG'
+        >>> assert _auto_compress(src_fpath='foo.png') == 'LZW'
+        >>> assert _auto_compress(data=np.random.rand(3, 2)) == 'RAW'
+        >>> assert _auto_compress(data=np.random.rand(3, 2, 3).astype(np.uint8)) == 'JPEG'
+        >>> assert _auto_compress(data=np.random.rand(3, 2, 4).astype(np.uint8)) == 'RAW'
+        >>> assert _auto_compress(data=np.random.rand(3, 2, 1).astype(np.uint8)) == 'RAW'
+    """
+    compress = None
+    num_channels = None
+    dtype = None
+
+    if src_fpath is not None:
+        # the filepath might hint at which compress method is best.
+        ext = src_fpath[-5:].lower()
+        if ext.endswith(('.jpg', '.jpeg')):
+            compress = 'JPEG'
+        elif ext.endswith(('.png', '.png')):
+            compress = 'LZW'
+
+    if compress is None:
+
+        if data_set is not None:
+            if dtype is None:
+                main_band = data_set.GetRasterBand(1)
+                dtype = _GDAL_DTYPE_LUT[main_band.DataType]
+
+            if num_channels is None:
+                data_set.RasterCount == 3
+
+        elif data is not None:
+            if dtype is None:
+                dtype = data.dtype
+
+            if num_channels is None:
+                if len(data.shape) == 3:
+                    num_channels = data.shape[2]
+
+    if compress is None:
+        if _dtype_equality(dtype, np.uint8) and num_channels == 3:
+            compress = 'JPEG'
+
+    if compress is None:
+        # which backend is best in this case?
+        compress = 'RAW'
+    return compress
+
+
+def _cli_convert_cloud_optimized_geotiff(src_fpath, dst_fpath, compress='auto',
                                          blocksize=256):
     """
     For whatever reason using the CLI seems to simply be faster.
 
-    THIS IS THE DEFACTO STANDARD
+    Args:
+        src_fpath (PathLike): file path to convert
+
+        dst_fpath (PathLike): file path to save the COG to.
+
+        blocksize (int, default=256): size of tiled blocks
+
+        compress (bool, default='auto'): Can be JPEG (lossy) or LZW (lossless),
+            or DEFLATE (lossless). Can also be 'auto', which will try to
+            hueristically choose a sensible choice.
 
     Ignore:
         >>> import xdev
@@ -300,22 +394,7 @@ def _cli_convert_cloud_optimized_geotiff(src_fpath, dst_fpath, compress='JPEG',
     data_set = None
     if compress == 'auto':
         data_set = gdal.Open(src_fpath, gdal.GA_ReadOnly)
-
-        # the filepath might hint at which compress method is best.
-        if src_fpath[-5:].lower().endswith(('.jpg', '.jpeg')):
-            compress = 'JPEG'
-        elif src_fpath[-5:].lower().endswith(('.png', '.png')):
-            compress = 'LZW'
-        else:
-            main_band = data_set.GetRasterBand(1)
-            dtype = _GDAL_DTYPE_LUT[main_band.DataType]
-            if dtype is np.uint8 and data_set.RasterCount == 3:
-                compress = 'JPEG'
-            else:
-                # which backend is best in this case?
-                compress = 'RAW'
-                # compress = 'LZW'
-                # compress = 'DEFLATE'
+        compress = _auto_compress(src_fpath=src_fpath, data_set=data_set)
 
     if compress != 'RAW':
         options += ['COMPRESS={}'.format(compress)]
