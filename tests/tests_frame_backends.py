@@ -65,13 +65,15 @@ def test_variable_backend():
     import kwimage
     fpaths = []
     rng = kwarray.ensure_rng(0)
+
+    h, w = 800, 600
     for fname in fnames:
         if 'rgb_' in fname:
-            data = rng.rand(32, 32, 3)
+            data = rng.rand(h, w, 3)
         elif 'rgba_' in fname:
-            data = rng.rand(32, 32, 4)
+            data = rng.rand(h, w, 4)
         elif 'gray_' in fname:
-            data = rng.rand(32, 32, 1)
+            data = rng.rand(h, w, 1)
 
         if '01' in fname:
             pass
@@ -91,5 +93,13 @@ def test_variable_backend():
         }, nl=0))
 
     dset = ndsampler.CocoDataset.from_image_paths(fpaths)
-    sampler = ndsampler.CocoSampler(dset, backend='cog')
+    sampler = ndsampler.CocoSampler(dset, backend='cog', workdir=dpath)
     frames = sampler.frames
+    frames.prepare()
+
+    for gid in frames.image_ids:
+        print('=======================')
+        gpath, cache_gpath = frames._gnames(gid)
+        print('gpath = {!r}'.format(gpath))
+        print('cache_gpath = {!r}'.format(cache_gpath))
+        info = ub.cmd('gdalinfo ' + cache_gpath, verbose=2)
