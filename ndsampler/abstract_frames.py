@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Fast access to subregions of images
+Fast access to subregions of images.
+
+This implements the core convert-and-cache-as-cog logic, which enables us to
+read from subregions of images quickly.
 
 
 TODO:
@@ -41,8 +44,12 @@ else:
 
 DEBUG_COG_ATOMIC_WRITE = 0
 DEBUG_FILE_LOCK_CACHE_WRITE = 0
-DEBUG_LOAD_COG = 1
+DEBUG_LOAD_COG = int(ub.argflag('--debug-load-cog'))
 RUN_COG_CORRUPTION_CHECKS = True
+
+
+class CorruptCOG(Exception):
+    pass
 
 
 class Frames(object):
@@ -73,7 +80,7 @@ class Frames(object):
                 {
                     'type': 'cog',
                     'config': {
-                        'compress': <'LZW' | 'JPEG | 'DEFLATE'>,
+                    'compress': <'LZW' | 'JPEG | 'DEFLATE' | 'auto'>,
                     }
                 }
 
@@ -129,7 +136,7 @@ class Frames(object):
     DEFAULT_COG_CONFIG = {
         'type': 'cog',
         'config': {
-            'compress': 'JPEG',
+            'compress': 'auto',
         },
         '_hack_old_names': False,  # This will be removed in the future
         '_hack_use_cli': True,  # Uses the gdal-CLI to create cogs, which frustratingly seems to be faster
@@ -488,29 +495,33 @@ class Frames(object):
             if DEBUG:
                 print('\n<DEBUG INFO>')
                 print('Missing cog_gpath={}'.format(cog_gpath))
+                print('gpath = {!r}'.format(gpath))
 
             gpath_is_cog = not bool(errors)
+            if ub.argflag('--debug-validate-cog') or DEBUG > 2:
+                print('details = {}'.format(ub.repr2(details, nl=1)))
+                print('errors (why we need to ensure) = {}'.format(ub.repr2(errors, nl=1)))
+                print('warnings = {}'.format(ub.repr2(warnings, nl=1)))
+                print('gpath_is_cog = {!r}'.format(gpath_is_cog))
+
             if gpath_is_cog:
                 # If we already are a cog, then just use it
                 if DEBUG:
                     print('Image is already a cog, symlinking to cache')
                 ub.symlink(gpath, cog_gpath)
             else:
+                config = self._backend['config'].copy()
+                config['hack_use_cli'] = self._backend['_hack_use_cli']
                 if DEBUG:
-                    if DEBUG > 2:
-                        print('details = ' + ub.repr2(details))
-                        print('warnings = ' + ub.repr2(warnings))
-                        print('errors (why we need to ensure) = ' + ub.repr2(errors))
                     print('BUILDING COG REPRESENTATION')
                     print('gpath = {!r}'.format(gpath))
+                    print('cog config = {}'.format(ub.repr2(config, nl=2)))
                     if DEBUG > 1:
                         try:
                             import netharn as nh
                             print(' * info(gpath) = ' + ub.repr2(nh.util.get_file_info(gpath)))
                         except ImportError:
                             pass
-                config = self._backend['config'].copy()
-                config['hack_use_cli'] = self._backend['_hack_use_cli']
                 self._ensure_cog_representation(gpath, cog_gpath, config)
 
             if DEBUG:
@@ -528,8 +539,16 @@ class Frames(object):
 
     @staticmethod
     def _ensure_cog_representation(gpath, cog_gpath, config):
-        _locked_cache_write(_cog_cache_write, gpath, cache_gpath=cog_gpath,
-                            config=config)
+        try:
+            _locked_cache_write(_cog_cache_write, gpath, cache_gpath=cog_gpath,
+                                config=config)
+        except CorruptCOG:
+            import warnings
+            msg = ('!!! COG was corrupted, trying once more')
+            warnings.warn(msg)
+            print(msg)
+            _locked_cache_write(_cog_cache_write, gpath, cache_gpath=cog_gpath,
+                                config=config)
 
     @staticmethod
     def ensure_npy_representation(gpath, mem_gpath, config=None):
@@ -735,7 +754,7 @@ def _cog_cache_write(gpath, cache_gpath, config=None):
                 if DEBUG_COG_ATOMIC_WRITE:
                     _debug('FAILED TO WRITE COG FILE')
                 ub.delete(cache_gpath)
-                raise Exception('FAILED TO WRITE COG FILE CORRECTLY')
+                raise CorruptCOG('FAILED TO WRITE COG FILE CORRECTLY')
 
     # raise RuntimeError('FOOBAR')
 

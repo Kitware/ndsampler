@@ -275,6 +275,8 @@ def _cli_convert_cloud_optimized_geotiff(src_fpath, dst_fpath, compress='JPEG',
     """
     For whatever reason using the CLI seems to simply be faster.
 
+    THIS IS THE DEFACTO STANDARD
+
     Ignore:
         >>> import xdev
         >>> import kwimage
@@ -287,18 +289,39 @@ def _cli_convert_cloud_optimized_geotiff(src_fpath, dst_fpath, compress='JPEG',
         >>> for timer in ti.reset('SSD-api'):
         >>>     _cli_convert_cloud_optimized_geotiff(src_fpath, dst_fpath)
     """
+    import gdal
     options = [
         'TILED=YES',
         'BIGTIFF=YES',
         'BLOCKXSIZE={}'.format(blocksize),
         'BLOCKYSIZE={}'.format(blocksize),
     ]
+
+    data_set = None
+    if compress == 'auto':
+        data_set = gdal.Open(src_fpath, gdal.GA_ReadOnly)
+
+        # the filepath might hint at which compress method is best.
+        if src_fpath[-5:].lower().endswith(('.jpg', '.jpeg')):
+            compress = 'JPEG'
+        elif src_fpath[-5:].lower().endswith(('.png', '.png')):
+            compress = 'LZW'
+        else:
+            main_band = data_set.GetRasterBand(1)
+            dtype = _GDAL_DTYPE_LUT[main_band.DataType]
+            if dtype is np.uint8 and data_set.RasterCount == 3:
+                compress = 'JPEG'
+            else:
+                # which backend is best in this case?
+                compress = 'RAW'
+                # compress = 'LZW'
+                # compress = 'DEFLATE'
+
     if compress != 'RAW':
         options += ['COMPRESS={}'.format(compress)]
 
     if compress == 'JPEG':
-        import gdal
-        data_set = gdal.Open(src_fpath, gdal.GA_ReadOnly)
+        data_set = data_set or gdal.Open(src_fpath, gdal.GA_ReadOnly)
         if data_set.RasterCount == 3:
             # Using YCBCR speeds up jpeg compression by quite a bit
             options += ['PHOTOMETRIC=YCBCR']
@@ -450,6 +473,13 @@ def _api_convert_cloud_optimized_geotiff2(src_fpath, dst_fpath,
     # driver2 = None
     return dst_fpath
 
+_GDAL_DTYPE_LUT = {
+    1: np.uint8,     2: np.uint16,
+    3: np.int16,     4: np.uint32,      5: np.int32,
+    6: np.float32,   7: np.float64,     8: np.complex_,
+    9: np.complex_,  10: np.complex64,  11: np.complex128
+}
+
 
 class LazyGDalFrameFile(ub.NiceRepr):
     """
@@ -502,7 +532,9 @@ class LazyGDalFrameFile(ub.NiceRepr):
 
     @property
     def dtype(self):
-        return np.dtype('uint8')
+        main_band = self._ds.GetRasterBand(1)
+        dtype = _GDAL_DTYPE_LUT[main_band.DataType]
+        return dtype
 
     def __nice__(self):
         from os.path import basename

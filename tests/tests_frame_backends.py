@@ -1,3 +1,5 @@
+from os.path import basename
+from os.path import join
 import ndsampler
 import numpy as np
 import ubelt as ub
@@ -38,6 +40,11 @@ def test_cog_backend():
 
 
 def test_variable_backend():
+    """
+    CommandLine:
+        xdoctest -m $HOME/code/ndsampler/tests/tests_frame_backends.py test_variable_backend
+        --debug-validate-cog --debug-load-cog
+    """
     try:
         import gdal  # NOQA
     except ImportError:
@@ -50,6 +57,7 @@ def test_variable_backend():
     ub.ensuredir(dpath)
 
     fnames = [
+
         'test_rgb_255.jpg',
         'test_gray_255.jpg',
 
@@ -66,8 +74,9 @@ def test_variable_backend():
     fpaths = []
     rng = kwarray.ensure_rng(0)
 
-    h, w = 800, 600
-    for fname in fnames:
+    h, w = 1200, 1055
+
+    for fname in ub.ProgIter(fnames, desc='create test data'):
         if 'rgb_' in fname:
             data = rng.rand(h, w, 3)
         elif 'rgba_' in fname:
@@ -95,11 +104,34 @@ def test_variable_backend():
     dset = ndsampler.CocoDataset.from_image_paths(fpaths)
     sampler = ndsampler.CocoSampler(dset, backend='cog', workdir=dpath)
     frames = sampler.frames
-    frames.prepare()
+    # frames.prepare()
 
-    for gid in frames.image_ids:
-        print('=======================')
-        gpath, cache_gpath = frames._gnames(gid)
-        print('gpath = {!r}'.format(gpath))
-        print('cache_gpath = {!r}'.format(cache_gpath))
-        info = ub.cmd('gdalinfo ' + cache_gpath, verbose=2)
+    if 1:
+        for gid in frames.image_ids:
+            print('======== < START IMAGE ID > ===============')
+            gpath, cache_gpath = frames._gnames(gid)
+            print('gpath = {!r}'.format(gpath))
+            print('cache_gpath = {!r}'.format(cache_gpath))
+
+            image = frames.load_image(gid)
+            print('image = {!r}'.format(image))
+            print('image.shape = {!r}'.format(image.shape))
+            print('image.dtype = {!r}'.format(image.dtype))
+
+            subdata = image[0:8, 0:8]
+            print('subdata.dtype = {!r}'.format(subdata.dtype))
+            print('subdata.shape = {!r}'.format(subdata.shape))
+            # info = ub.cmd('gdalinfo ' + cache_gpath, verbose=0)
+            # print('GDAL INFO:')
+            # print(ub.indent(info['out']))
+            # assert info['ret'] == 0
+
+            # dataset = gdal.OpenEx(cache_gpath)
+            dataset = gdal.Open(cache_gpath, gdal.GA_ReadOnly)
+            md = dataset.GetMetadata('IMAGE_STRUCTURE')
+            print('md = {!r}'.format(md))
+            # Use dict.get method in case the metadata dict does not have a 'COMPRESSION' key
+            compression = md.get('COMPRESSION', 'RAW')
+            print('compression = {!r}'.format(compression))
+
+            print('======== < END IMAGE ID > ===============')
