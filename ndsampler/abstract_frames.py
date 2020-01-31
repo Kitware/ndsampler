@@ -13,8 +13,6 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import itertools as it
 import numpy as np
 import os
-# import shutil
-# import tempfile
 import ubelt as ub
 # import lockfile
 # https://stackoverflow.com/questions/489861/locking-a-file-in-python
@@ -28,6 +26,8 @@ from os.path import join
 from ndsampler.utils import util_gdal
 
 if six.PY2:
+    # TODO: find or make an LRU implementation where the maxsize can be
+    # dynamically changed during runtime.
     from backports.functools_lru_cache import lru_cache
 else:
     from functools import lru_cache
@@ -153,8 +153,9 @@ class Frames(object):
 
         if workdir is None:
             workdir = ub.get_app_cache_dir('ndsampler')
-            warnings.warn('Frames workdir not specified. '
-                          'Defaulting to {!r}'.format(workdir))
+            if self._backend['type'] is not None:
+                warnings.warn('Frames workdir not specified. '
+                              'Defaulting to {!r}'.format(workdir))
         self.workdir = workdir
         self.hashid_mode = hashid_mode
 
@@ -456,7 +457,6 @@ class Frames(object):
         return file
 
     @lru_cache(1)  # Keeps frequently accessed images open
-    # @profile
     def _load_image_cog(self, image_id):
         """
         Returns a special array-like object with a COG GeoTIFF backend

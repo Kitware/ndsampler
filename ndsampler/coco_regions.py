@@ -54,6 +54,10 @@ class Targets(object):
                   window_dims=None, rng=None, verbose=0):
         """
         Shuffle selection of positive and negative samples
+
+        TODO:
+            [X] Basic, window around positive annotation algorithm
+            [ ] Sliding window algorithm from bioharn
         """
         if neg_to_pos_ratio is not None and n_neg is not None:
             raise ValueError('Cannot specify both neg_to_pos_ratio and n_neg')

@@ -381,6 +381,7 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
         >>> # xdoctest: +REQUIRES(--show)
         >>> img, anns = demodata_toy_img(gsize=(172, 172), rng=None)
         >>> print('anns = {}'.format(ub.repr2(anns, nl=1)))
+        >>> import kwplot
         >>> kwplot.autompl()
         >>> kwplot.imshow(img['imdata'])
         >>> kwplot.show_if_requested()
