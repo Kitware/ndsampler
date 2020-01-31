@@ -13,8 +13,6 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import itertools as it
 import numpy as np
 import os
-# import shutil
-# import tempfile
 import ubelt as ub
 # import lockfile
 # https://stackoverflow.com/questions/489861/locking-a-file-in-python
