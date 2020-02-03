@@ -4,15 +4,17 @@ This changelog follows the specifications detailed in: [Keep a Changelog](https:
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
 
-## Version 0.5.2
+## Version 0.5.3
+
+## Version 0.5.2 - Released 2020-01-31
 
 ### Added
-
 * `CocoDataset.rebase` for changing the image root.
 
 
 ### Changed
 * `CocoDataset.remove_` methods now have a safe kwarg to prevent bad things from happening when there is a duplicate inputs.
+* `AbstractFrames` cog backend now supports "auto" compression, which chooses a sensible compression value depending on the type of input data. 
 
 
 ## Version 0.5.1

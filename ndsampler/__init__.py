@@ -1,7 +1,7 @@
 """
 mkinit ~/code/ndsampler/ndsampler/__init__.py -w
 """
-__version__ = '0.5.2'
+__version__ = '0.5.3'
 from ndsampler import abstract_frames
 from ndsampler import abstract_sampler
 from ndsampler import category_tree
