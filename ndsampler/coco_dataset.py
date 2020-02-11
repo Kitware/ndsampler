@@ -934,22 +934,49 @@ class MixinCocoExtras(object):
         else:
             self.hashid_parts = None
 
-    def _ensure_imgsize(self, verbose=1):
+    def _ensure_imgsize(self, workers=0, verbose=1, fail=False):
         """
         Populate the imgsize field if it does not exist.
 
+        Args:
+            workers (int, default=0): number of workers for parallel
+                processing.
+
+            verbose (int, default=1): verbosity level
+
+            fail (bool, default=False): if True, raises an exception if
+               anything size fails to load.
+
+        Returns:
+            List[dict]: a list of "bad" image dictionaries where the size could
+            not be determined. Typically these are corrupted images and should
+            be removed.
+
         Example:
+            >>> # Normal case
             >>> self = CocoDataset.demo()
-            >>> self._ensure_imgsize()
+            >>> bad_imgs = self._ensure_imgsize()
+            >>> assert len(bad_imgs) == 0
             >>> assert self.imgs[1]['width'] == 512
             >>> assert self.imgs[2]['width'] == 300
             >>> assert self.imgs[3]['width'] == 256
+
+            >>> # Fail cases
+            >>> self = CocoDataset()
+            >>> self.add_image('does-not-exist.jpg')
+            >>> bad_imgs = self._ensure_imgsize()
+            >>> assert len(bad_imgs) == 1
+            >>> import pytest
+            >>> with pytest.raises(Exception):
+            >>>     self._ensure_imgsize(fail=True)
         """
+        bad_images = []
         if any('width' not in img or 'height' not in img
                for img in self.dataset['images']):
             from PIL import Image
+            import kwimage
 
-            def _find_imgsize(gpath):
+            def _find_imgshape(gpath):
                 try:
                     pil_img = Image.open(gpath)
                     w, h = pil_img.size
@@ -960,21 +987,38 @@ class MixinCocoExtras(object):
                         dset = gdal.Open(gpath, gdal.GA_ReadOnly)
                         w = dset.RasterXSize
                         h = dset.RasterYSize
-                    except ImportError:
+                    except Exception:
                         raise pil_ex
-                return w, h
+                return h, w
+            # TODO: use kwimage.im_io.load_image_shape instead
 
             if self.tag:
                 desc = 'populate imgsize for ' + self.tag
             else:
                 desc = 'populate imgsize for untagged coco dataset'
-            for img in ub.ProgIter(self.dataset['images'], desc=desc,
-                                   verbose=verbose):
+
+            from ndsampler import util_futures
+            pool = util_futures.JobPool('thread', max_workers=workers)
+            for img in ub.ProgIter(self.dataset['images'], verbose=verbose,
+                                   desc='collect image size jobs'):
                 gpath = join(self.img_root, img['file_name'])
-                if 'width' not in img:
-                    w, h = _find_imgsize(gpath)
-                    img['width'] = w
-                    img['height'] = h
+                if 'width' not in img or 'height' not in img:
+                    job = pool.submit(_find_imgshape, gpath)
+                    job.img = img
+
+            for job in ub.ProgIter(pool.as_completed(), total=len(pool),
+                                   verbose=verbose,
+                                   desc='collect image size jobs'):
+                try:
+                    h, w = job.result()[0:2]
+                except Exception:
+                    if fail:
+                        raise
+                    bad_images.append(job.img)
+                else:
+                    job.img['width'] = w
+                    job.img['height'] = h
+        return bad_images
 
     def _resolve_to_id(self, id_or_dict):
         """

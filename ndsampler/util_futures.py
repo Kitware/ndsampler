@@ -14,7 +14,7 @@ __all__ = ['Executor', 'SerialExecutor', 'as_completed']
 #         pass
 
 
-class SerialFuture(concurrent.futures.Future):
+class SerialFuture( concurrent.futures.Future):
     """
     Non-threading / multiprocessing version of future for drop in compatibility
     with concurrent.futures.
@@ -33,6 +33,18 @@ class SerialFuture(concurrent.futures.Future):
         result = self.func(*self.args, **self.kw)
         self.set_result(result)
         self._run_count += 1
+
+    def set_result(self, result):
+        """
+        Overrides the implementation to revert to pre python3.8 behavior
+        """
+        with self._condition:
+            self._result = result
+            self._state = concurrent.futures._base.FINISHED
+            for waiter in self._waiters:
+                waiter.add_result(self)
+            self._condition.notify_all()
+        self._invoke_callbacks()
 
     def _Future__get_result(self):
         # overrides private __getresult method
