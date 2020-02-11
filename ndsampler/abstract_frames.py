@@ -359,6 +359,30 @@ class Frames(object):
             im = file[region]
         return im
 
+    def load_frame(self, image_id):
+        """
+        TODO: FINISHME
+
+        Returns a frame object that lazy loads on slice
+        """
+        class LazyFrame(object):
+            def __init__(self, frames, image_id):
+                self._data = None
+                self._frames = frames
+                self._image_id = image_id
+
+            def __getitem__(self, region):
+                if self._data is None:
+                    if all(r.start is None and r.stop is None for r in region):
+                        # Avoid forcing a cache computation when loading the full image
+                        self._data = self._frames.load_image(self._image_id,
+                                                             cache=False)
+                    else:
+                        self._data = self._frames.load_image(self._image_id,
+                                                             cache=True)
+                return self._frame[region]
+        return im
+
     def _rectify_region(self, region):
         if region is None:
             region = tuple([])

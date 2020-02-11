@@ -626,6 +626,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
             tr, data_dims, window_dims=window_dims, pad=pad)
 
         # Load the image data
+        # frame = self.frames.load_image(gid)  # TODO: lazy load on slice
+        # im = frame[data_slice]
+
         im = self.frames.load_region(gid, data_slice)
         if extra_padding:
             if im.ndim != len(extra_padding):
