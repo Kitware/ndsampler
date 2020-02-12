@@ -684,11 +684,18 @@ class MixinCocoExtras(object):
             np.ndarray : the image
         """
         import kwimage
-        gpath = self.load_image_fpath(gid_or_img)
+        gpath = self.get_image_fpath(gid_or_img)
         np_img = kwimage.imread(gpath)
         return np_img
 
     def load_image_fpath(self, gid_or_img):
+        import warnings
+        warnings.warn(
+            'get_image_fpath is deprecated use get_image_fpath instead',
+            DeprecationWarning)
+        return self.get_image_fpath(gid_or_img)
+
+    def get_image_fpath(self, gid_or_img):
         """
         Returns the full path to the image
 
@@ -974,7 +981,6 @@ class MixinCocoExtras(object):
         if any('width' not in img or 'height' not in img
                for img in self.dataset['images']):
             from PIL import Image
-            import kwimage
 
             def _find_imgshape(gpath):
                 try:
@@ -1000,15 +1006,14 @@ class MixinCocoExtras(object):
             from ndsampler import util_futures
             pool = util_futures.JobPool('thread', max_workers=workers)
             for img in ub.ProgIter(self.dataset['images'], verbose=verbose,
-                                   desc='collect image size jobs'):
+                                   desc='submit image size jobs'):
                 gpath = join(self.img_root, img['file_name'])
                 if 'width' not in img or 'height' not in img:
                     job = pool.submit(_find_imgshape, gpath)
                     job.img = img
 
             for job in ub.ProgIter(pool.as_completed(), total=len(pool),
-                                   verbose=verbose,
-                                   desc='collect image size jobs'):
+                                   verbose=verbose, desc=desc):
                 try:
                     h, w = job.result()[0:2]
                 except Exception:
@@ -2317,6 +2322,9 @@ class MixinCocoAddRemove(object):
         """
         Like add_category, but returns the existing category id if it already
         exists instead of failing. In this case all metadata is ignored.
+
+        Returns:
+            int: the existing or new category id
         """
         try:
             id = self.add_category(name=name, supercategory=supercategory,
