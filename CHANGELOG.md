@@ -15,6 +15,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * `_ensure_imgsize` can now use threads
 
 
+### Changed
+
+* `CocoDataset.union` now preserves image ids when possible. 
+
+
 ## Version 0.5.3 - Released 2020-02-03
 
 ## Version 0.5.2 - Released 2020-01-31

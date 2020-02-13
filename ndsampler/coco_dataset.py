@@ -105,6 +105,11 @@ Dataset Spec:
         We also have a new top-level dictionary to specify all the possible
         keypoint categories.
 
+Notes:
+    The main object in this file is `class`:CocoDataset, which is composed of
+    several mixin classes. See the class and method documentation for more
+    details.
+
 References:
     .. [1] http://cocodataset.org/#format-data
     .. [2] https://github.com/nightrome/cocostuffapi/blob/master/PythonAPI/pycocotools/mask.py
@@ -3377,15 +3382,20 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
     def _clear_index(self):
         self.index.clear()
 
-    def union(self, *others, **kw):
+    def union(self, *others, **kwargs):
         """
         Merges multiple `CocoDataset` items into one. Names and associations
         are retained, but ids may be different.
 
-        TODO: are supercategories broken?
+        Args:
+            self : note that `union` can be called as an instance method or a class method.
+                If it is a class method, then this is the class type, otherwise the instance
+                will also be unioned with `others`.
+            *others : a series of CocoDatasets that we will merge
+            **kwargs : constructor options for the new merged CocoDataset
 
-        CommandLine:
-            xdoctest -m ~/code/ndsampler/ndsampler/coco_dataset.py CocoDataset.union
+        Returns:
+            CocoDataset: a new merged coco dataset
 
         Example:
             >>> # Test union works with different keypoint categories
@@ -3406,10 +3416,43 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
             >>> assert kpfreq_want == kpfreq_got1
             >>> assert kpfreq_want == kpfreq_got2
 
-        Ignore:
-            dset_12.dataset['keypoint_categories']
-            dset_12._keypoint_category_names()
-            dset_21._keypoint_category_names()
+            >>> # Test disjoint gid datasets
+            >>> import ndsampler
+            >>> dset1 = ndsampler.CocoDataset.demo('shapes3')
+            >>> for new_gid, img in enumerate(dset1.dataset['images'], start=10):
+            >>>     for aid in dset1.gid_to_aids[img['id']]:
+            >>>         dset1.anns[aid]['image_id'] = new_gid
+            >>>     img['id'] = new_gid
+            >>> dset1._clear_index()
+            >>> dset1._build_index()
+            >>> # ------
+            >>> dset2 = ndsampler.CocoDataset.demo('shapes2')
+            >>> for new_gid, img in enumerate(dset2.dataset['images'], start=100):
+            >>>     for aid in dset2.gid_to_aids[img['id']]:
+            >>>         dset2.anns[aid]['image_id'] = new_gid
+            >>>     img['id'] = new_gid
+            >>> dset2._clear_index()
+            >>> dset2._build_index()
+            >>> others = [dset1, dset2]
+            >>> merged = ndsampler.CocoDataset.union(*others)
+            >>> print('merged = {!r}'.format(merged))
+            >>> print('merged.imgs = {}'.format(ub.repr2(merged.imgs, nl=1)))
+            >>> assert set(merged.imgs) & set([10, 11, 12, 100, 101]) == set(merged.imgs)
+
+            >>> # Test data is not preserved
+            >>> dset2 = ndsampler.CocoDataset.demo('shapes2')
+            >>> dset1 = ndsampler.CocoDataset.demo('shapes3')
+            >>> others = (dset1, dset2)
+            >>> cls = self = ndsampler.CocoDataset
+            >>> merged = cls.union(*others)
+            >>> print('merged = {!r}'.format(merged))
+            >>> print('merged.imgs = {}'.format(ub.repr2(merged.imgs, nl=1)))
+            >>> assert set(merged.imgs) & set([1, 2, 3, 4, 5]) == set(merged.imgs)
+
+        TODO:
+            - [ ] are supercategories broken?
+            - [ ] reuse image ids where possible
+            - [ ] reuse annotation / category ids where possible
         """
         if self.__class__ is type:
             # Method called as classmethod
@@ -3440,6 +3483,18 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
                     if k not in d1:
                         d1[k] = v
                 return d1
+
+            def _has_duplicates(items):
+                seen = set()
+                for item in items:
+                    if item in seen:
+                        return True
+                    seen.add(item)
+                return False
+
+            _all_imgs = (img for _, d in relative_dsets for img in d['images'])
+            _all_gids = (img['id'] for img in _all_imgs)
+            preserve_gids = not _has_duplicates(_all_gids)
 
             for subdir, old_dset in relative_dsets:
                 # Create temporary indexes to map from old to new
@@ -3508,8 +3563,12 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
 
                 # Add the images into the merged dataset
                 for old_img in old_dset['images']:
+                    if preserve_gids:
+                        new_id = old_img['id']
+                    else:
+                        new_id = len(merged['images']) + 1
                     new_img = _dict([
-                        ('id', len(merged['images']) + 1),
+                        ('id', new_id),
                         ('file_name', join(subdir, old_img['file_name'])),
                     ])
                     # copy over other metadata
@@ -3569,7 +3628,7 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
         if common_root is not None:
             merged['img_root'] = common_root
 
-        new_dset = cls(merged, **kw)
+        new_dset = cls(merged, **kwargs)
         return new_dset
 
     def subset(self, gids, copy=False):
