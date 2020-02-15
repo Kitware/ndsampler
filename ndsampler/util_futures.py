@@ -69,6 +69,7 @@ class SerialExecutor(object):
         >>>         assert i + 1 == f.result()
         """
     def __enter__(self):
+        self.max_workers = 0
         return self
 
     def __exit__(self, ex_type, ex_value, tb):

@@ -2021,13 +2021,13 @@ class MixinCocoDraw(object):
             else:
                 raise Exception('no bbox, line, or keypoint position')
 
-            cid = ann['category_id']
+            cid = ann.get('category_id', None)
             if cid is not None:
                 cat = self.cats[cid]
                 catname = cat['name']
             else:
                 cat = None
-                catname = 'None'
+                catname = ann.get('category_name', 'None')
             textkw = {
                 'horizontalalignment': 'left',
                 'verticalalignment': 'top',
