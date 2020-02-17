@@ -91,6 +91,10 @@ class CategoryTree(ub.NiceRepr):
 
         self._build_index()
 
+    def copy(self):
+        new = self.__class__(self.graph.copy())
+        return new
+
     @classmethod
     def from_mutex(cls, nodes):
         """
@@ -181,6 +185,8 @@ class CategoryTree(ub.NiceRepr):
 
     @classmethod
     def cast(cls, data):
+        import warnings
+        warnings.warn('cast is deprecated use coerce')
         return cls.coerce(data)
 
     @ub.memoize_property
@@ -502,15 +508,15 @@ class CategoryTree(ub.NiceRepr):
             >>> graph = nx.generators.gnr_graph(30, 0.3, seed=321).reverse()
             >>> self = CategoryTree(graph)
             >>> class_energy = torch.randn(64, len(self.idx_to_node))
-            >>> cond_logits = self.conditional_log_softmax(class_energy, dim=1)
+            >>> cond_logprobs = self.conditional_log_softmax(class_energy, dim=1)
             >>> # The sum of the conditional probabilities should be
             >>> # equal to the number of sibling groups.
-            >>> cond_probs = torch.exp(cond_logits).numpy()
+            >>> cond_probs = torch.exp(cond_logprobs).numpy()
             >>> assert np.allclose(cond_probs.sum(axis=1), len(self.idx_groups))
         """
-        cond_logits = torch.empty_like(class_energy)
+        cond_logprobs = torch.empty_like(class_energy)
         if class_energy.numel() == 0:
-            return cond_logits
+            return cond_logprobs
         # Move indexes onto the class_energy device (perhaps precache this)
         index_groups = [torch.LongTensor(idxs).to(class_energy.device)
                         for idxs in self.idx_groups]
@@ -520,18 +526,29 @@ class CategoryTree(ub.NiceRepr):
             # Take each subset of classes that are mutually exclusive
             energy_group = torch.index_select(class_energy, dim=dim, index=index)
             # Then apply the log_softmax to those sets
-            logit_group = F.log_softmax(energy_group, dim=dim)
-            cond_logits.index_copy_(dim, index, logit_group)
-        return cond_logits
+            logprob_group = F.log_softmax(energy_group, dim=dim)
+            cond_logprobs.index_copy_(dim, index, logprob_group)
+        return cond_logprobs
 
-    def _apply_logit_chain_rule(self, cond_logits, dim):
+    def _apply_logit_chain_rule(self, cond_logprobs, dim):
+        """
+        Incorrect name for backwards compatibility
+        """
+        import warnings
+        warnings.warn(
+            'Use _apply_logit_chain_rule is incorrectly named '
+            'and deprecated use _apply_logprob_chain_rule instead',
+            DeprecationWarning)
+        return self._apply_logprob_chain_rule(cond_logprobs, dim)
+
+    def _apply_logprob_chain_rule(self, cond_logprobs, dim):
         """
         Applies the probability chain rule (in log space, which has better
         numerical properties) to a set of conditional probabilities (wrt this
         hierarchy) to achieve absolute probabilities for each node.
 
         Args:
-            cond_logits (Tensor): conditional log probabilities for each class
+            cond_logprobs (Tensor): conditional log probabilities for each class
             dim (int): dimension where each index corresponds to a class
 
         Notes:
@@ -548,7 +565,7 @@ class CategoryTree(ub.NiceRepr):
             """ dynamic program to compute absolute class log probability """
             if node in memo:
                 return memo[node]
-            logp_node_given_parent = cond_logits.select(dim, self.node_to_idx[node])
+            logp_node_given_parent = cond_logprobs.select(dim, self.node_to_idx[node])
             parents = list(self.graph.predecessors(node))
             if len(parents) == 0:
                 logp_node = logp_node_given_parent
@@ -560,17 +577,17 @@ class CategoryTree(ub.NiceRepr):
             memo[node] = logp_node
             return logp_node
 
-        class_logits = torch.empty_like(cond_logits)
-        if cond_logits.numel() > 0:
+        class_logprobs = torch.empty_like(cond_logprobs)
+        if cond_logprobs.numel() > 0:
             for idx, node in enumerate(self.idx_to_node):
                 # Note: the this is the bottleneck in this function
                 if True:
-                    class_logits.select(dim, idx)[:] = log_prob(node)
+                    class_logprobs.select(dim, idx)[:] = log_prob(node)
                 else:
                     result = log_prob(node)  # 50% of the time
-                    _dest = class_logits.select(dim, idx)  # 8% of the time
+                    _dest = class_logprobs.select(dim, idx)  # 8% of the time
                     _dest[:] = result  # 37% of the time
-        return class_logits
+        return class_logprobs
 
     def source_log_softmax(self, class_energy, dim):
         """
@@ -598,8 +615,8 @@ class CategoryTree(ub.NiceRepr):
             >>> graph = nx.generators.gnr_graph(20, 0.3, seed=328).reverse()
             >>> self = CategoryTree(graph)
             >>> class_energy = torch.randn(3, len(self.idx_to_node))
-            >>> class_logits = self.hierarchical_log_softmax(class_energy, dim=-1)
-            >>> class_probs = torch.exp(class_logits)
+            >>> class_logprobs = self.hierarchical_log_softmax(class_energy, dim=-1)
+            >>> class_probs = torch.exp(class_logprobs)
             >>> for node, idx in self.node_to_idx.items():
             ...     # Check the total children probabilities
             ...     # is equal to the parent probablity.
@@ -612,9 +629,9 @@ class CategoryTree(ub.NiceRepr):
         """
         if dim < 0:
             dim = dim % class_energy.ndimension()
-        cond_logits = self.conditional_log_softmax(class_energy, dim=dim)
-        class_logits = self._apply_logit_chain_rule(cond_logits, dim=dim)
-        return class_logits
+        cond_logprobs = self.conditional_log_softmax(class_energy, dim=dim)
+        class_logprobs = self._apply_logprob_chain_rule(cond_logprobs, dim=dim)
+        return class_logprobs
 
     def sink_log_softmax(self, class_energy, dim):
         """
@@ -640,8 +657,8 @@ class CategoryTree(ub.NiceRepr):
             >>> graph = nx.generators.gnr_graph(20, 0.3, seed=328).reverse()
             >>> self = CategoryTree(graph)
             >>> class_energy = torch.randn(3, len(self.idx_to_node))
-            >>> class_logits = self.hierarchical_log_softmax(class_energy, dim=1)
-            >>> class_probs = torch.exp(class_logits)
+            >>> class_logprobs = self.hierarchical_log_softmax(class_energy, dim=1)
+            >>> class_probs = torch.exp(class_logprobs)
             >>> for node, idx in self.node_to_idx.items():
             ...     # Check the total children probabilities
             ...     # is equal to the parent probablity.
@@ -653,20 +670,20 @@ class CategoryTree(ub.NiceRepr):
             ...         torch.allclose(child_sum, p_node)
 
         Ignore:
-            >>> class_logits1 = self.sink_log_softmax(class_energy, dim=1)
-            >>> class_logits2 = self.source_log_softmax(class_energy, dim=1)
-            >>> class_probs1 = torch.exp(class_logits1)
-            >>> class_probs2 = torch.exp(class_logits2)
+            >>> class_logprobs1 = self.sink_log_softmax(class_energy, dim=1)
+            >>> class_logprobs2 = self.source_log_softmax(class_energy, dim=1)
+            >>> class_probs1 = torch.exp(class_logprobs1)
+            >>> class_probs2 = torch.exp(class_logprobs2)
         """
-        class_logits = torch.empty_like(class_energy)
+        class_logprobs = torch.empty_like(class_energy)
         leaf_idxs = sorted(self.node_to_idx[node]
                            for node in sink_nodes(self.graph))
         leaf_idxs = torch.LongTensor(leaf_idxs).to(class_energy.device)
 
         leaf_energy = torch.index_select(class_energy, dim=dim,
                                          index=leaf_idxs)
-        leaf_logits = F.log_softmax(leaf_energy, dim=dim)
-        class_logits.index_copy_(dim, leaf_idxs, leaf_logits)
+        leaf_logprobs = F.log_softmax(leaf_energy, dim=dim)
+        class_logprobs.index_copy_(dim, leaf_idxs, leaf_logprobs)
 
         @ub.memoize
         def populate2(node):
@@ -679,14 +696,14 @@ class CategoryTree(ub.NiceRepr):
                 child_idxs = sorted(self.node_to_idx[node] for node in children)
                 child_idxs = torch.LongTensor(child_idxs).to(class_energy.device)
                 node_idx = self.node_to_idx[node]
-                selected = torch.index_select(class_logits, dim=dim,
+                selected = torch.index_select(class_logprobs, dim=dim,
                                               index=child_idxs)
                 total = torch.logsumexp(selected, dim=dim)  # sum in logspace
-                class_logits.select(dim, node_idx)[:] = total
+                class_logprobs.select(dim, node_idx)[:] = total
 
         for node in self.graph.nodes():
             populate2(node)
-        return class_logits
+        return class_logprobs
 
     # TODO: Need to figure out the best way to parametarize which
     # of the source or sink softmaxes will be used by a network
@@ -695,19 +712,19 @@ class CategoryTree(ub.NiceRepr):
 
     def hierarchical_softmax(self, class_energy, dim):
         """ Convinience method which converts class-energy to final probs """
-        class_logits = self.hierarchical_log_softmax(class_energy, dim)
-        class_probs = torch.exp(class_logits)
+        class_logprobs = self.hierarchical_log_softmax(class_energy, dim)
+        class_probs = torch.exp(class_logprobs)
         return class_probs
 
     def graph_log_softmax(self, class_energy, dim):
-        """ Convinience method which converts class-energy to logits """
-        class_logits = self.hierarchical_log_softmax(class_energy, dim)
-        return class_logits
+        """ Convinience method which converts class-energy to logprobs """
+        class_logprobs = self.hierarchical_log_softmax(class_energy, dim)
+        return class_logprobs
 
     def graph_softmax(self, class_energy, dim):
         """ Convinience method which converts class-energy to final probs """
-        class_logits = self.hierarchical_log_softmax(class_energy, dim)
-        class_probs = torch.exp(class_logits)
+        class_logprobs = self.hierarchical_log_softmax(class_energy, dim)
+        class_probs = torch.exp(class_logprobs)
         return class_probs
 
     def hierarchical_cross_entropy(self, class_energy, targets,
@@ -715,11 +732,11 @@ class CategoryTree(ub.NiceRepr):
         """
         Combines hierarchical_log_softmax and nll_loss in a single function
         """
-        class_logits = self.hierarchical_log_softmax(class_energy, dim=1)
-        loss = F.nll_loss(class_logits, targets, reduction=reduction)
+        class_logprobs = self.hierarchical_log_softmax(class_energy, dim=1)
+        loss = F.nll_loss(class_logprobs, targets, reduction=reduction)
         return loss
 
-    def hierarchical_nll_loss(self, class_logits, targets):
+    def hierarchical_nll_loss(self, class_logprobs, targets):
         """
         Given predicted hierarchical class log-probabilities and target vectors
         indicating the finest-grained known target class, compute the loss such
@@ -731,20 +748,20 @@ class CategoryTree(ub.NiceRepr):
 
         Note that all the hard word needed to consider all coarser classes and
         ignore all finer grained classes is done in the computation of
-        `class_logits`. Given these and targets specified at the finest known
+        `class_logprobs`. Given these and targets specified at the finest known
         category for each target (which might be very coarse), we can simply
         use regular nll_loss and everything will work out.
 
-        This is because the class logits have already been computed using
+        This is because the class logprobs have already been computed using
         information from all conditional probabilities computed at itself and
         at each ancestor in the tree, and these conditional probabilities were
         computed with respect to all siblings at a given level, so the class
-        logits exactly contain the relevant information. In other words as long
+        logprobs exactly contain the relevant information. In other words as long
         as the log probabilities are computed correctly, then the nothing
         special needs to happen when computing the loss.
 
         Args:
-            class_logits (Tensor): log probabilities for each class
+            class_logprobs (Tensor): log probabilities for each class
             targets (Tensor): true class for each example
 
         Example:
@@ -759,8 +776,8 @@ class CategoryTree(ub.NiceRepr):
             >>> target_nodes = ['boxer', 'dog', 'quartz', 'animal', 'background']
             >>> targets = torch.LongTensor([self.node_to_idx[n] for n in target_nodes])
             >>> class_energy = torch.randn(len(targets), len(self), requires_grad=True)
-            >>> class_logits = self.hierarchical_log_softmax(class_energy, dim=-1)
-            >>> loss = self.hierarchical_nll_loss(class_logits, targets)
+            >>> class_logprobs = self.hierarchical_log_softmax(class_energy, dim=-1)
+            >>> loss = self.hierarchical_nll_loss(class_logprobs, targets)
             >>> # Note that only the relevant classes (wrt to the target) for
             >>> # each batch item receive gradients
             >>> loss.backward()
@@ -779,7 +796,7 @@ class CategoryTree(ub.NiceRepr):
             animal -> ['animal', 'background', 'mineral']
             background -> ['animal', 'background', 'mineral']
         """
-        loss = F.nll_loss(class_logits, targets)
+        loss = F.nll_loss(class_logprobs, targets)
         return loss
 
     def show(self):
@@ -819,8 +836,8 @@ class CategoryTree(ub.NiceRepr):
             >>> from ndsampler import category_tree
             >>> self = category_tree.CategoryTree.demo('btree', r=3, h=4)
             >>> class_energy = torch.randn(33, len(self))
-            >>> class_logits = self.hierarchical_log_softmax(class_energy, dim=-1)
-            >>> class_probs = torch.exp(class_logits).numpy()
+            >>> class_logprobs = self.hierarchical_log_softmax(class_energy, dim=-1)
+            >>> class_probs = torch.exp(class_logprobs).numpy()
             >>> dim = 1
             >>> thresh = 0.3
             >>> pred_idxs, pred_conf = self.decision(class_probs, dim, thresh=thresh)
@@ -931,8 +948,8 @@ class CategoryTree(ub.NiceRepr):
             >>> for i in range(8):
             >>>     class_energy[i + 1][path] += 2 ** (i / 4)
             >>> class_energy[i + 2][path] += 2 ** 20
-            >>> class_logits = self.hierarchical_log_softmax(class_energy, dim=-1)
-            >>> class_probs = torch.exp(class_logits).numpy()
+            >>> class_logprobs = self.hierarchical_log_softmax(class_energy, dim=-1)
+            >>> class_probs = torch.exp(class_logprobs).numpy()
             >>> print(ub.hzcat(['probs = ', ub.repr2(class_probs[:8], precision=2, supress_small=True)]))
             >>> dim = 1
             >>> criterion = 'entropy'

@@ -9,6 +9,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Fixed
 
 * `SerialFuture` was broken in python 3.8
+* Fixed incorrect use of the word "logit", what I was calling logits are
+  actually log probabilities.
 
 ### Added
 
