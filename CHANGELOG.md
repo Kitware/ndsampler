@@ -4,7 +4,25 @@ This changelog follows the specifications detailed in: [Keep a Changelog](https:
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
 
-## Version 0.5.3
+## Version 0.5.4
+
+### Fixed
+
+* `SerialFuture` was broken in python 3.8
+* Fixed incorrect use of the word "logit", what I was calling logits are
+  actually log probabilities.
+
+### Added
+
+* `_ensure_imgsize` can now use threads
+
+
+### Changed
+
+* `CocoDataset.union` now preserves image ids when possible. 
+
+
+## Version 0.5.3 - Released 2020-02-03
 
 ## Version 0.5.2 - Released 2020-01-31
 

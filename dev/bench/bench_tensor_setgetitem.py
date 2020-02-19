@@ -77,31 +77,31 @@ def _bench_put():
     outputs = ub.odict()
 
     for timer in ti.reset('put multi-index (fancy_index)'):
-        class_logits = torch.zeros_like(class_energy)
+        class_logprobs = torch.zeros_like(class_energy)
         with timer:
             fancy_prefix = [slice(None)] * dim
             fancy_index = tuple(fancy_prefix + [idxs])
             index = torch.LongTensor(idxs).to(class_energy.device)
             selected = torch.index_select(class_energy, dim=dim, index=index)
-            class_logits[fancy_index] = selected
-    outputs[ti.label] = class_logits.clone()
-    assert not torch.all(class_logits[fancy_index] == 0)
+            class_logprobs[fancy_index] = selected
+    outputs[ti.label] = class_logprobs.clone()
+    assert not torch.all(class_logprobs[fancy_index] == 0)
 
     for timer in ti.reset('put multi-index (loop, select)'):
-        class_logits = torch.zeros_like(class_energy)
+        class_logprobs = torch.zeros_like(class_energy)
         with timer:
             for idx in idxs:
-                class_logits.select(dim, idx)[:] = class_energy.select(dim, idx)
-    outputs[ti.label] = class_logits.clone()
-    assert torch.all(class_logits.select(dim, idx) == class_energy.select(dim, idx))
+                class_logprobs.select(dim, idx)[:] = class_energy.select(dim, idx)
+    outputs[ti.label] = class_logprobs.clone()
+    assert torch.all(class_logprobs.select(dim, idx) == class_energy.select(dim, idx))
 
     for timer in ti.reset('index-copy multi-index'):
-        class_logits = torch.zeros_like(class_energy)
+        class_logprobs = torch.zeros_like(class_energy)
         with timer:
             index = torch.LongTensor(idxs).to(class_energy.device)
             selected = torch.index_select(class_energy, dim=dim, index=index)
-            class_logits.index_copy_(dim, index, selected)
-    outputs[ti.label] = class_logits.clone()
+            class_logprobs.index_copy_(dim, index, selected)
+    outputs[ti.label] = class_logprobs.clone()
 
     for k1, k2 in ub.iter_window(outputs, 2):
         if torch.all(outputs[k1] == outputs[k2]):
@@ -111,41 +111,41 @@ def _bench_put():
             print((torch.abs(outputs[k1] - outputs[k2])).sum())
 
     # for timer in ti.reset('put multi-index 1 (fancy_index)'):
-    #     class_logits = torch.zeros_like(class_energy)
+    #     class_logprobs = torch.zeros_like(class_energy)
     #     with timer:
     #         fancy_prefix = [slice(None)] * dim
     #         fancy_index = tuple(fancy_prefix + [idxs])
-    #         class_logits[fancy_index] = class_logits[fancy_index] + 1
-    # outputs[ti.label] = class_logits.clone()
+    #         class_logprobs[fancy_index] = class_logprobs[fancy_index] + 1
+    # outputs[ti.label] = class_logprobs.clone()
 
-    # assert not torch.all(class_logits[fancy_index] == 0)
+    # assert not torch.all(class_logprobs[fancy_index] == 0)
 
     # for timer in ti.reset('put multi-index 1 (loop, select)'):
-    #     class_logits = torch.zeros_like(class_energy)
+    #     class_logprobs = torch.zeros_like(class_energy)
     #     with timer:
     #         for idx in idxs:
-    #             class_logits.select(dim, idx)[:] = class_logits.select(dim, idx) + 1
-    # assert torch.all(class_logits.select(dim, idx) == 1)
-    # outputs[ti.label] = class_logits.clone()
+    #             class_logprobs.select(dim, idx)[:] = class_logprobs.select(dim, idx) + 1
+    # assert torch.all(class_logprobs.select(dim, idx) == 1)
+    # outputs[ti.label] = class_logprobs.clone()
 
     for timer in ti.reset('index-copy multi-index (just-copy)'):
-        class_logits = torch.zeros_like(class_energy)
+        class_logprobs = torch.zeros_like(class_energy)
         index = torch.LongTensor(idxs).to(class_energy.device)
         selected = torch.index_select(class_energy, dim=dim, index=index)
         with timer:
-            class_logits.index_copy_(dim, index, selected)
-    outputs[ti.label] = class_logits.clone()
+            class_logprobs.index_copy_(dim, index, selected)
+    outputs[ti.label] = class_logprobs.clone()
 
     for timer in ti.reset('put multi-index (fancy_index) (just-copy)'):
-        class_logits = torch.zeros_like(class_energy)
+        class_logprobs = torch.zeros_like(class_energy)
         fancy_prefix = [slice(None)] * dim
         fancy_index = tuple(fancy_prefix + [idxs])
         index = torch.LongTensor(idxs).to(class_energy.device)
         selected = torch.index_select(class_energy, dim=dim, index=index)
         with timer:
-            class_logits[fancy_index] = selected
-    outputs[ti.label] = class_logits.clone()
-    assert not torch.all(class_logits[fancy_index] == 0)
+            class_logprobs[fancy_index] = selected
+    outputs[ti.label] = class_logprobs.clone()
+    assert not torch.all(class_logprobs[fancy_index] == 0)
 
 
 def _bench_catgraph_conditional_log_softmax_solution():
@@ -158,7 +158,7 @@ def _bench_catgraph_conditional_log_softmax_solution():
     dim = 1
 
     def method1(self, class_energy, dim):
-        cond_logits = torch.empty_like(class_energy)
+        cond_logprobs = torch.empty_like(class_energy)
         # Move indexes onto the class_energy device (perhaps precache this)
         index_groups = [torch.LongTensor(idxs).to(class_energy.device)
                         for idxs in self.idx_groups]
@@ -166,29 +166,29 @@ def _bench_catgraph_conditional_log_softmax_solution():
             # Take each subset of classes that are mutually exclusive
             energy_group = torch.index_select(class_energy, dim=dim, index=index)
             # Then apply the log_softmax to those sets
-            logit_group = F.log_softmax(energy_group, dim=dim)
-            cond_logits.index_copy_(dim, index, logit_group)
-        return cond_logits
+            logprob_group = F.log_softmax(energy_group, dim=dim)
+            cond_logprobs.index_copy_(dim, index, logprob_group)
+        return cond_logprobs
 
     def method2(self, class_energy, dim):
-        cond_logits = torch.empty_like(class_energy)
+        cond_logprobs = torch.empty_like(class_energy)
         fancy_prefix = [slice(None)] * dim
         for idxs in self.idx_groups:
             fancy_index = tuple(fancy_prefix + [idxs])
-            cond_logits[fancy_index] = F.log_softmax(class_energy[fancy_index], dim=dim)
-        return cond_logits
+            cond_logprobs[fancy_index] = F.log_softmax(class_energy[fancy_index], dim=dim)
+        return cond_logprobs
 
     ti = CudaTimerit(500, bestof=50, verbose=1, unit='us')
     outputs = ub.odict()
     for timer in ti.reset('method1'):
         with timer:
-            cond_logits = method1(self, class_energy, dim)
-    outputs[ti.label] = cond_logits.clone()
+            cond_logprobs = method1(self, class_energy, dim)
+    outputs[ti.label] = cond_logprobs.clone()
 
     for timer in ti.reset('method2'):
         with timer:
-            cond_logits = method2(self, class_energy, dim)
-    outputs[ti.label] = cond_logits.clone()
+            cond_logprobs = method2(self, class_energy, dim)
+    outputs[ti.label] = cond_logprobs.clone()
 
     # ------
 
@@ -219,11 +219,11 @@ def _bench_catgraph_sink_log_softmax():
     def sink_log_softmax_method1(self, class_energy, dim):
         leaf_idxs = sorted(self.node_to_idx[node]
                            for node in sink_nodes(self.graph))
-        class_logits = torch.empty_like(class_energy)
+        class_logprobs = torch.empty_like(class_energy)
 
         fancy_prefix = [slice(None)] * dim
         fancy_index = tuple(fancy_prefix + [leaf_idxs])
-        class_logits[fancy_index] = F.log_softmax(class_energy[fancy_index], dim=dim)
+        class_logprobs[fancy_index] = F.log_softmax(class_energy[fancy_index], dim=dim)
 
         @ub.memoize
         def populate1(node):
@@ -237,21 +237,21 @@ def _bench_catgraph_sink_log_softmax():
                 node_idx = self.node_to_idx[node]
                 fancy_node_index = tuple(fancy_prefix + [node_idx])
                 fancy_children_index = tuple(fancy_prefix + [child_idxs])
-                class_logits[fancy_node_index] = torch.logsumexp(class_logits[fancy_children_index], dim=dim)
+                class_logprobs[fancy_node_index] = torch.logsumexp(class_logprobs[fancy_children_index], dim=dim)
         for node in self.graph.nodes():
             populate1(node)
-        return class_logits
+        return class_logprobs
 
     def sink_log_softmax_method2(self, class_energy, dim):
-        class_logits = torch.empty_like(class_energy)
+        class_logprobs = torch.empty_like(class_energy)
         leaf_idxs = sorted(self.node_to_idx[node]
                            for node in sink_nodes(self.graph))
         leaf_idxs = torch.LongTensor(leaf_idxs).to(class_energy.device)
 
         leaf_energy = torch.index_select(class_energy, dim=dim,
                                          index=leaf_idxs)
-        leaf_logits = F.log_softmax(leaf_energy, dim=dim)
-        class_logits.index_copy_(dim, leaf_idxs, leaf_logits)
+        leaf_logprobs = F.log_softmax(leaf_energy, dim=dim)
+        class_logprobs.index_copy_(dim, leaf_idxs, leaf_logprobs)
 
         @ub.memoize
         def populate2(node):
@@ -264,14 +264,14 @@ def _bench_catgraph_sink_log_softmax():
                 child_idxs = sorted(self.node_to_idx[node] for node in children)
                 child_idxs = torch.LongTensor(child_idxs).to(class_energy.device)
                 node_idx = self.node_to_idx[node]
-                selected = torch.index_select(class_logits, dim=dim,
+                selected = torch.index_select(class_logprobs, dim=dim,
                                               index=child_idxs)
                 total = torch.logsumexp(selected, dim=dim)
-                class_logits.select(dim, node_idx)[:] = total
+                class_logprobs.select(dim, node_idx)[:] = total
 
         for node in self.graph.nodes():
             populate2(node)
-        return class_logits
+        return class_logprobs
 
     from ovharn import category_tree
     graph = nx.generators.gnr_graph(30, 0.3, seed=321).reverse()
@@ -284,13 +284,13 @@ def _bench_catgraph_sink_log_softmax():
     outputs = ub.odict()
     for timer in ti.reset('method1'):
         with timer:
-            cond_logits = sink_log_softmax_method1(self, class_energy, dim)
-    outputs[ti.label] = cond_logits.clone()
+            cond_logprobs = sink_log_softmax_method1(self, class_energy, dim)
+    outputs[ti.label] = cond_logprobs.clone()
 
     for timer in ti.reset('method2'):
         with timer:
-            cond_logits = sink_log_softmax_method2(self, class_energy, dim)
-    outputs[ti.label] = cond_logits.clone()
+            cond_logprobs = sink_log_softmax_method2(self, class_energy, dim)
+    outputs[ti.label] = cond_logprobs.clone()
 
     for k1, k2 in ub.iter_window(outputs, 2):
         if torch.all(outputs[k1] == outputs[k2]):
