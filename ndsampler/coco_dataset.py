@@ -1872,14 +1872,62 @@ class MixinCocoStats(object):
             >>> print(ub.repr2(self.extended_stats()))
         """
         def mapping_stats(xid_to_yids):
-            from ndsampler import util
+            import kwarray
             n_yids = list(ub.map_vals(len, xid_to_yids).values())
-            return util.stats_dict(n_yids, n_extreme=True)
+            return kwarray.stats_dict(n_yids, n_extreme=True)
         return ub.odict([
             ('annots_per_img', mapping_stats(self.gid_to_aids)),
             # ('cats_per_img', mapping_stats(self.cid_to_gids)),
             ('annots_per_cat', mapping_stats(self.cid_to_aids)),
         ])
+
+    def boxsize_stats(self, anchors=None, perclass=True):
+        """
+        Compute statistics about bounding box sizes.
+
+        Args:
+            anchors (int): if specified also computes box anchors
+            perclass (bool): if True also computes stats for each category
+
+        Example:
+            >>> self = CocoDataset.demo('shapes32')
+            >>> infos = self.boxsize_stats(anchors=4, perclass=False)
+            >>> print(ub.repr2(infos, nl=-1, precision=2))
+        """
+        import kwarray
+        cname_to_box_sizes = ub.ddict(list)
+        for ann in self.dataset['annotations']:
+            if 'bbox' in ann:
+                cname = self.cats[ann['category_id']]['name']
+                cname_to_box_sizes[cname].append(ann['bbox'][2:4])
+        cname_to_box_sizes = ub.map_vals(np.array, cname_to_box_sizes)
+
+        def _boxes_info(box_sizes):
+            box_info = {
+                'stats': kwarray.stats_dict(box_sizes, axis=0)
+            }
+            if anchors:
+                from sklearn import cluster
+                algo = cluster.KMeans(
+                    n_clusters=anchors, n_init=20, max_iter=10000, tol=1e-6,
+                    algorithm='elkan', verbose=0)
+                algo.fit(box_sizes)
+                anchor_sizes = algo.cluster_centers_
+                box_info['anchors'] = anchor_sizes
+            return box_info
+
+        infos = {}
+
+        if perclass:
+            cid_to_info = {}
+            for cname, box_sizes in cname_to_box_sizes.items():
+                cid_to_info[cname] = _boxes_info(box_sizes)
+            infos['perclass'] = cid_to_info
+
+        all_sizes = np.vstack(list(cname_to_box_sizes.values()))
+        all_info = _boxes_info(all_sizes)
+        infos['all'] = all_info
+        return infos
 
 
 class _NextId(object):
