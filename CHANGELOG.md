@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## Version 0.5.5
 
 
+### Changed
+* Moved `ndsampler.util_futures` and `ndsampler.util` into `ndsampler.utils`.
+  Old ways of accessing these files will raise deprecation warnings.
+
+
+### Fixed:
+* Using a better stratified split algorithm
+
+
 ### Added
 
 * Added `boxsize_stats` to `CocoDataset`.

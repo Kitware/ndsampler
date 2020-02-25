@@ -25,7 +25,7 @@ import itertools as it
 import ubelt as ub  # NOQA
 import numpy as np
 from os.path import join
-from ndsampler import util
+from ndsampler.utils import util_misc
 from ndsampler import isect_indexer
 from ndsampler import coco_dataset
 import kwarray
@@ -76,7 +76,7 @@ class Targets(object):
         return n_pos, n_neg
 
 
-class CocoRegions(Targets, util.HashIdentifiable, ub.NiceRepr):
+class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
     """
     Converts Coco-Style datasets into a table for efficient on-line work
 

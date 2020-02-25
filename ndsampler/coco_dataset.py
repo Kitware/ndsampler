@@ -1008,7 +1008,7 @@ class MixinCocoExtras(object):
             else:
                 desc = 'populate imgsize for untagged coco dataset'
 
-            from ndsampler import util_futures
+            from ndsampler.utils import util_futures
             pool = util_futures.JobPool('thread', max_workers=workers)
             for img in ub.ProgIter(self.dataset['images'], verbose=verbose,
                                    desc='submit image size jobs'):

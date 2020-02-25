@@ -651,7 +651,7 @@ class Frames(object):
         # print('stamp.cacher.enabled = {!r}'.format(stamp.cacher.enabled))
 
         if stamp.expired() or hashid is None:
-            from ndsampler import util_futures
+            from ndsampler.utils import util_futures
             from concurrent import futures
             # Use thread mode, because we are mostly in doing io.
             executor = util_futures.Executor(mode='thread', max_workers=workers)
