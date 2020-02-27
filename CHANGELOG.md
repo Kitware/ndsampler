@@ -14,6 +14,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed:
 * Using a better stratified split algorithm
+* Fixed issue with prepare and the npy backend when too many files were opened
 
 
 ### Added
