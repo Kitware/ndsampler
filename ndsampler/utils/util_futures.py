@@ -159,3 +159,7 @@ class JobPool(object):
         from concurrent.futures import as_completed
         for job in as_completed(self.jobs):
             yield job
+
+    def __iter__(self):
+        for job in self.as_completed():
+            yield job
