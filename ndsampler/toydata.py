@@ -310,7 +310,7 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
                      n_annots=(0, 50), fg_scale=0.5, bg_scale=0.8,
                      bg_intensity=0.1, fg_intensity=0.9,
                      gray=True, centerobj=None, exact=False,
-                     newstyle=True, rng=None):
+                     newstyle=True, rng=None, aux=None):
     r"""
     Generate a single image with non-overlapping toy objects of available
     categories.
@@ -343,6 +343,8 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
         newstyle (bool): use new-sytle mscoco format
 
         rng (RandomState): the random state used to seed the process
+
+        aux: if specified builds auxillary channels
 
     CommandLine:
         xdoctest -m ndsampler.toydata demodata_toy_img:0 --profile
@@ -379,11 +381,13 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
 
     Example:
         >>> # xdoctest: +REQUIRES(--show)
-        >>> img, anns = demodata_toy_img(gsize=(172, 172), rng=None)
+        >>> img, anns = demodata_toy_img(gsize=(172, 172), rng=None, aux=True)
         >>> print('anns = {}'.format(ub.repr2(anns, nl=1)))
         >>> import kwplot
         >>> kwplot.autompl()
-        >>> kwplot.imshow(img['imdata'])
+        >>> kwplot.imshow(img['imdata'], pnum=(1, 2, 1), fnum=1)
+        >>> auxdata = img['aux'][0]['imdata']
+        >>> kwplot.imshow(auxdata, pnum=(1, 2, 2), fnum=1)
         >>> kwplot.show_if_requested()
 
     Ignore:
@@ -478,6 +482,11 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
 
     np.clip(imdata, 0, 1, out=imdata)
 
+    if aux:
+        auxdata = np.zeros(gshape, dtype=np.float32)
+    else:
+        auxdata = None
+
     catnames = []
 
     tlbr_boxes = boxes.to_tlbr().data
@@ -507,6 +516,13 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
         }
         anns.append(ann)
 
+        if auxdata is not None:
+            seg = kwimage.Segmentation.coerce(info['segmentation'])
+            seg = seg.to_multi_polygon()
+            val = rng.uniform(0.2, 1.0)
+            # val = 1.0
+            auxdata = seg.fill(auxdata, value=val)
+
     if 0:
         imdata.mean(axis=2, out=imdata[:, :, 0])
         imdata[:, :, 1] = imdata[:, :, 0]
@@ -515,16 +531,33 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
     imdata = (imdata * 255).astype(np.uint8)
     imdata = kwimage.atleast_3channels(imdata)
 
+    main_channels = 'rgb'
+    # main_channels = 'gray' if gray else 'rgb'
+
     img = {
         'width': gw,
         'height': gh,
         'imdata': imdata,
+        'channels': main_channels,
     }
+
+    if auxdata is not None:
+        mask = rng.rand(*auxdata.shape[0:2]) > 0.5
+        auxdata = kwimage.fourier_mask(auxdata, mask)
+        auxdata = (auxdata - auxdata.min())
+        auxdata = (auxdata / auxdata.max())
+        auxdata = auxdata.clip(0, 1)
+        # Hack aux data is always disparity for now
+        img['aux'] = [{
+            'imdata': auxdata,
+            'channels': ['disparity'],
+        }]
+
     return img, anns
 
 
 def demodata_toy_dset(gsize=(600, 600), n_imgs=5, verbose=3, rng=0,
-                      newstyle=True, dpath=None):
+                      newstyle=True, dpath=None, aux=None):
     """
     Create a toy detection problem
 
@@ -549,7 +582,7 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5, verbose=3, rng=0,
     Example:
         >>> from ndsampler.toydata import *
         >>> import ndsampler
-        >>> dataset = demodata_toy_dset(gsize=(300, 300))
+        >>> dataset = demodata_toy_dset(gsize=(300, 300), aux=True)
         >>> dpath = ub.ensure_app_cache_dir('ndsampler', 'toy_dset')
         >>> dset = ndsampler.CocoDataset(dataset)
         >>> # xdoctest: +REQUIRES(--show)
@@ -594,13 +627,15 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5, verbose=3, rng=0,
         'newstyle': newstyle,
         'keypoint_categories': catpats.keypoint_categories,
         'rng': ub.hash_data(rng),
+        'aux': aux,
     }
     cacher = ub.Cacher('toy_dset_v3', dpath=ub.ensuredir(dpath, 'cache'),
                        cfgstr=ub.repr2(cfg), verbose=verbose, enabled=0)
 
-    img_dpath = ub.ensuredir((dpath, 'imgs_{}_{}'.format(
+    root_dpath = ub.ensuredir((dpath, 'shapes_{}_{}'.format(
         cfg['n_imgs'], cacher._condense_cfgstr())))
-    print('img_dpath = {!r}'.format(img_dpath))
+
+    img_dpath = ub.ensuredir((root_dpath, 'images'))
 
     n_have = len(list(glob.glob(join(img_dpath, '*.png'))))
     print('n_have = {!r}'.format(n_have))
@@ -644,15 +679,34 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5, verbose=3, rng=0,
                                          categories=catpats,
                                          newstyle=newstyle, fg_scale=fg_scale,
                                          bg_scale=bg_scale,
-                                         bg_intensity=bg_intensity, rng=rng)
+                                         bg_intensity=bg_intensity, rng=rng,
+                                         aux=aux)
             imdata = img.pop('imdata')
 
             gid = len(dataset['images']) + 1
-            fpath = join(img_dpath, 'img_{:05d}.png'.format(gid))
+            fname = 'img_{:05d}.png'.format(gid)
+            fpath = join(img_dpath, fname)
             img.update({
                 'id': gid,
                 'file_name': fpath
             })
+            auxillaries = img.pop('aux', None)
+            if auxillaries is not None:
+                for auxdict in auxillaries:
+                    aux_dpath = ub.ensuredir(
+                        (root_dpath, 'aux_' + '_'.join(auxdict['channels'])))
+                    aux_fpath = ub.augpath(join(aux_dpath, fname), ext='.tiff')
+                    ub.ensuredir(aux_dpath)
+                    auxdata = auxdict.pop('imdata')
+                    auxdict['file_name'] = aux_fpath
+
+                    try:
+                        import gdal  # NOQA
+                        kwimage.imwrite(aux_fpath, auxdata, backend='gdal')
+                    except Exception:
+                        kwimage.imwrite(aux_fpath, auxdata)
+
+                img['aux'] = auxillaries
 
             dataset['images'].append(img)
             for ann in anns:
@@ -670,6 +724,10 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5, verbose=3, rng=0,
                 dataset['annotations'].append(ann)
 
             kwimage.imwrite(fpath, imdata)
+
+        import json
+        with open(join(dpath, 'toy_dset.mscoco.json'), 'w') as file:
+            json.dump(dataset, file, indent='    ')
 
         cacher.enabled = True
         cacher.save(dataset)

@@ -2125,14 +2125,14 @@ class MixinCocoDraw(object):
 
                 HAVE_KWIMAGE = True
                 if HAVE_KWIMAGE:
-                    from kwimage.structs.mask import _coerce_coco_segmentation
                     if catcolor is not None:
                         catcolor = kwplot.Color(catcolor).as01()
                     # TODO: Unify masks and polygons into a kwimage
                     # segmentation class
-                    sseg = _coerce_coco_segmentation(sseg)
+                    sseg = kwimage.Segmentation.coerce(sseg).data
                     if isinstance(sseg, kwimage.Mask):
-                        sseg_masks.append((sseg, catcolor))
+                        m = sseg.to_c_mask()
+                        sseg_masks.append((m.data, catcolor))
                     else:
                         # TODO: interior
                         poly_xys = sseg.data['exterior'].data
