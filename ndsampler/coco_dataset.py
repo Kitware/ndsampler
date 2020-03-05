@@ -22,7 +22,9 @@ Dataset Spec:
             ...
         ],
         'images': [
-            {'id': int, 'file_name': str},
+            {
+                'id': int, 'file_name': str
+            },
             ...
         ],
         'annotations': [
@@ -104,6 +106,22 @@ Dataset Spec:
 
         We also have a new top-level dictionary to specify all the possible
         keypoint categories.
+
+    Auxillary Channels:
+        For multimodal or multispectral images it is possible to specify
+        auxillary channels in an image dictionary as follows:
+
+        {
+            'id': int, 'file_name': str
+            'channels': <spec>,  # a spec code that indicates the layout of these channels.
+            'auxillary': [  # information about auxillary channels
+                {
+                    'file_name':
+                    'channels': <spec>
+                }, ... # can have many auxillary channels with unique specs
+            ]
+        }
+
 
 Notes:
     The main object in this file is `class`:CocoDataset, which is composed of
@@ -710,13 +728,37 @@ class MixinCocoExtras(object):
         Returns:
             PathLike: full path to the image
         """
-        try:
-            img = gid_or_img
-            gpath = join(self.img_root, img['file_name'])
-        except Exception:
-            img = self.imgs[gid_or_img]
-            gpath = join(self.img_root, img['file_name'])
+        img = self._resolve_to_img(gid_or_img)
+        gpath = join(self.img_root, img['file_name'])
         return gpath
+
+    def _get_img_auxillary(self, gid_or_img, channels):
+        """ returns the auxillary dictionary for a specific channel """
+        img = self._resolve_to_img(gid_or_img)
+        found = None
+        for aux in img['auxillary']:
+            if aux['channels'] == channels:
+                found = aux
+                break
+        if found is None:
+            raise Exception('Image does not have auxillary channels={}'.format(channels))
+        return found
+
+    def get_auxillary_fpath(self, gid_or_img, channels):
+        """
+        Returns the full path to auxillary data for an image
+
+        Args:
+            gid_or_img (int | dict): an image or its id
+            channels (str): the auxillary channel to load (e.g. disparity)
+
+        Example:
+            >>> self = ndsampler.CocoDataset.demo('shapes8', aux=True)
+            >>> self.get_auxillary_fpath(1, 'disparity')
+        """
+        aux = self._get_img_auxillary(gid_or_img, channels)
+        fpath = join(self.img_root, aux['file_name'])
+        return fpath
 
     def load_annot_sample(self, aid_or_ann, image=None, pad=None):
         """
@@ -1086,6 +1128,26 @@ class MixinCocoExtras(object):
         else:
             resolved_ann = aid_or_ann
         return resolved_ann
+
+    def _resolve_to_img(self, gid_or_img):
+        """
+        Ensures output is an image dictionary
+        """
+        if isinstance(gid_or_img, INT_TYPES):
+            resolved_img = None
+            if self.imgs is not None:
+                resolved_img = self.imgs[gid_or_img]
+            else:
+                for img in self.dataset['imgotations']:
+                    if img['id'] == gid_or_img:
+                        resolved_img = img
+                        break
+                if not resolved_img:
+                    raise IndexError(
+                        'gid {} not in dataset'.format(gid_or_img))
+        else:
+            resolved_img = gid_or_img
+        return resolved_img
 
     def _resolve_to_kpcat(self, kp_identifier):
         """
@@ -1695,6 +1757,15 @@ class MixinCocoExtras(object):
             >>> # Switch back to relative paths
             >>> self.rebase()
             >>> assert self.imgs[1]['file_name'].startswith('.cache')
+
+        Example:
+            >>> # demo with auxillary data
+            >>> import ndsampler
+            >>> self = ndsampler.CocoDataset.demo('shapes8', aux=True)
+            >>> img_root = ub.expandpath('~')
+            >>> self.rebase(img_root)
+            >>> assert self.imgs[1]['file_name'].startswith('.cache')
+            >>> assert self.imgs[1]['auxillary'][0]['file_name'].startswith('.cache')
         """
         from os.path import exists, relpath
 
@@ -1705,7 +1776,6 @@ class MixinCocoExtras(object):
 
         for img in self.imgs.values():
             abs_file_path = join(old_img_root, img['file_name'])
-
             if absolute:
                 img['file_name'] = abs_file_path
             else:
@@ -1716,6 +1786,13 @@ class MixinCocoExtras(object):
                 if not exists(abs_gpath):
                     raise Exception(
                         'Image does not exist: {!r}'.format(abs_gpath))
+
+            for aux in img.get('auxillary', []):
+                abs_file_path = join(old_img_root, aux['file_name'])
+                if absolute:
+                    aux['file_name'] = abs_file_path
+                else:
+                    aux['file_name'] = relpath(abs_file_path, new_img_root)
 
         self.img_root = new_img_root
 

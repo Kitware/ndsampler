@@ -386,7 +386,7 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
         >>> import kwplot
         >>> kwplot.autompl()
         >>> kwplot.imshow(img['imdata'], pnum=(1, 2, 1), fnum=1)
-        >>> auxdata = img['aux'][0]['imdata']
+        >>> auxdata = img['auxillary'][0]['imdata']
         >>> kwplot.imshow(auxdata, pnum=(1, 2, 2), fnum=1)
         >>> kwplot.show_if_requested()
 
@@ -548,16 +548,16 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
         auxdata = (auxdata / auxdata.max())
         auxdata = auxdata.clip(0, 1)
         # Hack aux data is always disparity for now
-        img['aux'] = [{
+        img['auxillary'] = [{
             'imdata': auxdata,
-            'channels': ['disparity'],
+            'channels': 'disparity',
         }]
 
     return img, anns
 
 
 def demodata_toy_dset(gsize=(600, 600), n_imgs=5, verbose=3, rng=0,
-                      newstyle=True, dpath=None, aux=None):
+                      newstyle=True, dpath=None, aux=None, cache=True):
     """
     Create a toy detection problem
 
@@ -582,7 +582,7 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5, verbose=3, rng=0,
     Example:
         >>> from ndsampler.toydata import *
         >>> import ndsampler
-        >>> dataset = demodata_toy_dset(gsize=(300, 300), aux=True)
+        >>> dataset = demodata_toy_dset(gsize=(300, 300), aux=True, cache=False)
         >>> dpath = ub.ensure_app_cache_dir('ndsampler', 'toy_dset')
         >>> dset = ndsampler.CocoDataset(dataset)
         >>> # xdoctest: +REQUIRES(--show)
@@ -638,9 +638,8 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5, verbose=3, rng=0,
     img_dpath = ub.ensuredir((root_dpath, 'images'))
 
     n_have = len(list(glob.glob(join(img_dpath, '*.png'))))
-    print('n_have = {!r}'.format(n_have))
     # Hack: Only allow cache loading if the data seems to exist
-    cacher.enabled = n_have == n_imgs
+    cacher.enabled = (n_have == n_imgs) and cache
 
     bg_intensity = .1
     fg_scale = 0.5
@@ -688,25 +687,27 @@ def demodata_toy_dset(gsize=(600, 600), n_imgs=5, verbose=3, rng=0,
             fpath = join(img_dpath, fname)
             img.update({
                 'id': gid,
-                'file_name': fpath
+                'file_name': fpath,
+                'channels': 'rgb',
             })
-            auxillaries = img.pop('aux', None)
+            auxillaries = img.pop('auxillary', None)
             if auxillaries is not None:
                 for auxdict in auxillaries:
                     aux_dpath = ub.ensuredir(
-                        (root_dpath, 'aux_' + '_'.join(auxdict['channels'])))
-                    aux_fpath = ub.augpath(join(aux_dpath, fname), ext='.tiff')
+                        (root_dpath, 'aux_' + auxdict['channels']))
+                    aux_fpath = ub.augpath(join(aux_dpath, fname), ext='.tif')
                     ub.ensuredir(aux_dpath)
-                    auxdata = auxdict.pop('imdata')
+                    auxdata = (auxdict.pop('imdata') * 255).astype(np.uint8)
                     auxdict['file_name'] = aux_fpath
 
+                    print(kwarray.stats_dict(auxdata))
                     try:
                         import gdal  # NOQA
                         kwimage.imwrite(aux_fpath, auxdata, backend='gdal')
                     except Exception:
                         kwimage.imwrite(aux_fpath, auxdata)
 
-                img['aux'] = auxillaries
+                img['auxillary'] = auxillaries
 
             dataset['images'].append(img)
             for ann in anns:
