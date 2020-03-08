@@ -2258,13 +2258,18 @@ class MixinCocoDraw(object):
 
         np_img = kwimage.atleast_3channels(np_img)
 
+        np_img01 = None
+        if np_img.dtype.kind in {'i', 'u'}:
+            if np_img.max() > 255:
+                np_img01 = np_img / np_img.max()
+
         fig = plt.gcf()
         ax = fig.gca()
         ax.cla()
 
         if sseg_masks:
-            np_img01 = np_img / 255.0
-
+            if np_img01 is None:
+                np_img01 = kwimage.ensure_float01(np_img)
             layers = []
             layers.append(kwimage.ensure_alpha_channel(np_img01))
             distinct_colors = kwplot.Color.distinct(len(sseg_masks))
@@ -2283,7 +2288,10 @@ class MixinCocoDraw(object):
 
             ax.imshow(masked_img)
         else:
-            ax.imshow(np_img)
+            if np_img01 is not None:
+                ax.imshow(np_img01)
+            else:
+                ax.imshow(np_img)
 
         title = kwargs.get('title', None)
         if title is None:
@@ -2446,6 +2454,21 @@ class MixinCocoAddRemove(object):
         # And add to the indexes
         index._add_category(id, name, cat)
         self._invalidate_hashid(['categories'])
+        return id
+
+    def ensure_image(self, file_name, id=None, **kw):
+        """
+        Like add_image, but returns the existing image id if it already
+        exists instead of failing. In this case all metadata is ignored.
+
+        Returns:
+            int: the existing or new image id
+        """
+        try:
+            id = self.add_image(file_name=file_name, id=id, **kw)
+        except ValueError:
+            img = self.index.file_name_to_img[file_name]
+            id = img['id']
         return id
 
     def ensure_category(self, name, supercategory=None, id=None, **kw):
