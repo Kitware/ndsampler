@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+
 """
 An implementation and extension of the original MS-COCO API [1]_.
 
@@ -1003,8 +1004,8 @@ class MixinCocoExtras(object):
 
         Returns:
             List[dict]: a list of "bad" image dictionaries where the size could
-            not be determined. Typically these are corrupted images and should
-            be removed.
+                not be determined. Typically these are corrupted images and
+                should be removed.
 
         Example:
             >>> # Normal case
@@ -1027,36 +1028,20 @@ class MixinCocoExtras(object):
         bad_images = []
         if any('width' not in img or 'height' not in img
                for img in self.dataset['images']):
-            from PIL import Image
-
-            def _find_imgshape(gpath):
-                try:
-                    pil_img = Image.open(gpath)
-                    w, h = pil_img.size
-                    pil_img.close()
-                except Exception as pil_ex:
-                    try:
-                        import gdal
-                        dset = gdal.Open(gpath, gdal.GA_ReadOnly)
-                        w = dset.RasterXSize
-                        h = dset.RasterYSize
-                    except Exception:
-                        raise pil_ex
-                return h, w
-            # TODO: use kwimage.im_io.load_image_shape instead
+            import kwimage
+            from ndsampler.utils import util_futures
 
             if self.tag:
                 desc = 'populate imgsize for ' + self.tag
             else:
                 desc = 'populate imgsize for untagged coco dataset'
 
-            from ndsampler.utils import util_futures
             pool = util_futures.JobPool('thread', max_workers=workers)
             for img in ub.ProgIter(self.dataset['images'], verbose=verbose,
                                    desc='submit image size jobs'):
                 gpath = join(self.img_root, img['file_name'])
                 if 'width' not in img or 'height' not in img:
-                    job = pool.submit(_find_imgshape, gpath)
+                    job = pool.submit(kwimage.load_image_shape, gpath)
                     job.img = img
 
             for job in ub.ProgIter(pool.as_completed(), total=len(pool),
@@ -1316,6 +1301,7 @@ class MixinCocoExtras(object):
             import graphid
             graphid.util.show_nx(graph)
         """
+        # TODO: should supercategories that don't exist as nodes be added here?
         import networkx as nx
         graph = nx.DiGraph()
         for cat in self.dataset['categories']:
@@ -1433,10 +1419,11 @@ class MixinCocoExtras(object):
             else:
                 raise Exception('missing image, but no url')
 
-    def missing_images(self):
+    def missing_images(self, verbose=0):
         import os
         bad_paths = []
-        for index in ub.ProgIter(range(len(self.dataset['images']))):
+        for index in ub.ProgIter(range(len(self.dataset['images'])),
+                                 verbose=verbose):
             img = self.dataset['images'][index]
             gpath = join(self.img_root, img['file_name'])
             if not os.path.exists(gpath):
@@ -3476,6 +3463,12 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
                 file.write(self.dumps(indent=indent, newlines=newlines))
             else:
                 json.dump(self.dataset, file, indent=indent, ensure_ascii=False)
+
+    def _check_integrity(self):
+        """ perform all checks """
+        self._check_index()
+        self._check_pointers()
+        assert len(self.missing_images()) == 0
 
     def _check_index(self):
         # We can verify our index invariants by copying the raw dataset and
