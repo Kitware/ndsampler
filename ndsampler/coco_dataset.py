@@ -1945,13 +1945,22 @@ class MixinCocoStats(object):
             ('annots_per_cat', mapping_stats(self.cid_to_aids)),
         ])
 
-    def boxsize_stats(self, anchors=None, perclass=True):
+    def boxsize_stats(self, anchors=None, perclass=True, verbose=0,
+                      clusterkw={}):
         """
         Compute statistics about bounding box sizes.
+
+        Also computes anchor boxes using kmeans if ``anchors`` is specified.
 
         Args:
             anchors (int): if specified also computes box anchors
             perclass (bool): if True also computes stats for each category
+            verbose (int): verbosity level
+            clusterkw (dict): kwargs for :class:`sklearn.cluster.KMeans` used
+                if computing anchors.
+
+        Returns:
+            Dict[str, Dict[str, Dict | ndarray]
 
         Example:
             >>> self = CocoDataset.demo('shapes32')
@@ -1972,9 +1981,16 @@ class MixinCocoStats(object):
             }
             if anchors:
                 from sklearn import cluster
-                algo = cluster.KMeans(
-                    n_clusters=anchors, n_init=20, max_iter=10000, tol=1e-6,
-                    algorithm='elkan', verbose=0)
+                defaultkw = {
+                    'n_clusters': anchors,
+                    'n_init': 20,
+                    'max_iter': 10000,
+                    'tol': 1e-6,
+                    'algorithm': 'elkan',
+                    'verbose': verbose
+                }
+                kmkw = ub.dict_union(defaultkw, clusterkw)
+                algo = cluster.KMeans(**kmkw)
                 algo.fit(box_sizes)
                 anchor_sizes = algo.cluster_centers_
                 box_info['anchors'] = anchor_sizes
@@ -1985,9 +2001,13 @@ class MixinCocoStats(object):
         if perclass:
             cid_to_info = {}
             for cname, box_sizes in cname_to_box_sizes.items():
+                if verbose:
+                    print('compute {} bbox stats'.format(cname))
                 cid_to_info[cname] = _boxes_info(box_sizes)
             infos['perclass'] = cid_to_info
 
+        if verbose:
+            print('compute all bbox stats')
         all_sizes = np.vstack(list(cname_to_box_sizes.values()))
         all_info = _boxes_info(all_sizes)
         infos['all'] = all_info
