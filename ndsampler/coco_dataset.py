@@ -283,6 +283,42 @@ class ObjectList1D(ub.NiceRepr):
                     attr_list = [_lut[_id].get(key, default) for _id in self._ids]
             return attr_list
 
+    def get(self, key, default=ub.NoParam):
+        """ alias for lookup """
+        assert not ub.iterable(key)
+        return self.lookup(key, default=default)
+
+    def set(self, key, values):
+        """
+        Assign a value to each annotation
+
+        Args:
+            key (str): the annotation property to modify
+            values (Iterable | scalar): an iterable of values to set for each
+                annot in the dataset. If the item is not iterable, it is
+                assigned to all objects.
+
+        Example:
+            >>> dset = CocoDataset.demo()
+            >>> self = dset.annots()
+            >>> self.set('my-key1', 'my-scalar-value')
+            >>> self.set('my-key2', np.random.rand(len(self)))
+            >>> print('dset.imgs = {}'.format(ub.repr2(dset.imgs, nl=1)))
+            >>> self.get('my-key2')
+        """
+        if not ub.iterable(values):
+            values = [values] * len(self)
+        elif not isinstance(values, list):
+            values = list(values)
+        assert len(self) == len(values)
+        self._set(key, values)
+
+    def _set(self, key, values):
+        """ faster less safe version of set """
+        objs = ub.take(self._id_to_obj, self._ids)
+        for obj, value in zip(objs, values):
+            obj[key] = value
+
     def _lookup(self, key, default=ub.NoParam):
         """
         Benchmark:
@@ -502,6 +538,48 @@ class Annots(ObjectList1D):
         """
         return [cat['name'] for cat in ub.take(self._dset.cats, self.cids)]
 
+    @cnames.setter
+    def cnames(self, cnames):
+        """
+        Args:
+            cnames (List[str]):
+
+        Example:
+            >>> from ndsampler.coco_dataset import *  # NOQA
+            >>> self = CocoDataset.demo().annots([1, 2, 11])
+            >>> print('self.cnames = {!r}'.format(self.cnames))
+            >>> print('self.cids = {!r}'.format(self.cids))
+            >>> cnames = ['boo', 'bar', 'rocket']
+            >>> list(map(self._dset.ensure_category, set(cnames)))
+            >>> self.cnames = cnames
+            >>> print('self.cnames = {!r}'.format(self.cnames))
+            >>> print('self.cids = {!r}'.format(self.cids))
+        """
+        cats = map(self._dset._alias_to_cat, cnames)
+        cids = (cat['id'] for cat in cats)
+        self.set('category_id', cids)
+
+    @property
+    def detections(self):
+        """
+        Get the kwimage-style detection objects
+
+        Returns:
+            kwimage.Detections
+
+        Example:
+            >>> from ndsampler.coco_dataset import *  # NOQA
+            >>> self = CocoDataset.demo('shapes32').annots([1, 2, 11])
+            >>> dets = self.detections
+            >>> print('dets.data = {!r}'.format(dets.data))
+            >>> print('dets.meta = {!r}'.format(dets.meta))
+        """
+        import kwimage
+        anns = [self._id_to_obj[aid] for aid in self.aids]
+        dets = kwimage.Detections.from_coco_annots(anns, dset=self._dset)
+        # dets.data['aids'] = np.array(self.aids)
+        return dets
+
     @property
     def boxes(self):
         """
@@ -519,6 +597,25 @@ class Annots(ObjectList1D):
         xywh = self.lookup('bbox')
         boxes = kwimage.Boxes(xywh, 'xywh')
         return boxes
+
+    @boxes.setter
+    def boxes(self, boxes):
+        """
+        Args:
+            boxes (kwimage.Boxes):
+
+        Example:
+            >>> from ndsampler.coco_dataset import *  # NOQA
+            >>> self = CocoDataset.demo().annots([1, 2, 11])
+            >>> print('self.boxes = {!r}'.format(self.boxes))
+            >>> boxes = kwimage.Boxes.random(3).scale(512).astype(np.int)
+            >>> self.boxes = boxes
+            >>> print('self.boxes = {!r}'.format(self.boxes))
+        """
+        anns = ub.take(self._dset.anns, self.aids)
+        xywh = boxes.to_xywh().data.tolist()
+        for ann, xywh in zip(anns, xywh):
+            ann['bbox'] = xywh
 
     @property
     def xywh(self):
