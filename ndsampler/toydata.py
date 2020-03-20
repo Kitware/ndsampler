@@ -545,7 +545,7 @@ def demodata_toy_img(anchors=None, gsize=(104, 104), categories=None,
         mask = rng.rand(*auxdata.shape[0:2]) > 0.5
         auxdata = kwimage.fourier_mask(auxdata, mask)
         auxdata = (auxdata - auxdata.min())
-        auxdata = (auxdata / auxdata.max())
+        auxdata = (auxdata / max(1e-8, auxdata.max()))
         auxdata = auxdata.clip(0, 1)
         # Hack aux data is always disparity for now
         img['auxillary'] = [{
