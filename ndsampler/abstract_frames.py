@@ -381,6 +381,7 @@ class Frames(object):
                         self._data = self._frames.load_image(self._image_id,
                                                              cache=True)
                 return self._frame[region]
+        im = LazyFrame(self, image_id)
         return im
 
     def _rectify_region(self, region):
@@ -392,7 +393,8 @@ class Frames(object):
             region = tuple(region) + tail
         return region
 
-    def load_image(self, image_id, bands=None, scale=0, cache=True):
+    def load_image(self, image_id, bands=None, scale=0, cache=True,
+                   noreturn=False):
         """
         Load the image data for a particular image id
 
@@ -402,6 +404,10 @@ class Frames(object):
                 cached representation.
             bands : NotImplemented
             scale : NotImplemented
+
+            noreturn (bool, default=False): if True, nothing is returned.
+                This is useful if you simply want to ensure the cached
+                representation.
 
         Returns:
             ArrayLike: an indexable array like representation, possibly
@@ -416,17 +422,19 @@ class Frames(object):
         if not cache :
             import kwimage
             gpath = self._lookup_gpath(image_id)
-            raw_data = kwimage.imread(gpath)
-            return raw_data
+            data = kwimage.imread(gpath)
         else:
             if self._backend['type'] is None:
-                return self._load_image_full(image_id)
+                data = self._load_image_full(image_id)
             elif self._backend['type'] == 'cog':
-                return self._load_image_cog(image_id)
+                data = self._load_image_cog(image_id)
             elif self._backend['type'] == 'npy':
-                return self._load_image_npy(image_id)
+                data = self._load_image_npy(image_id)
             else:
                 raise KeyError(self._backend['type'])
+        if noreturn:
+            data = None
+        return data
 
     @lru_cache(1)  # Keeps frequently accessed images open
     def _load_image_full(self, image_id):
@@ -455,14 +463,16 @@ class Frames(object):
             for try_num in it.count():
                 try:
                     file = np.load(mem_gpath, mmap_mode='r')
-                except Exception:
+                except Exception as ex:
                     print('\n\n')
                     print('ERROR: FAILED TO LOAD CACHED FILE')
+                    print('ex = {!r}'.format(ex))
                     print('mem_gpath = {!r}'.format(mem_gpath))
                     print('exists(mem_gpath) = {!r}'.format(exists(mem_gpath)))
                     print('Recompute cache: Try number {}'.format(try_num))
                     print('\n\n')
-                    if try_num > 9000:
+
+                    if try_num > 20:
                         # Something really bad must be happening, stop trying
                         raise
                     try:
@@ -651,7 +661,7 @@ class Frames(object):
         # print('stamp.cacher.enabled = {!r}'.format(stamp.cacher.enabled))
 
         if stamp.expired() or hashid is None:
-            from ndsampler import util_futures
+            from ndsampler.utils import util_futures
             from concurrent import futures
             # Use thread mode, because we are mostly in doing io.
             executor = util_futures.Executor(mode='thread', max_workers=workers)
@@ -661,7 +671,9 @@ class Frames(object):
                 for image_id in ub.ProgIter(gids, desc='Frames: submit prepare jobs'):
                     gpath, cache_gpath = self._gnames(image_id)
                     if not exists(cache_gpath):
-                        job = executor.submit(self.load_image, image_id, cache=True)
+                        job = executor.submit(
+                            self.load_image, image_id, cache=True,
+                            noreturn=True)
                         job_list.append(job)
 
                 for job in ub.ProgIter(futures.as_completed(job_list),

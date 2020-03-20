@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+
 """
 An implementation and extension of the original MS-COCO API [1]_.
 
@@ -22,7 +23,9 @@ Dataset Spec:
             ...
         ],
         'images': [
-            {'id': int, 'file_name': str},
+            {
+                'id': int, 'file_name': str
+            },
             ...
         ],
         'annotations': [
@@ -104,6 +107,22 @@ Dataset Spec:
 
         We also have a new top-level dictionary to specify all the possible
         keypoint categories.
+
+    Auxillary Channels:
+        For multimodal or multispectral images it is possible to specify
+        auxillary channels in an image dictionary as follows:
+
+        {
+            'id': int, 'file_name': str
+            'channels': <spec>,  # a spec code that indicates the layout of these channels.
+            'auxillary': [  # information about auxillary channels
+                {
+                    'file_name':
+                    'channels': <spec>
+                }, ... # can have many auxillary channels with unique specs
+            ]
+        }
+
 
 Notes:
     The main object in this file is `class`:CocoDataset, which is composed of
@@ -263,6 +282,42 @@ class ObjectList1D(ub.NiceRepr):
                 else:
                     attr_list = [_lut[_id].get(key, default) for _id in self._ids]
             return attr_list
+
+    def get(self, key, default=ub.NoParam):
+        """ alias for lookup """
+        assert not ub.iterable(key)
+        return self.lookup(key, default=default)
+
+    def set(self, key, values):
+        """
+        Assign a value to each annotation
+
+        Args:
+            key (str): the annotation property to modify
+            values (Iterable | scalar): an iterable of values to set for each
+                annot in the dataset. If the item is not iterable, it is
+                assigned to all objects.
+
+        Example:
+            >>> dset = CocoDataset.demo()
+            >>> self = dset.annots()
+            >>> self.set('my-key1', 'my-scalar-value')
+            >>> self.set('my-key2', np.random.rand(len(self)))
+            >>> print('dset.imgs = {}'.format(ub.repr2(dset.imgs, nl=1)))
+            >>> self.get('my-key2')
+        """
+        if not ub.iterable(values):
+            values = [values] * len(self)
+        elif not isinstance(values, list):
+            values = list(values)
+        assert len(self) == len(values)
+        self._set(key, values)
+
+    def _set(self, key, values):
+        """ faster less safe version of set """
+        objs = ub.take(self._id_to_obj, self._ids)
+        for obj, value in zip(objs, values):
+            obj[key] = value
 
     def _lookup(self, key, default=ub.NoParam):
         """
@@ -483,6 +538,48 @@ class Annots(ObjectList1D):
         """
         return [cat['name'] for cat in ub.take(self._dset.cats, self.cids)]
 
+    @cnames.setter
+    def cnames(self, cnames):
+        """
+        Args:
+            cnames (List[str]):
+
+        Example:
+            >>> from ndsampler.coco_dataset import *  # NOQA
+            >>> self = CocoDataset.demo().annots([1, 2, 11])
+            >>> print('self.cnames = {!r}'.format(self.cnames))
+            >>> print('self.cids = {!r}'.format(self.cids))
+            >>> cnames = ['boo', 'bar', 'rocket']
+            >>> list(map(self._dset.ensure_category, set(cnames)))
+            >>> self.cnames = cnames
+            >>> print('self.cnames = {!r}'.format(self.cnames))
+            >>> print('self.cids = {!r}'.format(self.cids))
+        """
+        cats = map(self._dset._alias_to_cat, cnames)
+        cids = (cat['id'] for cat in cats)
+        self.set('category_id', cids)
+
+    @property
+    def detections(self):
+        """
+        Get the kwimage-style detection objects
+
+        Returns:
+            kwimage.Detections
+
+        Example:
+            >>> from ndsampler.coco_dataset import *  # NOQA
+            >>> self = CocoDataset.demo('shapes32').annots([1, 2, 11])
+            >>> dets = self.detections
+            >>> print('dets.data = {!r}'.format(dets.data))
+            >>> print('dets.meta = {!r}'.format(dets.meta))
+        """
+        import kwimage
+        anns = [self._id_to_obj[aid] for aid in self.aids]
+        dets = kwimage.Detections.from_coco_annots(anns, dset=self._dset)
+        # dets.data['aids'] = np.array(self.aids)
+        return dets
+
     @property
     def boxes(self):
         """
@@ -500,6 +597,25 @@ class Annots(ObjectList1D):
         xywh = self.lookup('bbox')
         boxes = kwimage.Boxes(xywh, 'xywh')
         return boxes
+
+    @boxes.setter
+    def boxes(self, boxes):
+        """
+        Args:
+            boxes (kwimage.Boxes):
+
+        Example:
+            >>> from ndsampler.coco_dataset import *  # NOQA
+            >>> self = CocoDataset.demo().annots([1, 2, 11])
+            >>> print('self.boxes = {!r}'.format(self.boxes))
+            >>> boxes = kwimage.Boxes.random(3).scale(512).astype(np.int)
+            >>> self.boxes = boxes
+            >>> print('self.boxes = {!r}'.format(self.boxes))
+        """
+        anns = ub.take(self._dset.anns, self.aids)
+        xywh = boxes.to_xywh().data.tolist()
+        for ann, xywh in zip(anns, xywh):
+            ann['bbox'] = xywh
 
     @property
     def xywh(self):
@@ -710,13 +826,37 @@ class MixinCocoExtras(object):
         Returns:
             PathLike: full path to the image
         """
-        try:
-            img = gid_or_img
-            gpath = join(self.img_root, img['file_name'])
-        except Exception:
-            img = self.imgs[gid_or_img]
-            gpath = join(self.img_root, img['file_name'])
+        img = self._resolve_to_img(gid_or_img)
+        gpath = join(self.img_root, img['file_name'])
         return gpath
+
+    def _get_img_auxillary(self, gid_or_img, channels):
+        """ returns the auxillary dictionary for a specific channel """
+        img = self._resolve_to_img(gid_or_img)
+        found = None
+        for aux in img['auxillary']:
+            if aux['channels'] == channels:
+                found = aux
+                break
+        if found is None:
+            raise Exception('Image does not have auxillary channels={}'.format(channels))
+        return found
+
+    def get_auxillary_fpath(self, gid_or_img, channels):
+        """
+        Returns the full path to auxillary data for an image
+
+        Args:
+            gid_or_img (int | dict): an image or its id
+            channels (str): the auxillary channel to load (e.g. disparity)
+
+        Example:
+            >>> self = ndsampler.CocoDataset.demo('shapes8', aux=True)
+            >>> self.get_auxillary_fpath(1, 'disparity')
+        """
+        aux = self._get_img_auxillary(gid_or_img, channels)
+        fpath = join(self.img_root, aux['file_name'])
+        return fpath
 
     def load_annot_sample(self, aid_or_ann, image=None, pad=None):
         """
@@ -961,8 +1101,8 @@ class MixinCocoExtras(object):
 
         Returns:
             List[dict]: a list of "bad" image dictionaries where the size could
-            not be determined. Typically these are corrupted images and should
-            be removed.
+                not be determined. Typically these are corrupted images and
+                should be removed.
 
         Example:
             >>> # Normal case
@@ -985,36 +1125,20 @@ class MixinCocoExtras(object):
         bad_images = []
         if any('width' not in img or 'height' not in img
                for img in self.dataset['images']):
-            from PIL import Image
-
-            def _find_imgshape(gpath):
-                try:
-                    pil_img = Image.open(gpath)
-                    w, h = pil_img.size
-                    pil_img.close()
-                except Exception as pil_ex:
-                    try:
-                        import gdal
-                        dset = gdal.Open(gpath, gdal.GA_ReadOnly)
-                        w = dset.RasterXSize
-                        h = dset.RasterYSize
-                    except Exception:
-                        raise pil_ex
-                return h, w
-            # TODO: use kwimage.im_io.load_image_shape instead
+            import kwimage
+            from ndsampler.utils import util_futures
 
             if self.tag:
                 desc = 'populate imgsize for ' + self.tag
             else:
                 desc = 'populate imgsize for untagged coco dataset'
 
-            from ndsampler import util_futures
             pool = util_futures.JobPool('thread', max_workers=workers)
             for img in ub.ProgIter(self.dataset['images'], verbose=verbose,
                                    desc='submit image size jobs'):
                 gpath = join(self.img_root, img['file_name'])
                 if 'width' not in img or 'height' not in img:
-                    job = pool.submit(_find_imgshape, gpath)
+                    job = pool.submit(kwimage.load_image_shape, gpath)
                     job.img = img
 
             for job in ub.ProgIter(pool.as_completed(), total=len(pool),
@@ -1086,6 +1210,26 @@ class MixinCocoExtras(object):
         else:
             resolved_ann = aid_or_ann
         return resolved_ann
+
+    def _resolve_to_img(self, gid_or_img):
+        """
+        Ensures output is an image dictionary
+        """
+        if isinstance(gid_or_img, INT_TYPES):
+            resolved_img = None
+            if self.imgs is not None:
+                resolved_img = self.imgs[gid_or_img]
+            else:
+                for img in self.dataset['imgotations']:
+                    if img['id'] == gid_or_img:
+                        resolved_img = img
+                        break
+                if not resolved_img:
+                    raise IndexError(
+                        'gid {} not in dataset'.format(gid_or_img))
+        else:
+            resolved_img = gid_or_img
+        return resolved_img
 
     def _resolve_to_kpcat(self, kp_identifier):
         """
@@ -1254,6 +1398,7 @@ class MixinCocoExtras(object):
             import graphid
             graphid.util.show_nx(graph)
         """
+        # TODO: should supercategories that don't exist as nodes be added here?
         import networkx as nx
         graph = nx.DiGraph()
         for cat in self.dataset['categories']:
@@ -1371,10 +1516,11 @@ class MixinCocoExtras(object):
             else:
                 raise Exception('missing image, but no url')
 
-    def missing_images(self):
+    def missing_images(self, verbose=0):
         import os
         bad_paths = []
-        for index in ub.ProgIter(range(len(self.dataset['images']))):
+        for index in ub.ProgIter(range(len(self.dataset['images'])),
+                                 verbose=verbose):
             img = self.dataset['images'][index]
             gpath = join(self.img_root, img['file_name'])
             if not os.path.exists(gpath):
@@ -1695,6 +1841,15 @@ class MixinCocoExtras(object):
             >>> # Switch back to relative paths
             >>> self.rebase()
             >>> assert self.imgs[1]['file_name'].startswith('.cache')
+
+        Example:
+            >>> # demo with auxillary data
+            >>> import ndsampler
+            >>> self = ndsampler.CocoDataset.demo('shapes8', aux=True)
+            >>> img_root = ub.expandpath('~')
+            >>> self.rebase(img_root)
+            >>> assert self.imgs[1]['file_name'].startswith('.cache')
+            >>> assert self.imgs[1]['auxillary'][0]['file_name'].startswith('.cache')
         """
         from os.path import exists, relpath
 
@@ -1705,7 +1860,6 @@ class MixinCocoExtras(object):
 
         for img in self.imgs.values():
             abs_file_path = join(old_img_root, img['file_name'])
-
             if absolute:
                 img['file_name'] = abs_file_path
             else:
@@ -1716,6 +1870,13 @@ class MixinCocoExtras(object):
                 if not exists(abs_gpath):
                     raise Exception(
                         'Image does not exist: {!r}'.format(abs_gpath))
+
+            for aux in img.get('auxillary', []):
+                abs_file_path = join(old_img_root, aux['file_name'])
+                if absolute:
+                    aux['file_name'] = abs_file_path
+                else:
+                    aux['file_name'] = relpath(abs_file_path, new_img_root)
 
         self.img_root = new_img_root
 
@@ -1872,14 +2033,82 @@ class MixinCocoStats(object):
             >>> print(ub.repr2(self.extended_stats()))
         """
         def mapping_stats(xid_to_yids):
-            from ndsampler import util
+            import kwarray
             n_yids = list(ub.map_vals(len, xid_to_yids).values())
-            return util.stats_dict(n_yids, n_extreme=True)
+            return kwarray.stats_dict(n_yids, n_extreme=True)
         return ub.odict([
             ('annots_per_img', mapping_stats(self.gid_to_aids)),
             # ('cats_per_img', mapping_stats(self.cid_to_gids)),
             ('annots_per_cat', mapping_stats(self.cid_to_aids)),
         ])
+
+    def boxsize_stats(self, anchors=None, perclass=True, verbose=0,
+                      clusterkw={}):
+        """
+        Compute statistics about bounding box sizes.
+
+        Also computes anchor boxes using kmeans if ``anchors`` is specified.
+
+        Args:
+            anchors (int): if specified also computes box anchors
+            perclass (bool): if True also computes stats for each category
+            verbose (int): verbosity level
+            clusterkw (dict): kwargs for :class:`sklearn.cluster.KMeans` used
+                if computing anchors.
+
+        Returns:
+            Dict[str, Dict[str, Dict | ndarray]
+
+        Example:
+            >>> self = CocoDataset.demo('shapes32')
+            >>> infos = self.boxsize_stats(anchors=4, perclass=False)
+            >>> print(ub.repr2(infos, nl=-1, precision=2))
+        """
+        import kwarray
+        cname_to_box_sizes = ub.ddict(list)
+        for ann in self.dataset['annotations']:
+            if 'bbox' in ann:
+                cname = self.cats[ann['category_id']]['name']
+                cname_to_box_sizes[cname].append(ann['bbox'][2:4])
+        cname_to_box_sizes = ub.map_vals(np.array, cname_to_box_sizes)
+
+        def _boxes_info(box_sizes):
+            box_info = {
+                'stats': kwarray.stats_dict(box_sizes, axis=0)
+            }
+            if anchors:
+                from sklearn import cluster
+                defaultkw = {
+                    'n_clusters': anchors,
+                    'n_init': 20,
+                    'max_iter': 10000,
+                    'tol': 1e-6,
+                    'algorithm': 'elkan',
+                    'verbose': verbose
+                }
+                kmkw = ub.dict_union(defaultkw, clusterkw)
+                algo = cluster.KMeans(**kmkw)
+                algo.fit(box_sizes)
+                anchor_sizes = algo.cluster_centers_
+                box_info['anchors'] = anchor_sizes
+            return box_info
+
+        infos = {}
+
+        if perclass:
+            cid_to_info = {}
+            for cname, box_sizes in cname_to_box_sizes.items():
+                if verbose:
+                    print('compute {} bbox stats'.format(cname))
+                cid_to_info[cname] = _boxes_info(box_sizes)
+            infos['perclass'] = cid_to_info
+
+        if verbose:
+            print('compute all bbox stats')
+        all_sizes = np.vstack(list(cname_to_box_sizes.values()))
+        all_info = _boxes_info(all_sizes)
+        infos['all'] = all_info
+        return infos
 
 
 class _NextId(object):
@@ -2077,14 +2306,14 @@ class MixinCocoDraw(object):
 
                 HAVE_KWIMAGE = True
                 if HAVE_KWIMAGE:
-                    from kwimage.structs.mask import _coerce_coco_segmentation
                     if catcolor is not None:
                         catcolor = kwplot.Color(catcolor).as01()
                     # TODO: Unify masks and polygons into a kwimage
                     # segmentation class
-                    sseg = _coerce_coco_segmentation(sseg)
+                    sseg = kwimage.Segmentation.coerce(sseg).data
                     if isinstance(sseg, kwimage.Mask):
-                        sseg_masks.append((sseg, catcolor))
+                        m = sseg.to_c_mask()
+                        sseg_masks.append((m.data, catcolor))
                     else:
                         # TODO: interior
                         poly_xys = sseg.data['exterior'].data
@@ -2133,13 +2362,18 @@ class MixinCocoDraw(object):
 
         np_img = kwimage.atleast_3channels(np_img)
 
+        np_img01 = None
+        if np_img.dtype.kind in {'i', 'u'}:
+            if np_img.max() > 255:
+                np_img01 = np_img / np_img.max()
+
         fig = plt.gcf()
         ax = fig.gca()
         ax.cla()
 
         if sseg_masks:
-            np_img01 = np_img / 255.0
-
+            if np_img01 is None:
+                np_img01 = kwimage.ensure_float01(np_img)
             layers = []
             layers.append(kwimage.ensure_alpha_channel(np_img01))
             distinct_colors = kwplot.Color.distinct(len(sseg_masks))
@@ -2158,7 +2392,10 @@ class MixinCocoDraw(object):
 
             ax.imshow(masked_img)
         else:
-            ax.imshow(np_img)
+            if np_img01 is not None:
+                ax.imshow(np_img01)
+            else:
+                ax.imshow(np_img)
 
         title = kwargs.get('title', None)
         if title is None:
@@ -2321,6 +2558,21 @@ class MixinCocoAddRemove(object):
         # And add to the indexes
         index._add_category(id, name, cat)
         self._invalidate_hashid(['categories'])
+        return id
+
+    def ensure_image(self, file_name, id=None, **kw):
+        """
+        Like add_image, but returns the existing image id if it already
+        exists instead of failing. In this case all metadata is ignored.
+
+        Returns:
+            int: the existing or new image id
+        """
+        try:
+            id = self.add_image(file_name=file_name, id=id, **kw)
+        except ValueError:
+            img = self.index.file_name_to_img[file_name]
+            id = img['id']
         return id
 
     def ensure_category(self, name, supercategory=None, id=None, **kw):
@@ -3328,6 +3580,12 @@ class CocoDataset(ub.NiceRepr, MixinCocoAddRemove, MixinCocoStats,
                 file.write(self.dumps(indent=indent, newlines=newlines))
             else:
                 json.dump(self.dataset, file, indent=indent, ensure_ascii=False)
+
+    def _check_integrity(self):
+        """ perform all checks """
+        self._check_index()
+        self._check_pointers()
+        assert len(self.missing_images()) == 0
 
     def _check_index(self):
         # We can verify our index invariants by copying the raw dataset and

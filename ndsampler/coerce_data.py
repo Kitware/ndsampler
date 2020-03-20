@@ -142,20 +142,37 @@ def _split_train_vali_test(coco_dset, factor=3):
     Args:
         factor (int): number of pieces to divide images into
 
-    Ignore:
-        import xdev
-        xdev.quantum_random()
+    CommandLine:
+        xdoctest -m /home/joncrall/code/ndsampler/ndsampler/coerce_data.py _split_train_vali_test
+
+    Example:
+        >>> from ndsampler.coerce_data import _split_train_vali_test
+        >>> import ndsampler
+        >>> coco_dset = ndsampler.CocoDataset.demo('shapes8')
+        >>> split_gids = _split_train_vali_test(coco_dset)
+        >>> print('split_gids = {}'.format(ub.repr2(split_gids, nl=1)))
     """
     import kwarray
-    from sklearn import model_selection
     images = coco_dset.images()
 
     def _stratified_split(gids, cids, n_splits=2, rng=None):
         """ helper to split while trying to maintain class balance within images """
         rng = kwarray.ensure_rng(rng)
-        selector = model_selection.StratifiedKFold(n_splits=n_splits, random_state=rng)
-        skf_list = list(selector.split(X=gids, y=cids))
+        from ndsampler.utils import util_sklearn
+        selector = util_sklearn.StratifiedGroupKFold(
+            n_splits=n_splits, random_state=rng, shuffle=True)
+
+        # from sklearn import model_selection
+        # selector = model_selection.StratifiedKFold(
+        #     n_splits=n_splits, random_state=rng, shuffle=True)
+        skf_list = list(selector.split(X=gids, y=cids, groups=gids))
         trainx, testx = skf_list[0]
+
+        if 0:
+            _train_gids = set(ub.take(gids, trainx))
+            _test_gids = set(ub.take(gids, testx))
+            print('_train_gids = {!r}'.format(_train_gids))
+            print('_test_gids = {!r}'.format(_test_gids))
         return trainx, testx
 
     # Create flat table of image-ids and category-ids
@@ -169,6 +186,7 @@ def _split_train_vali_test(coco_dset, factor=3):
                                       n_splits=factor)
     learn_gids = list(ub.take(gids, learnx))
     learn_cids = list(ub.take(cids, learnx))
+    print('learn_gids = {!r}'.format(set(learn_gids)))
     _trainx, _valix = _stratified_split(learn_gids, learn_cids, rng=140860164,
                                         n_splits=factor)
     trainx = learnx[_trainx]

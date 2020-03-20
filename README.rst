@@ -3,8 +3,15 @@ ndsampler
 
 |GitlabCIPipeline| |GitlabCICoverage| |Pypi| |Downloads| 
 
-Built with detection related tasks in mind, but also useful for classification
-tasks.
+Fast random access to small regions in large images. 
+
+Random access is amortized by converting images into an efficient backend
+format (current backends include cloud-optimized geotiffs (cog) or numpy array
+files (npy)). If images are already in COG format, then no conversion is
+needed.
+
+The ndsampler module was built with detection, segmentation, and classification
+tasks in mind, but it is not limited to these use cases.
 
 The basic idea is to ensure your data is in MS-coco format, and then the
 CocoSampler class will let you sample positive and negative regions.

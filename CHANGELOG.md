@@ -4,7 +4,24 @@ This changelog follows the specifications detailed in: [Keep a Changelog](https:
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
 
-## Version 0.5.4
+## Version 0.5.5
+
+
+### Changed
+* Moved `ndsampler.util_futures` and `ndsampler.util` into `ndsampler.utils`.
+  Old ways of accessing these files will raise deprecation warnings.
+
+
+### Fixed:
+* Using a better stratified split algorithm
+* Fixed issue with prepare and the npy backend when too many files were opened
+
+
+### Added
+
+* Added `boxsize_stats` to `CocoDataset`.
+
+## Version 0.5.4 - Released 2020-02-19 
 
 ### Fixed
 

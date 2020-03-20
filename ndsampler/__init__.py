@@ -1,7 +1,7 @@
 """
 mkinit ~/code/ndsampler/ndsampler/__init__.py -w
 """
-__version__ = '0.5.4'
+__version__ = '0.5.5'
 from ndsampler import abstract_frames
 from ndsampler import abstract_sampler
 from ndsampler import category_tree
@@ -12,7 +12,6 @@ from ndsampler import coco_sampler
 from ndsampler import isect_indexer
 from ndsampler import toydata
 from ndsampler import toypatterns
-from ndsampler import util
 
 from ndsampler.abstract_frames import (Frames, SimpleFrames,)
 from ndsampler.abstract_sampler import (AbstractSampler,)
@@ -31,7 +30,7 @@ from ndsampler.isect_indexer import (FrameIntersectionIndex,)
 from ndsampler.toydata import (DynamicToySampler, demodata_toy_dset,
                                demodata_toy_img,)
 from ndsampler.toypatterns import (CategoryPatterns, Rasters, star,)
-from ndsampler.util import (HashIdentifiable, stats_dict,)
+from ndsampler.utils.util_misc import (HashIdentifiable, stats_dict,)
 
 __all__ = ['AbstractSampler', 'CategoryPatterns', 'CategoryTree',
            'CocoDataset', 'CocoFrames', 'CocoRegions', 'CocoSampler',
@@ -43,4 +42,4 @@ __all__ = ['AbstractSampler', 'CategoryPatterns', 'CategoryTree',
            'from_directed_nested_tuples', 'gini', 'isect_indexer',
            'select_positive_regions', 'sink_nodes', 'source_nodes', 'star',
            'stats_dict', 'tabular_coco_targets', 'to_directed_nested_tuples',
-           'toydata', 'toypatterns', 'traverse_siblings', 'tree_depth', 'util']
+           'toydata', 'toypatterns', 'traverse_siblings', 'tree_depth']

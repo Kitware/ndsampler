@@ -51,10 +51,10 @@ from ndsampler import coco_dataset
 from ndsampler import coco_regions
 from ndsampler import coco_frames
 from ndsampler import abstract_sampler
-from ndsampler import util
+from ndsampler.utils import util_misc
 
 
-class CocoSampler(abstract_sampler.AbstractSampler, util.HashIdentifiable,
+class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                   ub.NiceRepr):
     """
     Samples patches of positives and negative detection windows from a COCO
