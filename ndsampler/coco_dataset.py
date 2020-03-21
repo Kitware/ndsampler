@@ -897,6 +897,15 @@ class MixinCocoExtras(object):
         return sample
 
     @classmethod
+    def coerce(cls, key):
+        from os.path import exists
+        if exists(key):
+            self = cls(key)
+        else:
+            self = cls.demo(key=key)
+        return self
+
+    @classmethod
     def demo(cls, key='photos', **kw):
         """
         Create a toy coco dataset for testing and demo puposes

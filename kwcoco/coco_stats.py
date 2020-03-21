@@ -1,0 +1,63 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+import ubelt as ub
+import scriptconfig as scfg
+
+
+class CocoStatsConfig(scfg.Config):
+    default = {
+        'src': scfg.Value(None, help='path to dataset'),
+        'boxes': scfg.Value(True),
+    }
+
+
+class CocoStatsCLI:
+
+    def main(cmdline=True, **kw):
+        """
+        Example:
+            >>> kw = {'src': 'special:shapes8'}
+            >>> cmdline = False
+            >>> CocoStatsCLI.main()
+        """
+        import ndsampler
+        config = CocoStatsConfig(kw, cmdline=cmdline)
+        print('config = {}'.format(ub.repr2(dict(config), nl=1)))
+
+        if config['src'] is None:
+            raise Exception('must specify source: '.format(config['src']))
+
+        if config['src'].startswith('special:'):
+            key = config['src'].split(':')[1]
+            dset = ndsampler.CocoDataset.demo(key)
+        else:
+            dset = ndsampler.CocoDataset(config['src'])
+        print('dset.fpath = {!r}'.format(dset.fpath))
+
+        basic = dset.basic_stats()
+        print('basic = {}'.format(ub.repr2(basic, nl=1)))
+
+        extended = dset.extended_stats()
+        print('extended = {}'.format(ub.repr2(extended, nl=1, precision=2)))
+
+        print('Category frequency')
+        freq = dset.category_annotation_frequency()
+        import pandas as pd
+        df = pd.DataFrame.from_dict({str(dset.tag): freq})
+        pd.set_option('max_colwidth', 256)
+        print(df.to_string(float_format=lambda x: '%0.3f' % x))
+
+        if config['boxes']:
+            print('Box stats')
+            print(ub.repr2(dset.boxsize_stats(), nl=-1, precision=2))
+
+
+def _main(*a, **kw):
+    return CocoStatsCLI.main(*a, **kw)
+
+if __name__ == '__main__':
+    """
+    CommandLine:
+        python -m kwcoco.coco_stats --src=special:shapes8
+    """
+    _main()

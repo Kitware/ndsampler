@@ -118,6 +118,7 @@ NAME = 'ndsampler'
 VERSION = version = parse_version('ndsampler/__init__.py')  # needs to be a global var for git tags
 
 if __name__ == '__main__':
+    print(find_packages(include='*'))
     setup(
         name=NAME,
         version=version,
@@ -135,7 +136,13 @@ if __name__ == '__main__':
             'optional': parse_requirements('requirements/optional.txt'),
         },
         license='Apache 2',
-        packages=find_packages(include='ndsampler.*'),
+        packages=find_packages(include='*'),
+        entry_points={
+            'console_scripts': [
+                'coco_stats = kwcoco.coco_stats:_main',
+                'kwcoco = kwcoco.__main__:_main',
+            ],
+        },
         classifiers=[
             # List of classifiers available at:
             # https://pypi.python.org/pypi?%3Aaction=list_classifiers

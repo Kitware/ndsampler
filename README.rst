@@ -30,6 +30,9 @@ Features
 * Dynamic toydata generator.
 
 
+Also installs the kwcoco package and CLI tool.
+
+
 Example
 --------
 
