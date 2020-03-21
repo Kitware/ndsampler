@@ -27,11 +27,7 @@ class CocoStatsCLI:
         if config['src'] is None:
             raise Exception('must specify source: '.format(config['src']))
 
-        if config['src'].startswith('special:'):
-            key = config['src'].split(':')[1]
-            dset = ndsampler.CocoDataset.demo(key)
-        else:
-            dset = ndsampler.CocoDataset(config['src'])
+        dset = ndsampler.CocoDataset.coerce(config['src'])
         print('dset.fpath = {!r}'.format(dset.fpath))
 
         basic = dset.basic_stats()
