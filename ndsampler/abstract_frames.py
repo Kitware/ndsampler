@@ -27,19 +27,7 @@ import warnings
 from os.path import exists
 from os.path import join
 from ndsampler.utils import util_gdal
-
-if six.PY2:
-    # TODO: find or make an LRU implementation where the maxsize can be
-    # dynamically changed during runtime.
-    from backports.functools_lru_cache import lru_cache
-else:
-    from functools import lru_cache
-
-# try:
-#     import xdev
-#     profile = xdev.profile
-# except ImportError:
-#     profile = ub.identity
+from ndsampler.utils import util_lru
 
 
 DEBUG_COG_ATOMIC_WRITE = 0
@@ -148,6 +136,9 @@ class Frames(object):
         self._backend = None
         self._backend_hashid = None  # hash of backend config parameters
         self._cache_dpath = None
+
+        # keep an lru cache for repeated access to the same data
+        self._lru = util_lru.LRUDict.new(max_size=1, impl='auto')
 
         self._update_backend(backend)
 
@@ -436,18 +427,24 @@ class Frames(object):
             data = None
         return data
 
-    @lru_cache(1)  # Keeps frequently accessed images open
     def _load_image_full(self, image_id):
+        if image_id in self._lru:
+            return self._lru[image_id]
+
         import kwimage
         gpath = self._lookup_gpath(image_id)
         raw_data = kwimage.imread(gpath)
+
+        self._lru[image_id] = raw_data
         return raw_data
 
-    @lru_cache(1)  # Keeps frequently accessed images open
     def _load_image_npy(self, image_id):
         """
         Returns a memmapped reference to the entire image
         """
+        if image_id in self._lru:
+            return self._lru[image_id]
+
         gpath = self._lookup_gpath(image_id)
         gpath, cache_gpath = self._gnames(image_id, mode='npy')
         mem_gpath = cache_gpath
@@ -495,13 +492,17 @@ class Frames(object):
                 print('exists(mem_gpath) = {!r}'.format(exists(mem_gpath)))
                 print('\n\n')
                 raise
+
+        self._lru[image_id] = file
         return file
 
-    @lru_cache(1)  # Keeps frequently accessed images open
     def _load_image_cog(self, image_id):
         """
         Returns a special array-like object with a COG GeoTIFF backend
         """
+        if image_id in self._lru:
+            return self._lru[image_id]
+
         gpath, cache_gpath = self._gnames(image_id, mode='cog')
         cog_gpath = cache_gpath
 
@@ -569,6 +570,7 @@ class Frames(object):
                 print('</DEBUG INFO>')
 
         file = util_gdal.LazyGDalFrameFile(cog_gpath)
+        self._lru[image_id] = file
         return file
 
     @staticmethod
