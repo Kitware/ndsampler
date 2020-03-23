@@ -2053,8 +2053,8 @@ class MixinCocoStats(object):
             ('annots_per_cat', mapping_stats(self.cid_to_aids)),
         ])
 
-    def boxsize_stats(self, anchors=None, perclass=True, verbose=0,
-                      clusterkw={}):
+    def boxsize_stats(self, anchors=None, perclass=True, gids=None, aids=None,
+                      verbose=0, clusterkw={}, statskw={}):
         """
         Compute statistics about bounding box sizes.
 
@@ -2063,21 +2063,41 @@ class MixinCocoStats(object):
         Args:
             anchors (int): if specified also computes box anchors
             perclass (bool): if True also computes stats for each category
+            gids (List[int], default=None):
+                if specified only compute stats for these image ids.
+            aids (List[int], default=None):
+                if specified only compute stats for these annotation ids.
             verbose (int): verbosity level
             clusterkw (dict): kwargs for :class:`sklearn.cluster.KMeans` used
                 if computing anchors.
+            statskw (dict): kwargs for :func:`kwarray.stats_dict`
 
         Returns:
             Dict[str, Dict[str, Dict | ndarray]
 
         Example:
-            >>> self = CocoDataset.demo('shapes32')
+            >>> import ndsampler
+            >>> self = ndsampler.CocoDataset.demo('shapes32')
             >>> infos = self.boxsize_stats(anchors=4, perclass=False)
+            >>> print(ub.repr2(infos, nl=-1, precision=2))
+
+            >>> infos = self.boxsize_stats(gids=[1], statskw=dict(median=True))
             >>> print(ub.repr2(infos, nl=-1, precision=2))
         """
         import kwarray
         cname_to_box_sizes = ub.ddict(list)
-        for ann in self.dataset['annotations']:
+
+        if bool(gids) and bool(aids):
+            raise ValueError('specifying gids and aids is mutually exclusive')
+
+        if gids is not None:
+            aids = ub.flatten(ub.take(self.index.gid_to_aids, gids))
+        if aids is not None:
+            anns = ub.take(self.anns, aids)
+        else:
+            anns = self.dataset['annotations']
+
+        for ann in anns:
             if 'bbox' in ann:
                 cname = self.cats[ann['category_id']]['name']
                 cname_to_box_sizes[cname].append(ann['bbox'][2:4])
@@ -2085,7 +2105,7 @@ class MixinCocoStats(object):
 
         def _boxes_info(box_sizes):
             box_info = {
-                'stats': kwarray.stats_dict(box_sizes, axis=0)
+                'stats': kwarray.stats_dict(box_sizes, axis=0, **statskw)
             }
             if anchors:
                 from sklearn import cluster
