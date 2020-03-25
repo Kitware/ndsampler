@@ -143,7 +143,7 @@ class LRUDict(ub.NiceRepr):
             import warnings
             warnings.warn(
                 'Optional lru-dict c-implementation is unavailable.'
-                ' Fallback to pure python. ex={!r}'.foramt(ex))
+                ' Fallback to pure python. ex={!r}'.format(ex))
 
         if impl == 'auto':
             impl = 'py' if lru is None else 'c'
