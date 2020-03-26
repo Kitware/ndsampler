@@ -17,6 +17,9 @@ class LRUDict(ub.NiceRepr):
     Returns:
         LRUDict: cache_obj
 
+    CommandLine:
+        xdoctest -m /home/joncrall/code/ndsampler/ndsampler/utils/util_lru.py LRUDict
+
     Example:
         >>> from ndsampler.utils.util_lru import *  # NOQA
         >>> max_size = 5
@@ -30,14 +33,9 @@ class LRUDict(ub.NiceRepr):
         >>> print(self)
         >>> del self[5]
         >>> assert 4 in self
-        >>> result = ('self = %r' % (self,))
-        >>> print(result)
-        self = LRUDict({
-            4: 4,
-            0: 0,
-            6: 6,
-            7: 7,
-        })
+        >>> # xdoctest: +IGNORE_WANT
+        >>> print('self = {}'.format(ub.repr2(self, nl=1)))
+        self = <LRUDict({4: 4, 0: 0, 6: 6, 7: 7}) at 0x7f4c78af95e0>
     """
 
     def __init__(self, max_size):

@@ -4,27 +4,32 @@ import ubelt as ub
 import scriptconfig as scfg
 
 
-class CocoStatsConfig(scfg.Config):
-    default = {
-        'src': scfg.Value(None, help='path to dataset'),
-        'basic': scfg.Value(True),
-        'extended': scfg.Value(True),
-        'catfreq': scfg.Value(True),
-        'boxes': scfg.Value(False),
-    }
-
-
 class CocoStatsCLI:
+    name = 'stats'
 
-    def main(cmdline=True, **kw):
+    class CLIConfig(scfg.Config):
+        """
+        Compute summary statistics about a COCO dataset
+        """
+        default = {
+            'src': scfg.Value(None, help='path to dataset'),
+            'basic': scfg.Value(True, help='show basic stats'),
+            'extended': scfg.Value(True, help='show extended stats'),
+            'catfreq': scfg.Value(True, help='show category frequency stats'),
+            'boxes': scfg.Value(False, help='show bounding box stats'),
+        }
+
+    @classmethod
+    def main(cls, cmdline=True, **kw):
         """
         Example:
             >>> kw = {'src': 'special:shapes8'}
             >>> cmdline = False
-            >>> CocoStatsCLI.main()
+            >>> cls = CocoStatsCLI
+            >>> cls.main(cmdline, **kw)
         """
         import ndsampler
-        config = CocoStatsConfig(kw, cmdline=cmdline)
+        config = cls.CLIConfig(kw, cmdline=cmdline)
         print('config = {}'.format(ub.repr2(dict(config), nl=1)))
 
         if config['src'] is None:
@@ -54,12 +59,11 @@ class CocoStatsCLI:
             print(ub.repr2(dset.boxsize_stats(), nl=-1, precision=2))
 
 
-def _main(*a, **kw):
-    return CocoStatsCLI.main(*a, **kw)
+_CLI = CocoStatsCLI
 
 if __name__ == '__main__':
     """
     CommandLine:
         python -m kwcoco.coco_stats --src=special:shapes8
     """
-    _main()
+    _CLI._main()

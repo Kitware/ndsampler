@@ -605,6 +605,7 @@ class Annots(ObjectList1D):
             boxes (kwimage.Boxes):
 
         Example:
+            >>> import kwimage
             >>> from ndsampler.coco_dataset import *  # NOQA
             >>> self = CocoDataset.demo().annots([1, 2, 11])
             >>> print('self.boxes = {!r}'.format(self.boxes))
@@ -851,6 +852,7 @@ class MixinCocoExtras(object):
             channels (str): the auxillary channel to load (e.g. disparity)
 
         Example:
+            >>> import ndsampler
             >>> self = ndsampler.CocoDataset.demo('shapes8', aux=True)
             >>> self.get_auxillary_fpath(1, 'disparity')
         """
@@ -2466,6 +2468,8 @@ class MixinCocoDraw(object):
             if keypoints:
                 xs, ys = np.vstack(keypoints).T
                 ax.plot(xs, ys, 'bo')
+
+        return ax
 
 
 class MixinCocoAddRemove(object):

@@ -139,8 +139,7 @@ if __name__ == '__main__':
         packages=find_packages(include='*'),
         entry_points={
             'console_scripts': [
-                'coco_stats = kwcoco.coco_stats:_main',
-                'kwcoco = kwcoco.__main__:_main',
+                'kwcoco = kwcoco.cli.__main__:main',
             ],
         },
         classifiers=[

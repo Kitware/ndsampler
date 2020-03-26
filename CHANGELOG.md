@@ -8,6 +8,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 * `util_lru` containing implementations of a dictionary based LRU cache. 
+* `kwcoco` CLI tool with stats, show, union, split, and toydata
 
 
 ### Changed
