@@ -54,6 +54,8 @@ class HashIdentifiable(object):
 def stats_dict(list_, axis=None, nan=False, sum=False, extreme=True,
                n_extreme=False, median=False, shape=True, size=False):
     """
+    DEPRECATED: use variant that exists in kwarray
+
     Args:
         list_ (listlike): values to get statistics of
         axis (int): if `list_` is ndarray then this specifies the axis
