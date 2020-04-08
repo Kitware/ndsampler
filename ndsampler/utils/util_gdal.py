@@ -169,6 +169,7 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, compress='auto',
         >>> # xdoctest: +REQUIRES(module:gdal)
         >>> from ndsampler.utils.util_gdal import *  # NOQA
         >>> from ndsampler.utils.util_gdal import _imwrite_cloud_optimized_geotiff
+        >>> from ndsampler.utils.util_gdal import _doctest_check_cog
 
         >>> data = np.random.randint(0, 255, (800, 800, 3), dtype=np.uint8)
         >>> fpath = '/tmp/foo.cog.tiff'
@@ -587,6 +588,8 @@ class LazyGDalFrameFile(ub.NiceRepr):
     @ub.memoize_property
     def _ds(self):
         import gdal
+        if not exists(self.cog_fpath):
+            raise Exception('File does not exist: {}'.format(self.cog_fpath))
         ds = gdal.Open(self.cog_fpath, gdal.GA_ReadOnly)
         return ds
 
