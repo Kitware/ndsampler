@@ -141,6 +141,7 @@ class LRUDict(ub.NiceRepr):
             import warnings
             warnings.warn(
                 'Optional lru-dict c-implementation is unavailable.'
+                ' `pip install lru-dict` to supress this warning.'
                 ' Fallback to pure python. ex={!r}'.format(ex))
 
         if impl == 'auto':
