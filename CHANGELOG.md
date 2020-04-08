@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 * AbstractFrames now uses the configurable `LRUDict` instead of the `functools` decorator.
+* Moved toydata from ndsampler to kwcoco
 
 
 ## Version 0.5.5
