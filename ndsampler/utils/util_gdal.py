@@ -690,25 +690,20 @@ class LazyGDalFrameFile(ub.NiceRepr):
         info = {
             'errors': [],
             'warnings': [],
-            'details': [],
+            'details': {},
             'fpath': self.cog_fpath,
             'orig_fpath': orig_fpath,
         }
         try:
             from ndsampler.utils.validate_cog import validate as _validate_cog
             warnings, errors, details = _validate_cog(self.cog_fpath)
-            for line in warnings[:]:
-                if 'recommended' in line:
-                    # move non-critical warning to detail
-                    warnings.remove(line)
-                    details.append(line)
 
         except Exception as ex:
             info['errors'].append(repr(ex))
         else:
             info['errors'].extend(errors)
             info['warnings'].extend(warnings)
-            info['details'].extend(details)
+            info['details'] = details
         try:
             has_data = validate_nonzero_data(self)
             if not has_data:
@@ -724,8 +719,6 @@ class LazyGDalFrameFile(ub.NiceRepr):
                         info['errors'].append(
                             'image is all zeros, but orig_sum = {!r}'.format(
                                 orig_sum))
-            else:
-                info['details'].append('data seems to exist')
         except Exception as ex:
             info['errors'].append(repr(ex))
 
