@@ -740,3 +740,59 @@ def validate_gdal_file(file):
 
     is_valid = total > 0
     return is_valid
+
+
+def batch_convert_to_cog(
+        src_fpaths, dst_fpaths, mode='thread', max_workers=8, cog_config=None):
+    """
+    Converts many input images to COGs and verifies that the outputs are
+    correct
+    """
+    if cog_config is None:
+        cog_config = {
+            'compress': 'LZW',
+            'blocksize': 256,
+        }
+    from ndsampler.utils import util_futures
+    jobs = util_futures.JobPool(mode, max_workers=max_workers)
+    for src_fpath, dst_fpath in zip(src_fpaths, dst_fpaths):
+        jobs.submit(_convert_to_cog, src_fpath, dst_fpath, cog_config)
+
+    for job in ub.ProgIter(jobs.as_completed(), total=len(jobs),
+                           desc='collect split jobs'):
+        job.result()
+
+
+def _convert_to_cog(src_fpath, dst_fpath, cog_config):
+    if not exists(dst_fpath):
+        _cli_convert_cloud_optimized_geotiff(src_fpath, dst_fpath, **cog_config)
+    _validate_cog_conversion(dst_fpath, orig_gpath=src_fpath)
+    return dst_fpath
+
+
+def _validate_cog_conversion(cog_gpath, orig_gpath=None, orig_data=None):
+    """
+    Validate that a cog was converted correctly. This test isn't 100% but
+    passing in the original image path or the original data can increase our
+    confidence. If the test fails, it will delete the file.
+    """
+    # CHECK THAT THE DATA WAS WRITTEN CORRECTLY
+    from ndsampler.utils import util_gdal
+    file = util_gdal.LazyGDalFrameFile(cog_gpath)
+    is_valid = util_gdal.validate_gdal_file(file)
+    if not is_valid:
+        if orig_data is None and orig_gpath is not None:
+            import kwimage
+            orig_data = kwimage.imread(orig_gpath)
+
+        # The check may fail on zero images, so check that
+        if orig_data is not None:
+            orig_sum = orig_data.sum()
+            if orig_sum > 0:
+                print('FAILED TO WRITE COG FILE')
+                print('orig_sum = {!r}'.format(orig_sum))
+                ub.delete(cog_gpath)
+                raise Exception('Cog is corrupt')
+        else:
+            print('GOT BAD OR ALL BLACK COG')
+            raise Exception('Cog might be corrupt')
