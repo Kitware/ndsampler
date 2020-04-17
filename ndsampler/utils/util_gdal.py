@@ -692,6 +692,7 @@ class LazyGDalFrameFile(ub.NiceRepr):
             'warnings': [],
             'details': [],
             'fpath': self.cog_fpath,
+            'orig_fpath': orig_fpath,
         }
         try:
             from ndsampler.utils.validate_cog import validate as _validate_cog
