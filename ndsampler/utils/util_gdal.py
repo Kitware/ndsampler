@@ -705,9 +705,9 @@ class LazyGDalFrameFile(ub.NiceRepr):
         try:
             has_data = validate_nonzero_data(self)
             if not has_data:
-                if orig_data is None and orig_gpath is not None:
+                if orig_data is None and orig_fpath is not None:
                     import kwimage
-                    orig_data = kwimage.imread(orig_gpath)
+                    orig_data = kwimage.imread(orig_fpath)
                 if orig_data is None:
                     # All we can do is warn here
                     info['warnings'].append('image appears to be all black')
@@ -785,7 +785,7 @@ def validate_nonzero_data(file):
 
 
 def batch_convert_to_cog(src_fpaths, dst_fpaths,
-                         mode='thread', max_workers=0,
+                         mode='process', max_workers=0,
                          cog_config=None):
     """
     Converts many input images to COGs and verifies that the outputs are
