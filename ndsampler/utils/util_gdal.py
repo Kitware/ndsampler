@@ -809,11 +809,8 @@ def _convert_to_cog(src_fpath, dst_fpath, cog_config):
     if not exists(dst_fpath):
         _cli_convert_cloud_optimized_geotiff(src_fpath, dst_fpath, **cog_config)
 
-    from ndsampler.utils import util_gdal
-    file = util_gdal.LazyGDalFrameFile(dst_fpath)
-    info = file.validate()
-    if info['status'] == 'warnings':
-
+    self = LazyGDalFrameFile(dst_fpath)
+    info = self.validate()
 
     _validate_cog_conversion(dst_fpath, orig_gpath=src_fpath)
     return dst_fpath
