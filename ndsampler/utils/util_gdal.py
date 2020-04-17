@@ -806,6 +806,7 @@ def batch_convert_to_cog(src_fpaths, dst_fpaths,
 
 
 def _convert_to_cog(src_fpath, dst_fpath, cog_config):
+    """ worker function """
     if not exists(dst_fpath):
         _cli_convert_cloud_optimized_geotiff(
                 src_fpath, dst_fpath, **cog_config)
@@ -829,31 +830,3 @@ def _convert_to_cog(src_fpath, dst_fpath, cog_config):
                     src_fpath, dst_fpath))
 
     return dst_fpath
-
-
-def _validate_cog_conversion(cog_gpath, orig_gpath=None, orig_data=None):
-    """
-    Validate that a cog was converted correctly. This test isn't 100% but
-    passing in the original image path or the original data can increase our
-    confidence. If the test fails, it will delete the file.
-    """
-    # CHECK THAT THE DATA WAS WRITTEN CORRECTLY
-    from ndsampler.utils import util_gdal
-    file = util_gdal.LazyGDalFrameFile(cog_gpath)
-    is_valid = util_gdal.validate_gdal_file(file)
-    if not is_valid:
-        if orig_data is None and orig_gpath is not None:
-            import kwimage
-            orig_data = kwimage.imread(orig_gpath)
-
-        # The check may fail on zero images, so check that
-        if orig_data is not None:
-            orig_sum = orig_data.sum()
-            if orig_sum > 0:
-                print('FAILED TO WRITE COG FILE')
-                print('orig_sum = {!r}'.format(orig_sum))
-                ub.delete(cog_gpath)
-                raise Exception('Cog is corrupt')
-        else:
-            print('GOT BAD OR ALL BLACK COG')
-            raise Exception('Cog might be corrupt')
