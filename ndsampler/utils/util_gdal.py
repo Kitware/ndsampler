@@ -807,12 +807,27 @@ def batch_convert_to_cog(src_fpaths, dst_fpaths,
 
 def _convert_to_cog(src_fpath, dst_fpath, cog_config):
     if not exists(dst_fpath):
-        _cli_convert_cloud_optimized_geotiff(src_fpath, dst_fpath, **cog_config)
+        _cli_convert_cloud_optimized_geotiff(
+                src_fpath, dst_fpath, **cog_config)
 
-    self = LazyGDalFrameFile(dst_fpath)
-    info = self.validate()
+    max_tries = 3
+    for try_num in range(max_tries):
+        self = LazyGDalFrameFile(dst_fpath)
+        info = self.validate(orig_fpath=dst_fpath)
+        if info['status'] == 'pass':
+            break
+        else:
+            print('ATTEMPT TO RECOVER FROM ERROR info = {!r}'.format(info))
+            print('src_fpath = {!r}'.format(src_fpath))
+            print('dst_fpath = {!r}'.format(dst_fpath))
+            ub.delete(dst_fpath)
+            _cli_convert_cloud_optimized_geotiff(
+                src_fpath, dst_fpath, **cog_config)
+        if try_num >= max_tries - 1:
+            raise Exception(
+                'ERROR CONVERTING TO COG: src_fpath={}, dst_fpath={}'.format(
+                    src_fpath, dst_fpath))
 
-    _validate_cog_conversion(dst_fpath, orig_gpath=src_fpath)
     return dst_fpath
 
 
