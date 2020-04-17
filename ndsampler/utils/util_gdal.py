@@ -797,28 +797,28 @@ def batch_convert_to_cog(src_fpaths, dst_fpaths,
     from ndsampler.utils import util_futures
     jobs = util_futures.JobPool(mode, max_workers=max_workers)
     for src_fpath, dst_fpath in zip(src_fpaths, dst_fpaths):
-        jobs.submit(_convert_to_cog, src_fpath, dst_fpath, cog_config)
-
+        jobs.submit(_convert_to_cog_worker, src_fpath, dst_fpath,
+                    cog_config=cog_config)
     for job in ub.ProgIter(jobs.as_completed(), total=len(jobs),
-                           desc='collect split jobs'):
+                           desc='converting to cog'):
         job.result()
 
 
 def batch_validate_cog(dst_fpaths, mode='thread', max_workers=0):
     """
-    Return bad cog infos
+    Return cog infos
     """
     from ndsampler.utils import util_futures
     jobs = util_futures.JobPool(mode, max_workers=max_workers)
     for dst_fpath in dst_fpaths:
         jobs.submit(_validate_cog_worker, dst_fpath)
-    bad_infos = []
     for job in ub.ProgIter(jobs.as_completed(), total=len(jobs),
                            desc='validate cogs'):
         info = job.result()
-        if info['status'] != 'pass':
-            bad_infos.append(info)
-    return bad_infos
+        yield info
+    # if info['status'] != 'pass':
+    #     bad_infos.append(info)
+    # return bad_infos
 
 
 def _validate_cog_worker(dst_fpath, orig_fpath=None):
@@ -827,16 +827,18 @@ def _validate_cog_worker(dst_fpath, orig_fpath=None):
     return info
 
 
-def _convert_to_cog(src_fpath, dst_fpath, cog_config):
+def _convert_to_cog_worker(src_fpath, dst_fpath, cog_config):
     """ worker function """
     if not exists(dst_fpath):
         _cli_convert_cloud_optimized_geotiff(
                 src_fpath, dst_fpath, **cog_config)
 
+    success = False
     max_tries = 3
     for try_num in range(max_tries):
         info = _validate_cog_worker(dst_fpath=dst_fpath, orig_fpath=src_fpath)
         if info['status'] == 'pass':
+            success = True
             break
         else:
             print('ATTEMPT TO RECOVER FROM ERROR info = {!r}'.format(info))
@@ -845,8 +847,9 @@ def _convert_to_cog(src_fpath, dst_fpath, cog_config):
             ub.delete(dst_fpath)
             _cli_convert_cloud_optimized_geotiff(
                 src_fpath, dst_fpath, **cog_config)
-        if try_num >= max_tries - 1:
-            raise Exception(
-                'ERROR CONVERTING TO COG: src_fpath={}, dst_fpath={}'.format(
-                    src_fpath, dst_fpath))
+
+    if not success:
+        raise Exception(
+            'ERROR CONVERTING TO COG: src_fpath={}, dst_fpath={}'.format(
+                src_fpath, dst_fpath))
     return dst_fpath
