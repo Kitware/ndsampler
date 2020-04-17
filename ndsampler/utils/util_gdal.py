@@ -705,45 +705,30 @@ def validate_gdal_file(file):
         >>> file = LazyGDalFrameFile(gpath)
         >>> validate_gdal_file(file)
     """
-    import numpy as np
-    # Find center point of the image
-    cx, cy = np.array(file.shape[0:2]) // 2
-    center = [cx, cy]
-    # Check if the center pixels have data, look at more data if needbe
-    sizes = [8, 512, 2048, 5000]
-    for d in sizes:
-        index = tuple(slice(c - d, c + d) for c in center)
-        partial_data = file[index]
-        total = partial_data.sum()
-
-        if 0:
-            import kwimage
-            tmp = (partial_data / partial_data.max()).astype(np.float32)
-            tmp = (partial_data / 2 ** 11)
-
-            from skimage.exposure import equalize_hist
-            tmp = equalize_hist(partial_data)
-
-            tmp8 = kwimage.ensure_uint255(tmp)
-            kwimage.imwrite('debug.png', tmp8)
-            from skimage.exposure import equalize_hist
-            tmp = equalize_hist(partial_data)
-
-            tmp8 = kwimage.ensure_uint255(tmp)
-            kwimage.imwrite('debug.png', tmp8)
-
-        if total > 0:
-            break
-
-    if total == 0:
-        total = file[:].sum()
-
-    is_valid = total > 0
+    try:
+        import numpy as np
+        # Find center point of the image
+        cx, cy = np.array(file.shape[0:2]) // 2
+        center = [cx, cy]
+        # Check if the center pixels have data, look at more data if needbe
+        sizes = [8, 512, 2048, 5000]
+        for d in sizes:
+            index = tuple(slice(c - d, c + d) for c in center)
+            partial_data = file[index]
+            total = partial_data.sum()
+            if total > 0:
+                break
+        if total == 0:
+            total = file[:].sum()
+        is_valid = total > 0
+    except Exception:
+        is_valid = False
     return is_valid
 
 
-def batch_convert_to_cog(
-        src_fpaths, dst_fpaths, mode='thread', max_workers=8, cog_config=None):
+def batch_convert_to_cog(src_fpaths, dst_fpaths,
+                         mode='thread', max_workers=8,
+                         cog_config=None):
     """
     Converts many input images to COGs and verifies that the outputs are
     correct
