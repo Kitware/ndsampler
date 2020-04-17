@@ -730,8 +730,6 @@ class LazyGDalFrameFile(ub.NiceRepr):
 
         if info['errors']:
             info['status'] = 'fail'
-        elif info['warnings']:
-            info['status'] = 'warn'
         else:
             info['status'] = 'pass'
         return info
