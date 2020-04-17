@@ -696,6 +696,12 @@ class LazyGDalFrameFile(ub.NiceRepr):
         try:
             from ndsampler.utils.validate_cog import validate as _validate_cog
             warnings, errors, details = _validate_cog(self.cog_fpath)
+            for line in warnings[:]:
+                if 'recommended' in line:
+                    # move non-critical warning to detail
+                    warnings.remove(line)
+                    details.append(line)
+
         except Exception as ex:
             info['errors'].append(repr(ex))
         else:
