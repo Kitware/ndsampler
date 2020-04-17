@@ -672,6 +672,63 @@ class LazyGDalFrameFile(ub.NiceRepr):
         img_part = np.dstack(channels)
         return img_part
 
+    def validate(self, orig_fpath=None, orig_data=None):
+        """
+        Check for any corruption issues
+
+        Args:
+            orig_fpath (str): if specified and the data seems to be all zero,
+                we check if the pixels are close to the pixels in this other
+                image. If not the warning becomes an error.
+
+            orig_data (ndarray): alternative to orig_fpath if the data is in
+                memory.
+
+        Returns:
+            Dict: info about errors, warnings, and details
+        """
+        info = {
+            'errors': [],
+            'warnings': [],
+            'details': [],
+        }
+        try:
+            from ndsampler.utils.validate_cog import validate as _validate_cog
+            warnings, errors, details = _validate_cog(self.cog_fpath)
+        except Exception as ex:
+            info['errors'].append(repr(ex))
+        else:
+            info['errors'].extend(errors)
+            info['warnings'].extend(warnings)
+            info['details'].extend(details)
+        try:
+            has_data = validate_nonzero_data(self)
+            if not has_data:
+                if orig_data is None and orig_gpath is not None:
+                    import kwimage
+                    orig_data = kwimage.imread(orig_gpath)
+                if orig_data is None:
+                    # All we can do is warn here
+                    info['warnings'].append('image appears to be all black')
+                else:
+                    orig_sum = orig_data.sum()
+                    if orig_sum > 0:
+                        info['errors'].append(
+                            'image is all zeros, but orig_sum = {!r}'.format(
+                                orig_sum))
+            else:
+                info['details'].append('data seems to exist')
+        except Exception as ex:
+            info['errors'].append(repr(ex))
+
+        if info['errors']:
+            info['status'] = 'fail'
+        elif info['warnings']:
+            info['status'] = 'warn'
+        else:
+            info['status'] = 'pass'
+        return info
+
 
 def _rectify_slice_dim(part, D):
     if part is None:
@@ -691,7 +748,7 @@ def _rectify_slice_dim(part, D):
     return part
 
 
-def validate_gdal_file(file):
+def validate_nonzero_data(file):
     """
     Test to see if the image is all black.
 
@@ -703,7 +760,7 @@ def validate_gdal_file(file):
         >>> import kwimage
         >>> gpath = kwimage.grab_test_image_fpath()
         >>> file = LazyGDalFrameFile(gpath)
-        >>> validate_gdal_file(file)
+        >>> validate_nonzero_data(file)
     """
     try:
         import numpy as np
@@ -720,10 +777,10 @@ def validate_gdal_file(file):
                 break
         if total == 0:
             total = file[:].sum()
-        is_valid = total > 0
+        has_data = total > 0
     except Exception:
-        is_valid = False
-    return is_valid
+        has_data = False
+    return has_data
 
 
 def batch_convert_to_cog(src_fpaths, dst_fpaths,
@@ -751,6 +808,13 @@ def batch_convert_to_cog(src_fpaths, dst_fpaths,
 def _convert_to_cog(src_fpath, dst_fpath, cog_config):
     if not exists(dst_fpath):
         _cli_convert_cloud_optimized_geotiff(src_fpath, dst_fpath, **cog_config)
+
+    from ndsampler.utils import util_gdal
+    file = util_gdal.LazyGDalFrameFile(dst_fpath)
+    info = file.validate()
+    if info['status'] == 'warnings':
+
+
     _validate_cog_conversion(dst_fpath, orig_gpath=src_fpath)
     return dst_fpath
 
