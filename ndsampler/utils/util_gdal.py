@@ -691,6 +691,7 @@ class LazyGDalFrameFile(ub.NiceRepr):
             'errors': [],
             'warnings': [],
             'details': [],
+            'fpath': self.cog_fpath,
         }
         try:
             from ndsampler.utils.validate_cog import validate as _validate_cog
@@ -784,7 +785,7 @@ def validate_nonzero_data(file):
 
 
 def batch_convert_to_cog(src_fpaths, dst_fpaths,
-                         mode='thread', max_workers=8,
+                         mode='thread', max_workers=0,
                          cog_config=None):
     """
     Converts many input images to COGs and verifies that the outputs are
@@ -805,6 +806,29 @@ def batch_convert_to_cog(src_fpaths, dst_fpaths,
         job.result()
 
 
+def batch_validate_cog(dst_fpaths, mode='thread', max_workers=0):
+    """
+    Return bad cog infos
+    """
+    from ndsampler.utils import util_futures
+    jobs = util_futures.JobPool(mode, max_workers=max_workers)
+    for dst_fpath in dst_fpaths:
+        jobs.submit(_validate_cog_worker, dst_fpath)
+    bad_infos = []
+    for job in ub.ProgIter(jobs.as_completed(), total=len(jobs),
+                           desc='validate cogs'):
+        info = job.result()
+        if info['status'] != 'pass':
+            bad_infos.append(info)
+    return bad_infos
+
+
+def _validate_cog_worker(dst_fpath, orig_fpath=None):
+    self = LazyGDalFrameFile(dst_fpath)
+    info = self.validate()
+    return info
+
+
 def _convert_to_cog(src_fpath, dst_fpath, cog_config):
     """ worker function """
     if not exists(dst_fpath):
@@ -813,8 +837,7 @@ def _convert_to_cog(src_fpath, dst_fpath, cog_config):
 
     max_tries = 3
     for try_num in range(max_tries):
-        self = LazyGDalFrameFile(dst_fpath)
-        info = self.validate(orig_fpath=dst_fpath)
+        info = _validate_cog_worker(dst_fpath=dst_fpath, orig_fpath=src_fpath)
         if info['status'] == 'pass':
             break
         else:
@@ -828,5 +851,4 @@ def _convert_to_cog(src_fpath, dst_fpath, cog_config):
             raise Exception(
                 'ERROR CONVERTING TO COG: src_fpath={}, dst_fpath={}'.format(
                     src_fpath, dst_fpath))
-
     return dst_fpath
