@@ -816,6 +816,11 @@ def batch_convert_to_cog(src_fpaths, dst_fpaths,
 def batch_validate_cog(dst_fpaths, mode='thread', max_workers=0):
     """
     Return cog infos
+
+    Args:
+        dst_fpaths (List[str]): paths to validate
+        mode (str, default='process'): either process, thread, or serial
+        max_workers (int, default=0): number of processes / threads to use
     """
     from ndsampler.utils import util_futures
     jobs = util_futures.JobPool(mode, max_workers=max_workers)
