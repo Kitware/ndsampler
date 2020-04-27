@@ -788,6 +788,15 @@ def batch_convert_to_cog(src_fpaths, dst_fpaths,
     """
     Converts many input images to COGs and verifies that the outputs are
     correct
+
+    Args:
+        src_fpaths (List[str]): source image filepaths
+        dst_fpaths (List[str]): corresponding destination image filepaths
+        mode (str, default='process'): either process, thread, or serial
+        max_workers (int, default=0): number of processes / threads to use
+        cog_config (dict):
+            config options for COG files
+            (e.g. compress, blocksize, overviews, etc).
     """
     if cog_config is None:
         cog_config = {
