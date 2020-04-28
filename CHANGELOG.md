@@ -9,6 +9,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 * `util_lru` containing implementations of a dictionary based LRU cache. 
 
+### Fixed:
+* `CategoryTree.decision` now always refines categories with a single parent
+
 
 ### Changed
 * AbstractFrames now uses the configurable `LRUDict` instead of the `functools` decorator.
