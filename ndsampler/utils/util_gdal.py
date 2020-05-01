@@ -169,6 +169,7 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, compress='auto',
         >>> # xdoctest: +REQUIRES(module:gdal)
         >>> from ndsampler.utils.util_gdal import *  # NOQA
         >>> from ndsampler.utils.util_gdal import _imwrite_cloud_optimized_geotiff
+        >>> from ndsampler.utils.util_gdal import _doctest_check_cog
 
         >>> data = np.random.randint(0, 255, (800, 800, 3), dtype=np.uint8)
         >>> fpath = '/tmp/foo.cog.tiff'
@@ -587,6 +588,8 @@ class LazyGDalFrameFile(ub.NiceRepr):
     @ub.memoize_property
     def _ds(self):
         import gdal
+        if not exists(self.cog_fpath):
+            raise Exception('File does not exist: {}'.format(self.cog_fpath))
         ds = gdal.Open(self.cog_fpath, gdal.GA_ReadOnly)
         return ds
 
@@ -669,6 +672,62 @@ class LazyGDalFrameFile(ub.NiceRepr):
         img_part = np.dstack(channels)
         return img_part
 
+    def validate(self, orig_fpath=None, orig_data=None):
+        """
+        Check for any corruption issues
+
+        Args:
+            orig_fpath (str): if specified and the data seems to be all zero,
+                we check if the pixels are close to the pixels in this other
+                image. If not the warning becomes an error.
+
+            orig_data (ndarray): alternative to orig_fpath if the data is in
+                memory.
+
+        Returns:
+            Dict: info about errors, warnings, and details
+        """
+        info = {
+            'errors': [],
+            'warnings': [],
+            'details': {},
+            'fpath': self.cog_fpath,
+            'orig_fpath': orig_fpath,
+        }
+        try:
+            from ndsampler.utils.validate_cog import validate as _validate_cog
+            warnings, errors, details = _validate_cog(self.cog_fpath)
+
+        except Exception as ex:
+            info['errors'].append(repr(ex))
+        else:
+            info['errors'].extend(errors)
+            info['warnings'].extend(warnings)
+            info['details'] = details
+        try:
+            has_data = validate_nonzero_data(self)
+            if not has_data:
+                if orig_data is None and orig_fpath is not None:
+                    import kwimage
+                    orig_data = kwimage.imread(orig_fpath)
+                if orig_data is None:
+                    # All we can do is warn here
+                    info['warnings'].append('image appears to be all black')
+                else:
+                    orig_sum = orig_data.sum()
+                    if orig_sum > 0:
+                        info['errors'].append(
+                            'image is all zeros, but orig_sum = {!r}'.format(
+                                orig_sum))
+        except Exception as ex:
+            info['errors'].append(repr(ex))
+
+        if info['errors']:
+            info['status'] = 'fail'
+        else:
+            info['status'] = 'pass'
+        return info
+
 
 def _rectify_slice_dim(part, D):
     if part is None:
@@ -688,7 +747,7 @@ def _rectify_slice_dim(part, D):
     return part
 
 
-def validate_gdal_file(file):
+def validate_nonzero_data(file):
     """
     Test to see if the image is all black.
 
@@ -700,40 +759,111 @@ def validate_gdal_file(file):
         >>> import kwimage
         >>> gpath = kwimage.grab_test_image_fpath()
         >>> file = LazyGDalFrameFile(gpath)
-        >>> validate_gdal_file(file)
+        >>> validate_nonzero_data(file)
     """
-    import numpy as np
-    # Find center point of the image
-    cx, cy = np.array(file.shape[0:2]) // 2
-    center = [cx, cy]
-    # Check if the center pixels have data, look at more data if needbe
-    sizes = [8, 512, 2048, 5000]
-    for d in sizes:
-        index = tuple(slice(c - d, c + d) for c in center)
-        partial_data = file[index]
-        total = partial_data.sum()
+    try:
+        import numpy as np
+        # Find center point of the image
+        cx, cy = np.array(file.shape[0:2]) // 2
+        center = [cx, cy]
+        # Check if the center pixels have data, look at more data if needbe
+        sizes = [8, 512, 2048, 5000]
+        for d in sizes:
+            index = tuple(slice(c - d, c + d) for c in center)
+            partial_data = file[index]
+            total = partial_data.sum()
+            if total > 0:
+                break
+        if total == 0:
+            total = file[:].sum()
+        has_data = total > 0
+    except Exception:
+        has_data = False
+    return has_data
 
-        if 0:
-            import kwimage
-            tmp = (partial_data / partial_data.max()).astype(np.float32)
-            tmp = (partial_data / 2 ** 11)
 
-            from skimage.exposure import equalize_hist
-            tmp = equalize_hist(partial_data)
+def batch_convert_to_cog(src_fpaths, dst_fpaths,
+                         mode='process', max_workers=0,
+                         cog_config=None):
+    """
+    Converts many input images to COGs and verifies that the outputs are
+    correct
 
-            tmp8 = kwimage.ensure_uint255(tmp)
-            kwimage.imwrite('debug.png', tmp8)
-            from skimage.exposure import equalize_hist
-            tmp = equalize_hist(partial_data)
+    Args:
+        src_fpaths (List[str]): source image filepaths
+        dst_fpaths (List[str]): corresponding destination image filepaths
+        mode (str, default='process'): either process, thread, or serial
+        max_workers (int, default=0): number of processes / threads to use
+        cog_config (dict):
+            config options for COG files
+            (e.g. compress, blocksize, overviews, etc).
+    """
+    if cog_config is None:
+        cog_config = {
+            'compress': 'LZW',
+            'blocksize': 256,
+        }
+    from ndsampler.utils import util_futures
+    jobs = util_futures.JobPool(mode, max_workers=max_workers)
+    for src_fpath, dst_fpath in zip(src_fpaths, dst_fpaths):
+        jobs.submit(_convert_to_cog_worker, src_fpath, dst_fpath,
+                    cog_config=cog_config)
+    for job in ub.ProgIter(jobs.as_completed(), total=len(jobs),
+                           desc='converting to cog'):
+        job.result()
 
-            tmp8 = kwimage.ensure_uint255(tmp)
-            kwimage.imwrite('debug.png', tmp8)
 
-        if total > 0:
+def batch_validate_cog(dst_fpaths, mode='thread', max_workers=0):
+    """
+    Return cog infos
+
+    Args:
+        dst_fpaths (List[str]): paths to validate
+        mode (str, default='process'): either process, thread, or serial
+        max_workers (int, default=0): number of processes / threads to use
+    """
+    from ndsampler.utils import util_futures
+    jobs = util_futures.JobPool(mode, max_workers=max_workers)
+    for dst_fpath in dst_fpaths:
+        jobs.submit(_validate_cog_worker, dst_fpath)
+    for job in ub.ProgIter(jobs.as_completed(), total=len(jobs),
+                           desc='validate cogs'):
+        info = job.result()
+        yield info
+    # if info['status'] != 'pass':
+    #     bad_infos.append(info)
+    # return bad_infos
+
+
+def _validate_cog_worker(dst_fpath, orig_fpath=None):
+    self = LazyGDalFrameFile(dst_fpath)
+    info = self.validate()
+    return info
+
+
+def _convert_to_cog_worker(src_fpath, dst_fpath, cog_config):
+    """ worker function """
+    if not exists(dst_fpath):
+        _cli_convert_cloud_optimized_geotiff(
+                src_fpath, dst_fpath, **cog_config)
+
+    success = False
+    max_tries = 3
+    for try_num in range(max_tries):
+        info = _validate_cog_worker(dst_fpath=dst_fpath, orig_fpath=src_fpath)
+        if info['status'] == 'pass':
+            success = True
             break
+        else:
+            print('ATTEMPT TO RECOVER FROM ERROR info = {!r}'.format(info))
+            print('src_fpath = {!r}'.format(src_fpath))
+            print('dst_fpath = {!r}'.format(dst_fpath))
+            ub.delete(dst_fpath)
+            _cli_convert_cloud_optimized_geotiff(
+                src_fpath, dst_fpath, **cog_config)
 
-    if total == 0:
-        total = file[:].sum()
-
-    is_valid = total > 0
-    return is_valid
+    if not success:
+        raise Exception(
+            'ERROR CONVERTING TO COG: src_fpath={}, dst_fpath={}'.format(
+                src_fpath, dst_fpath))
+    return dst_fpath

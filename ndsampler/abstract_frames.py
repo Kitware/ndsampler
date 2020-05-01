@@ -710,6 +710,10 @@ def _cog_cache_write(gpath, cache_gpath, config=None):
         >>> _cog_cache_write(gpath, cache_gpath, {})
     """
     assert config is not None
+
+    # FIXME: if gdal_translate is not installed (because libgdal exists, but
+    # gdal-bin doesn't) then this seems to fail without throwing an error when
+    # hack_use_cli=1.
     hack_use_cli = config.pop('hack_use_cli', False)
 
     if DEBUG_COG_ATOMIC_WRITE:
@@ -774,7 +778,7 @@ def _cog_cache_write(gpath, cache_gpath, config=None):
     if RUN_COG_CORRUPTION_CHECKS:
         # CHECK THAT THE DATA WAS WRITTEN CORRECTLY
         file = util_gdal.LazyGDalFrameFile(cache_gpath)
-        is_valid = util_gdal.validate_gdal_file(file)
+        is_valid = util_gdal.validate_nonzero_data(file)
         if not is_valid:
             if hack_use_cli:
                 import kwimage

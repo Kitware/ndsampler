@@ -42,7 +42,6 @@ def coerce_datasets(config, build_hashid=False, verbose=1):
         return fpath
 
     def _ensure_coco(coco):
-        print('coco = {!r}'.format(coco))
         # Map a file path or an in-memory dataset to a CocoDataset
         import ndsampler
         import six
@@ -80,14 +79,14 @@ def coerce_datasets(config, build_hashid=False, verbose=1):
         config['datasets'] = None
 
     if verbose:
-        print('Checking for explicit subsets')
+        print('[ndsampler.coerce_data] Checking for explicit subsets')
     subsets = ub.map_vals(_ensure_coco, subsets)
 
     # However, sometimes they just specify a single dataset, and we need to
     # make a split for it.
-    print('config = {!r}'.format(config))
+    # print('config = {!r}'.format(config))
     base = _ensure_coco(config.get('datasets', None))
-    print('base = {!r}'.format(base))
+    print('[ndsampler.coerce_data] base = {!r}'.format(base))
     if base is not None:
         if verbose:
             print('Splitting base into train/vali')
@@ -186,7 +185,6 @@ def _split_train_vali_test(coco_dset, factor=3):
                                       n_splits=factor)
     learn_gids = list(ub.take(gids, learnx))
     learn_cids = list(ub.take(cids, learnx))
-    print('learn_gids = {!r}'.format(set(learn_gids)))
     _trainx, _valix = _stratified_split(learn_gids, learn_cids, rng=140860164,
                                         n_splits=factor)
     trainx = learnx[_trainx]

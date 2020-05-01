@@ -1014,6 +1014,37 @@ class CategoryTree(ub.NiceRepr):
             >>> class_probs = self._demo_probs(num=10, nonrandom=8)
             >>> pred_idxs1, pref_conf1 = self.decision(class_probs, dim=1)
             >>> print('pred_idxs1 = {!r}'.format(pred_idxs1))
+
+        Ignore:
+            >>> import kwcoco
+            >>> dset = kwcoco.CocoDataset.demo('shapes8')
+            >>> self = dset.object_categories()
+            >>> _print_forest(self.graph)
+            ├── background
+            ├── raster
+            │   ├── eff
+            │   └── superstar
+            └── vector
+                └── star
+
+            >>> print(list(self))
+            ['background', 'star', 'superstar', 'eff', 'raster', 'vector']
+
+            >>> class_probs = np.array([[0.05, 0.10, 0.90, 0.10, .90, .05]])
+            >>> self.decision(class_probs, dim=1)
+            >>> print('node = {!r}, prob = {!r}'.format(self.idx_to_node[idx[0]], prob[0]))
+
+            >>> class_probs = np.array([[0.00, 0.00, 0.98, 0.02, 0.98, 0.02]])
+            >>> idx, prob = self.decision(class_probs, dim=1, thresh=0.1, criterion='entropy')
+            >>> print('node = {!r}, prob = {!r}'.format(self.idx_to_node[idx[0]], prob[0]))
+
+            >>> class_probs = np.array([[0.00, 0.98, 0.01, 0.01, 0.02, 0.98]])
+            >>> idx, prob = self.decision(class_probs, dim=1, thresh=0.01, criterion='entropy')
+            >>> print('node = {!r}, prob = {!r}'.format(self.idx_to_node[idx[0]], prob[0]))
+
+            >>> class_probs = np.array([[0.00, 1.00, 0.00, 0.00, 0.00, 1.00]])
+            >>> idx, prob = self.decision(class_probs, dim=1, thresh=0.1, criterion='entropy')
+            >>> print('node = {!r}, prob = {!r}'.format(self.idx_to_node[idx[0]], prob[0]))
         """
         if criterion == 'prob':
             return self._prob_decision(class_probs, dim, thresh=thresh)
@@ -1132,20 +1163,31 @@ class CategoryTree(ub.NiceRepr):
                         if idx in always_refine_idxs:
                             refine_flags[:] = 1
 
+                    if len(child_idxs) == 1:
+                        # hack: always refine when there is one child, in this
+                        # case the simplicity measure will always be zero,
+                        # which is likely a problem with this criterion.
+                        refine_flags[:] = 1
+
                     refine_flags = kwarray.ArrayAPI.numpy(refine_flags).astype(np.bool)
 
                     if DEBUG:
                         print('-----------')
                         print('idx = {!r}'.format(idx))
+                        print('node = {!r}'.format(self.idx_to_node[idx]))
                         print('ommer_idxs = {!r}'.format(ommer_idxs))
+                        print('ommer_nodes = {!r}'.format(
+                            list(ub.take(self.idx_to_node, ommer_idxs))))
                         print('depth = {!r}'.format(depth))
                         import pandas as pd
                         print('expanded_probs =\n{}'.format(
-                            ub.repr2(expanded_probs, precision=2, supress_small=True)))
+                            ub.repr2(expanded_probs, precision=2,
+                                     with_dtype=0, supress_small=True)))
                         df = pd.DataFrame({
                             'h': h_expanded,
                             'h_worst': h_expanded_worst,
-                            'ratio': complexity_ratio,
+                            'c_ratio': complexity_ratio,
+                            's_ratio': simplicity_ratio,
                             'flags': refine_flags.astype(np.uint8)
                         })
                         print(df)
@@ -1235,6 +1277,33 @@ def tree_depth(graph, root=None):
             return max(it.chain([0], (_inner(n) for n in graph.successors(root)))) + 1
     depth = _inner(root)
     return depth
+
+
+def _print_forest(graph):
+    """
+    Nice ascii representation of a forest
+
+    Ignore:
+        graph = nx.balanced_tree(r=2, h=3, create_using=nx.DiGraph)
+        _print_forest(graph)
+
+        graph = CategoryTree.demo('coco').graph
+        _print_forest(graph)
+    """
+    assert nx.is_forest(graph)
+    encoding = to_directed_nested_tuples(graph)
+    def _recurse(encoding, indent=''):
+        for idx, item in enumerate(encoding):
+            node, data, children = item
+            if idx == len(encoding) - 1:
+                this_prefix = indent + '└── '
+                next_prefix = indent + '    '
+            else:
+                this_prefix = indent + '├── '
+                next_prefix = indent + '│   '
+            print(this_prefix + str(node))
+            _recurse(children, indent=next_prefix)
+    _recurse(encoding)
 
 
 def to_directed_nested_tuples(graph, with_data=True):
