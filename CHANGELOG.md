@@ -4,13 +4,20 @@ This changelog follows the specifications detailed in: [Keep a Changelog](https:
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
 
+## Version 0.5.8 - Released 2020-05-01 
+
+### Fixed:
+* `CategoryTree.decision` now always refines categories with a single parent
+
+### Added
+* `batch_convert_to_cog` to `util_gdal`
+* `batch_validate_cog` to `util_gdal`
+
+
 ## Version 0.5.6 - Unreleased
 
 ### Added
 * `util_lru` containing implementations of a dictionary based LRU cache. 
-
-### Fixed:
-* `CategoryTree.decision` now always refines categories with a single parent
 
 
 ### Changed
@@ -180,7 +187,3 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Initial code for CategoryTree
 * Initial code for CocoDataset
 * Initial code for dummy detection toydata
-
-## Version 0.5.7 - Unreleased
-
-## Version 0.5.8 - Unreleased
