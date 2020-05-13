@@ -52,7 +52,6 @@ The main pattern of usage is:
    annotation.   
 
 
-
 Example
 --------
 
