@@ -3,6 +3,8 @@ ndsampler
 
 |GitlabCIPipeline| |GitlabCICoverage| |Pypi| |Downloads| 
 
+The main webpage for this project is: https://gitlab.kitware.com/computer-vision/ndsampler
+
 Fast random access to small regions in large images. 
 
 Random access is amortized by converting images into an efficient backend
@@ -31,6 +33,23 @@ Features
 
 
 Also installs the kwcoco package and CLI tool.
+
+
+Usage
+-----
+
+The main pattern of usage is: 
+
+1. Use kwcoco to load a json-based COCO dataset (or create a ``kwcoco.CocoDataset``
+   programatically).
+
+2. Pass that dataset to an ``ndsampler.CocoSampler`` object, and that
+   effectively wraps the json structure that holds your images and annotations
+   and it allows you to sample patches from those images efficiently. 
+
+3. You can either manually specify image + region or you can specify an
+   annotation id, in which case it loads the region corresponding to the
+   annotation.   
 
 
 Example
@@ -81,33 +100,29 @@ This example shows how you can efficiently load subregions from images.
     >>> # which deal with annotations. See those for more details.
     >>> # For random negative sampling see coco_regions.
 
+A Note On COGs
+--------------
+COGs (cloud optimized geotiffs) are the backbone efficient sampling in the
+ndsampler library. 
 
-TODO
-----
+To preform deep learning efficiently you need to be able to effectively
+randomly sample cropped regions from images, so when ``ndsampler.Sampler``
+(more acurately the ``FramesSampler`` belonging to the base ``Sampler`` object)
+is in "cog" mode, it caches all images larger than 512x512 in cog format. 
 
-- [ ] Currently only supports image-based detection tasks, but not much work is
-  needed to extend to video. The code was originally based on sampling code for
-  video, so ndimensions is builtin to most places in the code. However, there are
-  currently no test cases that demonstrate that this library does work with video.
-  So we should (a) port the video toydata code from irharn to test ndcases and (b)
-  fix the code to work for both still images and video where things break. 
+I've noticed a significant speedups even for "small" 1024x1024 images.  I
+haven't made effective use of the overviews feature yet, but in the future I
+plan to, as I want to allow ndsampler to sample in scale as well as in space. 
 
-- [ ] Currently we are good at loading many small objects in 2d images.
-  However, we are bad at loading images with one single large object that needs
-  to be downsampled (e.g. loading an entire 1024x1024 image and downsampling it
-  to 224x224). We should find a way to mitigate this using pyramid overviews in
-  the backend COG files.
+Its possible to obtain this speedup with the "npy" backend, which supports true
+random sampling, but this is an uncompressed format, which can require a large
+amount of disk space. Using the "None" backend, means that loading a small
+windowed region requires loading the entire image first (which can be ok for
+some applications).
 
-
-NOTES
------
-
-There is a GDAL backend for FramesSampler
-
-Installing gdal is a pain though.
+Using COGs requires that GDAL is installed.  Installing GDAL is a pain though.
 
 https://gist.github.com/cspanring/5680334
-
 
 Using conda is relatively simple
 
@@ -138,6 +153,23 @@ Also possible to use system packages
 
     # Test that this works
     python -c "from osgeo import gdal; print(gdal)"
+
+
+TODO
+----
+
+- [ ] Currently only supports image-based detection tasks, but not much work is
+  needed to extend to video. The code was originally based on sampling code for
+  video, so ndimensions is builtin to most places in the code. However, there are
+  currently no test cases that demonstrate that this library does work with video.
+  So we should (a) port the video toydata code from irharn to test ndcases and (b)
+  fix the code to work for both still images and video where things break. 
+
+- [ ] Currently we are good at loading many small objects in 2d images.
+  However, we are bad at loading images with one single large object that needs
+  to be downsampled (e.g. loading an entire 1024x1024 image and downsampling it
+  to 224x224). We should find a way to mitigate this using pyramid overviews in
+  the backend COG files.
 
 
 .. |Pypi| image:: https://img.shields.io/pypi/v/ndsampler.svg

@@ -8,6 +8,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed:
 * `CategoryTree.decision` now always refines categories with a single parent
+* `run_tests.py` now correctly returns exit code.
 
 ### Added
 * `batch_convert_to_cog` to `util_gdal`
@@ -187,3 +188,5 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Initial code for CategoryTree
 * Initial code for CocoDataset
 * Initial code for dummy detection toydata
+
+## Version 0.5.9 - Unreleased
