@@ -3,6 +3,8 @@ ndsampler
 
 |GitlabCIPipeline| |GitlabCICoverage| |Pypi| |Downloads| 
 
+The main webpage for this project is: https://gitlab.kitware.com/computer-vision/ndsampler
+
 Fast random access to small regions in large images. 
 
 Random access is amortized by converting images into an efficient backend
@@ -38,7 +40,8 @@ Usage
 
 The main pattern of usage is: 
 
-1. Use kwcoco to load a json-based COCO dataset.
+1. Use kwcoco to load a json-based COCO dataset (or create a ``kwcoco.CocoDataset``
+   programatically).
 
 2. Pass that dataset to an ``ndsampler.CocoSampler`` object, and that
    effectively wraps the json structure that holds your images and annotations

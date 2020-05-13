@@ -4,8 +4,8 @@ Extensions to sklearn constructs
 import warnings
 import numpy as np
 from sklearn.utils.validation import check_array
-from sklearn.externals.six.moves import zip
 from sklearn.model_selection._split import (_BaseKFold,)
+from six.moves import zip
 
 
 class StratifiedGroupKFold(_BaseKFold):
