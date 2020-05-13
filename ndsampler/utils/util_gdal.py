@@ -1,3 +1,4 @@
+from os.path import join
 from os.path import exists
 import numpy as np
 import ubelt as ub
@@ -80,13 +81,15 @@ def _benchmark_cog_conversions():
     print('Test data shape = {!r}'.format(shape))
     data = np.random.randint(0, 255, shape, dtype=np.uint16)
     print('Test data size = {}'.format(xdev.byte_str(data.size * data.dtype.itemsize)))
-    src_fpath = ub.expandpath('~/raid/src.png')
+
+    dpath = ub.ensure_app_cache_dir('ndsampler', 'cog_benchmark')
+    src_fpath = join(dpath, 'src.png')
     kwimage.imwrite(src_fpath, data)
 
     # Benchmark conversions
-    dst_api_fpath = ub.expandpath('~/raid/dst_api.tiff')
-    dst_cli_fpath = ub.expandpath('~/raid/dst_cli.tiff')
-    dst_data_fpath = ub.expandpath('~/raid/dst_data.tiff')
+    dst_api_fpath = join(dpath, 'dst_api.tiff')
+    dst_cli_fpath = join(dpath, 'dst_cli.tiff')
+    dst_data_fpath = join(dpath, 'dst_data.tiff')
 
     ti = ub.Timerit(3, bestof=3, verbose=3, unit='s')
 
