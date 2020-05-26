@@ -97,3 +97,7 @@ data
 *.zip
 
 pip-wheel-metadata/
+
+#        python:2.7
+#
+docs/source/ndsampler.*.rst

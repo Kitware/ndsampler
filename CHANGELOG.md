@@ -3,6 +3,13 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
+## Version 0.5.10 - Unreleased
+
+### Added
+* Can now call `CocoSampler.load_item` with target dictionary only containing
+  an annotation id.
+
+## Version 0.5.9 - 
 
 ## Version 0.5.8 - Released 2020-05-01 
 
@@ -188,7 +195,3 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Initial code for CategoryTree
 * Initial code for CocoDataset
 * Initial code for dummy detection toydata
-
-## Version 0.5.9 - Unreleased
-
-## Version 0.5.10 - Unreleased
