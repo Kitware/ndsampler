@@ -630,23 +630,24 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         tr_ = tr.copy()
         if 'aid' in tr_:
             # If the annotation id is specified, infer other unspecified fields
-            ann = self.dset.anns[tr['aid']]
-
-            if 'gid' not in tr_:
-                tr_['gid'] = ann['image_id']
-            if len({'cx', 'cy', 'width', 'height'} & set(tr_)) != 4:
-                box = kwimage.Boxes([ann['bbox']], 'xywh')
-                cx, cy, width, height = box.to_cxywh().data[0]
-                if 'cx' not in tr_:
-                    tr_['cx'] = cx
-                if 'cy' not in tr_:
-                    tr_['cy'] = cy
-                if 'width' not in tr_:
-                    tr_['width'] = width
-                if 'height' not in tr_:
-                    tr_['height'] = height
-            if 'category_id' not in tr:
-                tr_['category_id'] = ann['category_id']
+            aid = tr['aid']
+            if aid in self.dset.anns:
+                ann = self.dset.anns[aid]
+                if 'gid' not in tr_:
+                    tr_['gid'] = ann['image_id']
+                if len({'cx', 'cy', 'width', 'height'} & set(tr_)) != 4:
+                    box = kwimage.Boxes([ann['bbox']], 'xywh')
+                    cx, cy, width, height = box.to_cxywh().data[0]
+                    if 'cx' not in tr_:
+                        tr_['cx'] = cx
+                    if 'cy' not in tr_:
+                        tr_['cy'] = cy
+                    if 'width' not in tr_:
+                        tr_['width'] = width
+                    if 'height' not in tr_:
+                        tr_['height'] = height
+                if 'category_id' not in tr:
+                    tr_['category_id'] = ann['category_id']
 
         if 'slices' in tr:
             # TODO: consolidate with _rectify_tr slides logic
