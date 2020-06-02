@@ -51,12 +51,13 @@ from ndsampler.coco_regions import (CocoRegions, MissingNegativePool, Targets,
 from ndsampler.coco_sampler import (CocoSampler, padded_slice,)
 from ndsampler.isect_indexer import (FrameIntersectionIndex,)
 from ndsampler.toydata import (DynamicToySampler,)
+from ndsampler.coco_dataset import (CocoDataset,)
 
-__all__ = ['AbstractSampler', 'CategoryTree', 'CocoFrames', 'CocoRegions',
-           'CocoSampler', 'CorruptCOG', 'DEBUG_COG_ATOMIC_WRITE',
-           'DEBUG_FILE_LOCK_CACHE_WRITE', 'DEBUG_LOAD_COG',
-           'DynamicToySampler', 'FrameIntersectionIndex', 'Frames',
-           'HashIdentifiable', 'MissingNegativePool',
+__all__ = ['AbstractSampler', 'CategoryTree', 'CocoDataset', 'CocoFrames',
+           'CocoRegions', 'CocoSampler', 'CorruptCOG',
+           'DEBUG_COG_ATOMIC_WRITE', 'DEBUG_FILE_LOCK_CACHE_WRITE',
+           'DEBUG_LOAD_COG', 'DynamicToySampler', 'FrameIntersectionIndex',
+           'Frames', 'HashIdentifiable', 'MissingNegativePool',
            'RUN_COG_CORRUPTION_CHECKS', 'SimpleFrames', 'Targets',
            'abstract_frames', 'abstract_sampler', 'category_tree',
            'coco_dataset', 'coco_frames', 'coco_regions', 'coco_sampler',

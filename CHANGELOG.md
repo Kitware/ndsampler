@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Can now call `CocoSampler.load_item` with target dictionary only containing
   an annotation id.
 
+### Changed
+* CategoryTree now uses a mixin class to separate class storage from hierarchy
+  computations.
+
 ## Version 0.5.9 - 
 
 ## Version 0.5.8 - Released 2020-05-01 
