@@ -13,6 +13,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * CategoryTree now uses a mixin class to separate class storage from hierarchy
   computations.
 
+### Fixed
+* In rare instances a floating point error would cause `load_sample` to raise
+  an `AssertionError`. This is now checked for and corrected.
+
 ## Version 0.5.9 - 
 
 ## Version 0.5.8 - Released 2020-05-01 

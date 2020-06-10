@@ -975,6 +975,14 @@ def _get_slice(data_dims, center, window_dims, pad=None):
         >>> data_slice, extra_padding = _get_slice(data_dims, center, window_dims)
         >>> assert extra_padding == [(30, 0), (27, 0)]
         >>> assert data_slice == (slice(0, 34, None), slice(0, 37, None))
+
+    Example:
+        >>> # Test floating point error case
+        >>> center = (500.5, 974.9999999999999)
+        >>> window_dims  = (100, 100)
+        >>> data_dims = (2000, 2000)
+        >>> pad = (0, 0)
+        >>> _get_slice(data_dims, center, window_dims)
     """
     if pad is None:
         pad = (0, 0)
@@ -985,9 +993,19 @@ def _get_slice(data_dims, center, window_dims, pad=None):
     high_dims = [int(np.floor(c + d_win / 2.0))
                  for c, d_win in zip(center, window_dims)]
 
+    # Floating point errors can cause the slice window size to be different
+    # from the requested one. We check and correct for this.
+    for idx, tup in enumerate(zip(window_dims, low_dims, high_dims)):
+        d_win, d_low, d_high = tup
+        d_win_got = d_high - d_low
+        delta = d_win - d_win_got
+        if delta:
+            high_dims[idx] += delta
+
     if __debug__:
         for d_win, d_low, d_high in zip(window_dims, low_dims, high_dims):
-            assert d_high - d_low == d_win
+            d_win_got = d_high - d_low
+            assert d_win_got == d_win, 'slice has incorrect window size'
 
     # Find the lower and upper coordinates that corresponds to the
     # requested window in the real image. If the window goes out of bounds,
