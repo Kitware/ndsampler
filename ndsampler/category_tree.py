@@ -861,7 +861,7 @@ class CategoryTree(ub.NiceRepr, Mixin_CategoryTree_Torch):
         return new
 
     @classmethod
-    def from_mutex(cls, nodes):
+    def from_mutex(cls, nodes, bg_hack=True):
         """
         Args:
             nodes (List[str]): or a list of class names (in which case they
@@ -875,10 +875,13 @@ class CategoryTree(ub.NiceRepr, Mixin_CategoryTree_Torch):
         graph = nx.DiGraph()
         graph.add_nodes_from(nodes)
         start = 0
-        if 'background' in graph.nodes:
-            # hack
-            graph.nodes['background']['id'] = 0
-            start = 1
+
+        if bg_hack:
+            # TODO: deprecate the defaultness of this
+            if 'background' in graph.nodes:
+                # hack
+                graph.nodes['background']['id'] = 0
+                start = 1
 
         for i, node in enumerate(nodes, start=start):
             graph.nodes[node]['id'] = graph.nodes[node].get('id', i)
@@ -912,7 +915,7 @@ class CategoryTree(ub.NiceRepr, Mixin_CategoryTree_Torch):
         return self
 
     @classmethod
-    def coerce(cls, data):
+    def coerce(cls, data, **kw):
         """
         Attempt to coerce data as a CategoryTree object.
 
@@ -935,19 +938,20 @@ class CategoryTree(ub.NiceRepr, Mixin_CategoryTree_Torch):
         if isinstance(data, int):
             # An integer specifies the number of classes.
             self = cls.from_mutex(
-                ['class_{}'.format(i + 1) for i in range(data)])
+                ['class_{}'.format(i + 1) for i in range(data)], **kw)
         elif isinstance(data, dict):
             # A dictionary is assumed to be in a special json format
-            self = cls.from_json(data)
+            self = cls.from_json(data, **kw)
         elif isinstance(data, list):
             # A list is assumed to be a list of class names
-            self = cls.from_mutex(data)
+            self = cls.from_mutex(data, **kw)
         elif isinstance(data, nx.DiGraph):
             # A nx.DiGraph should represent the category tree
-            self = cls(data)
+            self = cls(data, **kw)
         elif isinstance(data, cls):
             # If data is already a CategoryTree, do nothing and just return it
             self = data
+            assert not kw
         else:
             raise TypeError('Unknown type {}: {!r}'.format(type(data), data))
         return self
