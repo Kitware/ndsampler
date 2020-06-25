@@ -3,6 +3,26 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
+## Version 0.5.10 - Released 2020-06-25
+
+### Added
+* Can now call `CocoSampler.load_item` with target dictionary only containing
+  an annotation id.
+
+### Changed
+* CategoryTree now uses a mixin class to separate class storage from hierarchy
+  computations.
+
+### Fixed
+* In rare instances a floating point error would cause `load_sample` to raise
+  an `AssertionError`. This is now checked for and corrected.
+
+
+## Version 0.5.9 - Released 2020-05-13
+
+### Fixed
+* removed use of deprecated sklearn externals
+
 
 ## Version 0.5.8 - Released 2020-05-01 
 
@@ -27,7 +47,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 
 ## Version 0.5.5
-
 
 ### Changed
 * Moved `ndsampler.util_futures` and `ndsampler.util` into `ndsampler.utils`.
@@ -188,5 +207,3 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Initial code for CategoryTree
 * Initial code for CocoDataset
 * Initial code for dummy detection toydata
-
-## Version 0.5.9 - Unreleased

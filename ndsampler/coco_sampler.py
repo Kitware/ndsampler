@@ -292,10 +292,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
         Args:
             index (int): index of target region
+
             pad (tuple): (height, width) extra context to add to each size.
                 This helps prevent augmentation from producing boundary effects
+
             window_dims (tuple): (height, width) area around the center
                 of the target region to sample.
+
             with_annots (bool | str, default=True):
                 if True, also extracts information about any annotation that
                 overlaps the region of interest (subject to visibility_thresh).
@@ -329,10 +332,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
         Args:
             index (int): index of positive target
+
             pad (tuple): (height, width) extra context to add to each size.
                 This helps prevent augmentation from producing boundary effects
+
             window_dims (tuple): (height, width) area around the center
                 of the target object to sample.
+
             with_annots (bool | str, default=True):
                 if True, also extracts information about any annotation that
                 overlaps the region of interest (subject to visibility_thresh).
@@ -374,10 +380,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             index (int): if specified loads a specific negative from the
                 presampled pool, otherwise the next negative in the pool is
                 returned.
+
             pad (tuple): (height, width) extra context to add to each size.
                 This helps prevent augmentation from producing boundary effects
+
             window_dims (tuple): (height, width) area around the center
                 of the target negative region to sample.
+
             with_annots (bool | str, default=True):
                 if True, also extracts information about any annotation that
                 overlaps the region of interest (subject to visibility_thresh).
@@ -438,6 +447,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 slices, one slice for each of the n dimensions.  If specified
                 this will overwrite the 'cx', 'cy' keys. The 'gid' key is still
                 required, and `pad` does still have an effect.
+
+                NEW in 0.5.10: tr can now contain the key `aid`, which
+                indicates the specific annotation id to load. The keys ['gid',
+                'cx', 'cy'] are derived from `aid` if not present.
 
             pad (tuple): (height, width) extra context to add to window dims.
                 This helps prevent augmentation from producing boundary effects
@@ -600,6 +613,47 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
         return data_slice, extra_padding, st_dims
 
+    def _infer_target_attributes(self, tr):
+        """
+        Infer unpopulated target attribues
+
+        Example:
+            >>> # sample using only an annotation id
+            >>> from ndsampler.coco_sampler import *
+            >>> self = CocoSampler.demo()
+            >>> tr = {'aid': 1}
+            >>> tr_ = self._infer_target_attributes(tr)
+            >>> assert tr_['gid'] == 1
+            >>> assert all(k in tr_ for k in ['cx', 'cy', 'width', 'height'])
+        """
+        # we might modify the target
+        tr_ = tr.copy()
+        if 'aid' in tr_:
+            # If the annotation id is specified, infer other unspecified fields
+            aid = tr['aid']
+            if aid in self.dset.anns:
+                ann = self.dset.anns[aid]
+                if 'gid' not in tr_:
+                    tr_['gid'] = ann['image_id']
+                if len({'cx', 'cy', 'width', 'height'} & set(tr_)) != 4:
+                    box = kwimage.Boxes([ann['bbox']], 'xywh')
+                    cx, cy, width, height = box.to_cxywh().data[0]
+                    if 'cx' not in tr_:
+                        tr_['cx'] = cx
+                    if 'cy' not in tr_:
+                        tr_['cy'] = cy
+                    if 'width' not in tr_:
+                        tr_['width'] = width
+                    if 'height' not in tr_:
+                        tr_['height'] = height
+                if 'category_id' not in tr:
+                    tr_['category_id'] = ann['category_id']
+
+        if 'slices' in tr:
+            # TODO: consolidate with _rectify_tr slides logic
+            pass
+        return tr_
+
     def _load_slice(self, tr, window_dims=None, pad=None,
                     padkw={'mode': 'constant'}):
         """
@@ -617,13 +671,15 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             pad = 0
         pad = tuple(_ensure_iterablen(pad, ndim))
 
-        gid = tr['gid']
+        tr_ = self._infer_target_attributes(tr)
+
+        gid = tr_['gid']
         # Determine the image extent
         img = self.dset.imgs[gid]
         data_dims = (img['height'], img['width'])
 
         data_slice, extra_padding, st_dims = self._rectify_tr(
-            tr, data_dims, window_dims=window_dims, pad=pad)
+            tr_, data_dims, window_dims=window_dims, pad=pad)
 
         # Load the image data
         # frame = self.frames.load_image(gid)  # TODO: lazy load on slice
@@ -652,7 +708,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
         sample = {
             'im': im,
-            'tr': tr.copy(),
+            'tr': tr_.copy(),
             'params': {
                 'offset': offset,
                 'tf_rel_to_abs': tf_rel_to_abs,
@@ -919,6 +975,14 @@ def _get_slice(data_dims, center, window_dims, pad=None):
         >>> data_slice, extra_padding = _get_slice(data_dims, center, window_dims)
         >>> assert extra_padding == [(30, 0), (27, 0)]
         >>> assert data_slice == (slice(0, 34, None), slice(0, 37, None))
+
+    Example:
+        >>> # Test floating point error case
+        >>> center = (500.5, 974.9999999999999)
+        >>> window_dims  = (100, 100)
+        >>> data_dims = (2000, 2000)
+        >>> pad = (0, 0)
+        >>> _get_slice(data_dims, center, window_dims)
     """
     if pad is None:
         pad = (0, 0)
@@ -929,9 +993,19 @@ def _get_slice(data_dims, center, window_dims, pad=None):
     high_dims = [int(np.floor(c + d_win / 2.0))
                  for c, d_win in zip(center, window_dims)]
 
+    # Floating point errors can cause the slice window size to be different
+    # from the requested one. We check and correct for this.
+    for idx, tup in enumerate(zip(window_dims, low_dims, high_dims)):
+        d_win, d_low, d_high = tup
+        d_win_got = d_high - d_low
+        delta = d_win - d_win_got
+        if delta:
+            high_dims[idx] += delta
+
     if __debug__:
         for d_win, d_low, d_high in zip(window_dims, low_dims, high_dims):
-            assert d_high - d_low == d_win
+            d_win_got = d_high - d_low
+            assert d_win_got == d_win, 'slice has incorrect window size'
 
     # Find the lower and upper coordinates that corresponds to the
     # requested window in the real image. If the window goes out of bounds,
