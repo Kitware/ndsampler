@@ -1,7 +1,7 @@
 """
 mkinit ~/code/ndsampler/ndsampler/__init__.py -w
 """
-__version__ = '0.5.10'
+__version__ = '0.5.11'
 
 from ndsampler.utils.util_misc import (HashIdentifiable, stats_dict,)
 
