@@ -439,9 +439,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         Loads the volume data associated with the bbox and frame of a target
 
         Args:
-            tr (dict): image and bbox info for a positive / negative target.
-                must contain the keys ['gid', 'cx', 'cy'], if `window_dims` is
-                None it must also contain the keys ['width' and 'height'].
+            tr (dict): target dictionary containing image and bbox info for a
+                positive / negative target. Must contain the keys ['gid',
+                'cx', 'cy'] (gid is the image-id, cx is the center x position
+                in pixels, and cy is the center y position in pixels.) or an
+                alternative way of determening this information.  If
+                `window_dims` is None it must also contain the keys ['width'
+                and 'height'].
 
                 NEW: tr can now contain the key `slices`, which maps a tuple of
                 slices, one slice for each of the n dimensions.  If specified
