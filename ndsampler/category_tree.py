@@ -139,13 +139,15 @@ class Mixin_CategoryTree_Torch:
 
     def source_log_softmax(self, class_energy, dim):
         """
-        Top-down hierarchical softmax
+        Top-down hierarchical softmax. This is the default
+        hierarchical_log_softmax function.
 
         Alternative to `sink_log_softmax`
 
         SeeAlso:
             * sink_log_softmax
-            * hierarchical_log_softmax
+            * hierarchical_log_softmax (alias for this function)
+            * source_log_softmax (this function)
 
         Converts raw class energy to absolute log probabilites based on the
         category hierarchy. This is done by first converting to conditional
@@ -183,16 +185,23 @@ class Mixin_CategoryTree_Torch:
 
     def sink_log_softmax(self, class_energy, dim):
         """
-        Bottom-up hierarchical softmax
+        Bottom-up hierarchical softmax.
 
         Alternative to `source_log_softmax`
 
         SeeAlso:
+            * sink_log_softmax (this function)
+            * hierarchical_log_softmax (alias for source log softmax)
             * source_log_softmax
-            * hierarchical_log_softmax
 
         Does a regular softmax over all the mutually exclusive leaf nodes, then
         sums their probabilities to get the score for the parent nodes.
+
+        Notes:
+            In this method of computation ONLY the energy in the leaf nodes
+            matters. The energy in all other intermediate notes is ignored.
+            For this reason the "source" method of computation is often
+            prefered.
 
         Args:
             class_energy (Tensor): raw output from network. The values in
@@ -960,7 +969,11 @@ class CategoryTree(ub.NiceRepr, Mixin_CategoryTree_Torch):
     def demo(cls, key='coco', **kwargs):
         """
         Args:
-            key (str): specify which demo dataset to use.
+            key (str): specify which demo dataset to use. Valid keys are:
+                'coco', which uses kwcoco.CocoDataset.demo.
+                'btree', which creates a binary tree and respects kwargs 'r'
+                and 'h' for branching and height factor.
+
 
         CommandLine:
             xdoctest -m ~/code/ndsampler/ndsampler/category_tree.py CategoryTree.demo
