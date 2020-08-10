@@ -21,7 +21,7 @@ Example:
     >>> }
     >>> coco_dset = ndsampler.CocoDataset(dataset)
     >>> print(coco_dset)
-    <CocoDataset(tag=None, n_anns=0, n_imgs=3, n_cats=0)>
+    <CocoDataset(tag=None, n_anns=0, n_imgs=3, ...n_cats=0)>
     >>> # Now pass the dataset to a sampler and tell it where it can store temporary files
     >>> workdir = ub.ensure_app_cache_dir('ndsampler/demo')
     >>> sampler = ndsampler.CocoSampler(coco_dset, workdir=workdir)
