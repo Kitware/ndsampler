@@ -206,8 +206,17 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
 
     @property
     def isect_index(self):
+        """
+        Lazy access to a disk-cached intersection index for this dataset
+        """
+        return self._lazy_isect_index()
+
+    def _lazy_isect_index(self, verbose=None):
         if self._isect_index is None:
-            cacher = self._cacher('isect_index')
+            # FIXME! Any use of cacher here should be wrapped in an
+            # InterProcessLock! The sampler often exists in a multiprocessing
+            # context!
+            cacher = self._cacher('isect_index', verbose=verbose)
             _isect_index = cacher.tryload(on_error='clear')
             if _isect_index is None:
                 _isect_index = isect_indexer.FrameIntersectionIndex.from_coco(self.dset)
