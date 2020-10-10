@@ -6,6 +6,56 @@ from os.path import join
 import ubelt as ub
 
 
+if 0:
+    # Maybe?
+    import smqtk
+    import abc
+    smqtk.Pluggable = smqtk.utils.plugin.Pluggable
+    smqtk.Configurable = smqtk.utils.configuration.Configurable
+
+    """
+    {
+        "frames": {
+            "ndsampler.CogFrames:0": {
+                'compression': 'JPEG',
+            },
+            "ndsampler.NPYFrames": {
+            },
+            "type": "ndsampler.CogFrames"
+        }
+    }
+    """
+
+    class AbstractFrames(smqtk.Pluggable, smqtk.Configurable):
+
+        def __init__(self, config, foo=1):
+            pass
+
+        @abc.abstractmethod
+        def load_region(self, spec):
+            pass
+
+        @classmethod
+        def is_usable(cls):
+            return True
+
+    class CogFrames(AbstractFrames):
+
+        # default_config = {
+        #     'compression': Value(
+        #         default='JPEG', choices=['JPEG', 'DEFLATE']),
+        # }
+        # def __init__(self, **kwargs):
+        #     super().__init__(**kwargs)
+
+        def load_region(self, spec):
+            return spec
+
+    class NPYFrames(AbstractFrames):
+        def load_region(self, spec):
+            return spec
+
+
 class CocoFrames(abstract_frames.Frames, util.HashIdentifiable):
     """
     wrapper around coco-style dataset to allow for getitem syntax
