@@ -12,6 +12,7 @@ def coerce_datasets(config, build_hashid=False, verbose=1):
         * test_dataset
 
     Example:
+        >>> import kwcoco
         >>> import ndsampler.coerce_data
         >>> config = {'datasets': 'special:shapes'}
         >>> print('config = {!r}'.format(config))
@@ -22,16 +23,16 @@ def coerce_datasets(config, build_hashid=False, verbose=1):
         >>> ndsampler.coerce_data.coerce_datasets(config)
 
         >>> config = {
-        >>>     'datasets': ndsampler.CocoDataset.demo('shapes'),
+        >>>     'datasets': kwcoco.CocoDataset.demo('shapes'),
         >>> }
         >>> coerce_datasets(config)
         >>> coerce_datasets({
-        >>>     'datasets': ndsampler.CocoDataset.demo('shapes'),
-        >>>     'test_dataset': ndsampler.CocoDataset.demo('photos'),
+        >>>     'datasets': kwcoco.CocoDataset.demo('shapes'),
+        >>>     'test_dataset': kwcoco.CocoDataset.demo('photos'),
         >>> })
         >>> coerce_datasets({
-        >>>     'datasets': ndsampler.CocoDataset.demo('shapes'),
-        >>>     'test_dataset': ndsampler.CocoDataset.demo('photos'),
+        >>>     'datasets': kwcoco.CocoDataset.demo('shapes'),
+        >>>     'test_dataset': kwcoco.CocoDataset.demo('photos'),
         >>> })
     """
     # Ideally the user specifies a standard train/vali/test split
@@ -43,7 +44,7 @@ def coerce_datasets(config, build_hashid=False, verbose=1):
 
     def _ensure_coco(coco):
         # Map a file path or an in-memory dataset to a CocoDataset
-        import ndsampler
+        import kwcoco
         import six
         from os.path import exists
         if coco is None:
@@ -52,7 +53,7 @@ def coerce_datasets(config, build_hashid=False, verbose=1):
             fpath = _rectify_fpath(coco)
             if exists(fpath):
                 print('read dataset: fpath = {!r}'.format(fpath))
-                coco = ndsampler.CocoDataset(fpath)
+                coco = kwcoco.CocoDataset(fpath)
             else:
                 if not coco.lower().startswith('special:'):
                     import warnings
@@ -60,10 +61,10 @@ def coerce_datasets(config, build_hashid=False, verbose=1):
                     code = coco
                 else:
                     code = coco.lower()[len('special:'):]
-                coco = ndsampler.CocoDataset.demo(code)
+                coco = kwcoco.CocoDataset.demo(code)
         else:
             # print('live dataset')
-            assert isinstance(coco, ndsampler.CocoDataset)
+            assert isinstance(coco, kwcoco.CocoDataset)
         return coco
 
     config = config.copy()
