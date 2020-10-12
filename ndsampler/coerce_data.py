@@ -52,8 +52,10 @@ def coerce_datasets(config, build_hashid=False, verbose=1):
         elif isinstance(coco, six.string_types):
             fpath = _rectify_fpath(coco)
             if exists(fpath):
-                print('read dataset: fpath = {!r}'.format(fpath))
-                coco = kwcoco.CocoDataset(fpath)
+                with ub.Timer('read kwcoco dataset: fpath = {!r}'.format(fpath)):
+                    coco = kwcoco.CocoDataset(fpath, autobuild=False)
+                print('building kwcoco index')
+                coco._build_index()
             else:
                 if not coco.lower().startswith('special:'):
                     import warnings
