@@ -51,7 +51,7 @@ def coerce_datasets(config, build_hashid=False, verbose=1):
         elif isinstance(coco, six.string_types):
             fpath = _rectify_fpath(coco)
             if exists(fpath):
-                # print('read dataset: fpath = {!r}'.format(fpath))
+                print('read dataset: fpath = {!r}'.format(fpath))
                 coco = ndsampler.CocoDataset(fpath)
             else:
                 if not coco.lower().startswith('special:'):
