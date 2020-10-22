@@ -506,6 +506,21 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             sample.shape = (6, 6, 3)
 
         Example:
+            >>> # Access direct annotation information
+            >>> import ndsampler
+            >>> sampler = ndsampler.CocoSampler.demo()
+            >>> # Sample a region that contains at least one annotation
+            >>> tr = {'gid': 1, 'cx': 5, 'cy': 2, 'width': 600, 'height': 600}
+            >>> sample = sampler.load_sample(tr)
+            >>> annotation_ids = sample['annots']['aids']
+            >>> aid = annotation_ids[0]
+            >>> # Method1: Access ann dict directly via the coco index
+            >>> ann = sampler.dset.anns[aid]
+            >>> # Method2: Access ann objects via annots method
+            >>> dets = sampler.dset.annots(annotation_ids).detections
+            >>> print('dets.data = {}'.format(ub.repr2(dets.data, nl=1)))
+
+        Example:
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo()
             >>> tr = self.regions.get_positive(0)

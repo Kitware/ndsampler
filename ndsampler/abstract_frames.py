@@ -309,6 +309,8 @@ class Frames(object):
         """
         if image_id not in self.id_to_hashid:
             # Compute the hash if we it does not exist yet
+            # TODO: We may be able to take advantage of DVC's cache here if we
+            # are in that context.
             gpath = self._lookup_gpath(image_id)
             if self.hashid_mode == 'PATH':
                 # Hash the full path to the image data
