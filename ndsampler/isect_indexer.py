@@ -70,6 +70,9 @@ class FrameIntersectionIndex(object):
 
     @staticmethod
     def _build_index(dset):
+        """
+
+        """
         qtrees = {
             img['id']: pyqtree.Index((0, 0, img['width'], img['height']))
             for img in dset.dataset['images']

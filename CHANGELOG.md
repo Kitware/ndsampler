@@ -5,6 +5,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Version 0.5.12 - Unreleased
 
+### Changed
+* Removed Python 3.5 support
+* No longer using protocol 2 in the Cacher
+
+## Version 0.5.11 - Released 2020-08-26
+
+### Fixed
+* Minor compatibility fixes for `ndsampler.CategoryTree` and `kwcoco.CategoryTree`
+
 
 ## Version 0.5.10 - Released 2020-06-25
 
@@ -210,5 +219,3 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Initial code for CategoryTree
 * Initial code for CocoDataset
 * Initial code for dummy detection toydata
-
-## Version 0.5.11 - Released 2020-08-26
