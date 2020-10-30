@@ -657,10 +657,10 @@ class Frames(object):
         hashid = getattr(self, 'hashid', None)
 
         # TODO:
-        #     Add some image preprocessing ability here
+        #     Add some image preprocessing ability here?
         stamp = ub.CacheStamp('prepare_frames_stamp', dpath=self.cache_dpath,
                               cfgstr=hashid, verbose=3)
-        stamp.cacher.enabled = bool(hashid) and bool(use_stamp)
+        stamp.cacher.enabled = bool(hashid) and bool(use_stamp) and gids is None
 
         # print('frames stamp hashid = {!r}'.format(hashid))
         # print('frames cache_dpath = {!r}'.format(self.cache_dpath))
@@ -673,7 +673,8 @@ class Frames(object):
             executor = util_futures.Executor(mode='thread', max_workers=workers)
             with executor as executor:
                 job_list = []
-                gids = self.image_ids
+                if gids is None:
+                    gids = self.image_ids
                 for image_id in ub.ProgIter(gids, desc='Frames: submit prepare jobs'):
                     gpath, cache_gpath = self._gnames(image_id)
                     if not exists(cache_gpath):
