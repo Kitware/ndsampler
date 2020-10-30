@@ -596,11 +596,13 @@ class Frames(object):
         _locked_cache_write(_npy_cache_write, gpath, cache_gpath=mem_gpath,
                             config=config)
 
-    def prepare(self, workers=0, use_stamp=True):
+    def prepare(self, gids=None, workers=0, use_stamp=True):
         """
         Precompute the cached frame conversions
 
         Args:
+            gids (List[int] | None): specific image ids to prepare.
+                If None prepare all images.
             workers (int, default=0): number of parallel threads for this
                 io-bound task
 
