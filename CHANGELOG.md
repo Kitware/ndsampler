@@ -8,6 +8,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 * Removed Python 3.5 support
 * No longer using protocol 2 in the Cacher
+* Better `LazyGDalFrameFile.demo` classmethod.
 
 ## Version 0.5.11 - Released 2020-08-26
 

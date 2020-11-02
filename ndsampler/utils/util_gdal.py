@@ -597,10 +597,24 @@ class LazyGDalFrameFile(ub.NiceRepr):
         return ds
 
     @classmethod
-    def demo(cls):
-        from ndsampler.abstract_frames import SimpleFrames
-        self = SimpleFrames.demo()
-        self = self._load_image_cog(1)
+    def demo(cls, key='astro', dsize=None):
+        """
+        Ignore:
+            >>> from ndsampler.utils.util_gdal import *  # NOQA
+            >>> self = LazyGDalFrameFile.demo(dsize=(6600, 4400))
+        """
+        cache_dpath = ub.ensure_app_cache_dir('ndsampler/demo')
+        fpath = join(cache_dpath, key + '.cog.tiff')
+        depends = ub.odict(dsize=dsize)
+        cfgstr = ub.hash_data(depends)
+        stamp = ub.CacheStamp(fname=key, cfgstr=cfgstr, dpath=cache_dpath,
+                              product=[fpath])
+        if stamp.expired():
+            import kwimage
+            img = kwimage.grab_test_image(key, dsize=dsize)
+            kwimage.imwrite(fpath, img, backend='gdal')
+            stamp.renew()
+        self = cls(fpath)
         return self
 
     @property
@@ -629,6 +643,12 @@ class LazyGDalFrameFile(ub.NiceRepr):
         """
         References:
             https://gis.stackexchange.com/questions/162095/gdal-driver-create-typeerror
+
+        Ignore:
+            >>> from ndsampler.utils.util_gdal import *  # NOQA
+            >>> self = LazyGDalFrameFile.demo(dsize=(6600, 4400))
+            >>> index = [slice(2100, 2508, None), slice(4916, 5324, None), None]
+            >>> img_part = self[index]
         """
         ds = self._ds
         width = ds.RasterXSize
