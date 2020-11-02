@@ -649,6 +649,10 @@ class LazyGDalFrameFile(ub.NiceRepr):
             >>> self = LazyGDalFrameFile.demo(dsize=(6600, 4400))
             >>> index = [slice(2100, 2508, None), slice(4916, 5324, None), None]
             >>> img_part = self[index]
+            >>> # xdoctest: +REQUIRES(--show)
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> kwplot.imshow(img_part)
         """
         ds = self._ds
         width = ds.RasterXSize
