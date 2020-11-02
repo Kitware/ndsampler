@@ -675,24 +675,34 @@ class LazyGDalFrameFile(ub.NiceRepr):
             rb_indices = range(C)
             assert len(trailing_part) <= 1
 
-        # TODO: preallocate like kwimage
-        channels = []
-        for i in rb_indices:
-            rb = ds.GetRasterBand(1 + i)
-            xsize = rb.XSize
-            ysize = rb.YSize
+        ystart, ystop = map(int, [ypart.start, ypart.stop])
+        xstart, xstop = map(int, [xpart.start, xpart.stop])
 
-            ystart, ystop = map(int, [ypart.start, ypart.stop])
-            ysize = ystop - ystart
+        ysize = ystop - ystart
+        xsize = xstop - xstart
 
-            xstart, xstop = map(int, [xpart.start, xpart.stop])
-            xsize = xstop - xstart
+        gdalkw = dict(xoff=xstart, yoff=ystart,
+                      win_xsize=xsize, win_ysize=ysize)
 
-            gdalkw = dict(xoff=xstart, yoff=ystart, win_xsize=xsize, win_ysize=ysize)
-            channel = rb.ReadAsArray(**gdalkw)
-            channels.append(channel)
-
-        img_part = np.dstack(channels)
+        PREALLOC = 1
+        if PREALLOC:
+            # preallocate like kwimage.im_io._imread_gdal
+            from kwimage.im_io import _gdal_to_numpy_dtype
+            shape = (ysize, xsize, len(rb_indices))
+            bands = [ds.GetRasterBand(1 + rb_idx)
+                     for rb_idx in rb_indices]
+            gdal_dtype = bands[0].DataType
+            dtype = _gdal_to_numpy_dtype(gdal_dtype)
+            img_part = np.empty(shape, dtype=dtype)
+            for out_idx, rb in enumerate(bands):
+                img_part[:, :, out_idx] = rb.ReadAsArray(**gdalkw)
+        else:
+            channels = []
+            for rb_idx in rb_indices:
+                rb = ds.GetRasterBand(1 + rb_idx)
+                channel = rb.ReadAsArray(**gdalkw)
+                channels.append(channel)
+            img_part = np.dstack(channels)
         return img_part
 
     def validate(self, orig_fpath=None, orig_data=None):
