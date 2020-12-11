@@ -86,6 +86,7 @@ class CocoFrames(abstract_frames.Frames, util.HashIdentifiable):
                                          workdir=workdir, backend=backend)
         self.dset = dset
         self.verbose = verbose
+        self._image_ids = None
 
     def _lookup_gpath(self, image_id):
         img = self.dset.imgs[image_id]
@@ -95,9 +96,13 @@ class CocoFrames(abstract_frames.Frames, util.HashIdentifiable):
             gpath = img['file_name']
         return gpath
 
-    @ub.memoize_property
+    @property
     def image_ids(self):
-        return list(self.dset.imgs.keys())
+        if self._image_ids is None:
+            import numpy as np
+            # Use ndarrays to prevent copy-on-write as best as possible
+            self._image_ids = np.array(list(self.dset.imgs.keys()))
+        return self._image_ids
 
     def _make_hashid(self):
         _hashid = getattr(self.dset, 'hashid', None)

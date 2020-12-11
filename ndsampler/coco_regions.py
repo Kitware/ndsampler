@@ -24,7 +24,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import itertools as it
 import ubelt as ub  # NOQA
 import numpy as np
-from os.path import join
+from os.path import join  # NOQA
 from ndsampler.utils import util_misc
 from ndsampler import isect_indexer
 from ndsampler import coco_dataset
