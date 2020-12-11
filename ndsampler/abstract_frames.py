@@ -430,8 +430,9 @@ class Frames(object):
         return data
 
     def _load_image_full(self, image_id):
-        if image_id in self._lru:
-            return self._lru[image_id]
+        if self._lru is not None:
+            if image_id in self._lru:
+                return self._lru[image_id]
 
         import kwimage
         gpath = self._lookup_gpath(image_id)
@@ -444,8 +445,9 @@ class Frames(object):
         """
         Returns a memmapped reference to the entire image
         """
-        if image_id in self._lru:
-            return self._lru[image_id]
+        if self._lru is not None:
+            if image_id in self._lru:
+                return self._lru[image_id]
 
         gpath = self._lookup_gpath(image_id)
         gpath, cache_gpath = self._gnames(image_id, mode='npy')
@@ -495,15 +497,17 @@ class Frames(object):
                 print('\n\n')
                 raise
 
-        self._lru[image_id] = file
+        if self._lru is not None:
+            self._lru[image_id] = file
         return file
 
     def _load_image_cog(self, image_id):
         """
         Returns a special array-like object with a COG GeoTIFF backend
         """
-        if image_id in self._lru:
-            return self._lru[image_id]
+        if self._lru is not None:
+            if image_id in self._lru:
+                return self._lru[image_id]
 
         gpath, cache_gpath = self._gnames(image_id, mode='cog')
         cog_gpath = cache_gpath
@@ -572,7 +576,8 @@ class Frames(object):
                 print('</DEBUG INFO>')
 
         file = util_gdal.LazyGDalFrameFile(cog_gpath)
-        self._lru[image_id] = file
+        if self._lru is not None:
+            self._lru[image_id] = file
         return file
 
     @staticmethod
