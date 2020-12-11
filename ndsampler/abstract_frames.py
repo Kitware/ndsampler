@@ -438,7 +438,8 @@ class Frames(object):
         gpath = self._lookup_gpath(image_id)
         raw_data = kwimage.imread(gpath)
 
-        self._lru[image_id] = raw_data
+        if self._lru is not None:
+            self._lru[image_id] = raw_data
         return raw_data
 
     def _load_image_npy(self, image_id):
