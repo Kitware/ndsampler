@@ -672,22 +672,37 @@ class Frames(object):
         # print('frames cache_dpath = {!r}'.format(self.cache_dpath))
         # print('stamp.cacher.enabled = {!r}'.format(stamp.cacher.enabled))
 
+        if self._backend is None:
+            mode = None
+        else:
+            mode = self._backend['type']
+
         if stamp.expired() or hashid is None:
             from ndsampler.utils import util_futures
             from concurrent import futures
             # Use thread mode, because we are mostly in doing io.
             executor = util_futures.Executor(mode='thread', max_workers=workers)
             with executor as executor:
-                job_list = []
                 if gids is None:
                     gids = self.image_ids
-                for image_id in ub.ProgIter(gids, desc='Frames: submit prepare jobs'):
-                    gpath, cache_gpath = self._gnames(image_id)
-                    if not exists(cache_gpath):
-                        job = executor.submit(
-                            self.load_image, image_id, cache=True,
-                            noreturn=True)
-                        job_list.append(job)
+
+                path_list = [
+                    (image_id, self._gnames(image_id, mode=mode))
+                    for image_id in ub.ProgIter(gids, desc='lookup cache path')
+                ]
+                cache_gpath_list = [
+                    (image_id, cache_gpath)
+                    for (image_id, (gpath, cache_gpath)) in ub.ProgIter(path_list, desc='check exists')
+                    if not exists(cache_gpath)
+                ]
+
+                prog = ub.ProgIter(cache_gpath_list,
+                                   desc='Frames: submit prepare jobs')
+                job_list = [
+                    executor.submit(
+                        self.load_image, image_id, cache=True,
+                        noreturn=True)
+                    for image_id, cache_gpath in prog]
 
                 for job in ub.ProgIter(futures.as_completed(job_list),
                                        total=len(job_list), adjust=False, freq=1,
