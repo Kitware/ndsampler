@@ -1,0 +1,4 @@
+- [ ] PostGIS backend would be nice (with support for spatial intersection queries)
+- [ ] 1D backend
+- [ ] 3D backend
+- [ ] Hashed Directory Structure for the cog cache.

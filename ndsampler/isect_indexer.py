@@ -9,7 +9,7 @@ import kwarray
 import kwimage
 
 
-class FrameIntersectionIndex(object):
+class FrameIntersectionIndex(ub.NiceRepr):
     """
     Build spatial tree for each frame so we can quickly determine if a random
     negative is too close to a positive. For each frame/image we built a qtree.
@@ -33,6 +33,12 @@ class FrameIntersectionIndex(object):
     def __init__(self):
         self.qtrees = None
         self.all_gids = None
+
+    def __nice__(self):
+        if self.all_gids is None:
+            return 'None'
+        else:
+            return len(self.all_gids)
 
     @classmethod
     def from_coco(cls, dset):
@@ -70,6 +76,9 @@ class FrameIntersectionIndex(object):
 
     @staticmethod
     def _build_index(dset):
+        """
+
+        """
         qtrees = {
             img['id']: pyqtree.Index((0, 0, img['width'], img['height']))
             for img in dset.dataset['images']

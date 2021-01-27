@@ -26,6 +26,8 @@ class StratifiedGroupKFold(_BaseKFold):
     """
 
     def __init__(self, n_splits=3, shuffle=False, random_state=None):
+        if not shuffle:
+            random_state = None
         super(StratifiedGroupKFold, self).__init__(n_splits, shuffle, random_state)
 
     def _make_test_folds(self, X, y=None, groups=None):

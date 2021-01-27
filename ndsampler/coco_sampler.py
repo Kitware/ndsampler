@@ -13,13 +13,14 @@ Example:
      '~/.cache/kwimage/demodata/Airport.jpg']
     >>> # And you want to randomly load subregions of them in O(1) time
     >>> import ndsampler
+    >>> import kwcoco
     >>> # First make a COCO dataset that refers to your images (and possibly annotations)
     >>> dataset = {
     >>>     'images': [{'id': i, 'file_name': fpath} for i, fpath in enumerate(image_paths)],
     >>>     'annotations': [],
     >>>     'categories': [],
     >>> }
-    >>> coco_dset = ndsampler.CocoDataset(dataset)
+    >>> coco_dset = kwcoco.CocoDataset(dataset)
     >>> print(coco_dset)
     <CocoDataset(tag=None, n_anns=0, n_imgs=3, ...n_cats=0)>
     >>> # Now pass the dataset to a sampler and tell it where it can store temporary files
@@ -503,6 +504,21 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> sample = self.load_sample(tr)
             >>> print('sample.shape = {!r}'.format(sample['im'].shape))
             sample.shape = (6, 6, 3)
+
+        Example:
+            >>> # Access direct annotation information
+            >>> import ndsampler
+            >>> sampler = ndsampler.CocoSampler.demo()
+            >>> # Sample a region that contains at least one annotation
+            >>> tr = {'gid': 1, 'cx': 5, 'cy': 2, 'width': 600, 'height': 600}
+            >>> sample = sampler.load_sample(tr)
+            >>> annotation_ids = sample['annots']['aids']
+            >>> aid = annotation_ids[0]
+            >>> # Method1: Access ann dict directly via the coco index
+            >>> ann = sampler.dset.anns[aid]
+            >>> # Method2: Access ann objects via annots method
+            >>> dets = sampler.dset.annots(annotation_ids).detections
+            >>> print('dets.data = {}'.format(ub.repr2(dets.data, nl=1)))
 
         Example:
             >>> from ndsampler.coco_sampler import *

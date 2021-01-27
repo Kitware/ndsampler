@@ -597,10 +597,24 @@ class LazyGDalFrameFile(ub.NiceRepr):
         return ds
 
     @classmethod
-    def demo(cls):
-        from ndsampler.abstract_frames import SimpleFrames
-        self = SimpleFrames.demo()
-        self = self._load_image_cog(1)
+    def demo(cls, key='astro', dsize=None):
+        """
+        Ignore:
+            >>> from ndsampler.utils.util_gdal import *  # NOQA
+            >>> self = LazyGDalFrameFile.demo(dsize=(6600, 4400))
+        """
+        cache_dpath = ub.ensure_app_cache_dir('ndsampler/demo')
+        fpath = join(cache_dpath, key + '.cog.tiff')
+        depends = ub.odict(dsize=dsize)
+        cfgstr = ub.hash_data(depends)
+        stamp = ub.CacheStamp(fname=key, cfgstr=cfgstr, dpath=cache_dpath,
+                              product=[fpath])
+        if stamp.expired():
+            import kwimage
+            img = kwimage.grab_test_image(key, dsize=dsize)
+            kwimage.imwrite(fpath, img, backend='gdal')
+            stamp.renew()
+        self = cls(fpath)
         return self
 
     @property
@@ -629,6 +643,16 @@ class LazyGDalFrameFile(ub.NiceRepr):
         """
         References:
             https://gis.stackexchange.com/questions/162095/gdal-driver-create-typeerror
+
+        Ignore:
+            >>> from ndsampler.utils.util_gdal import *  # NOQA
+            >>> self = LazyGDalFrameFile.demo(dsize=(6600, 4400))
+            >>> index = [slice(2100, 2508, None), slice(4916, 5324, None), None]
+            >>> img_part = self[index]
+            >>> # xdoctest: +REQUIRES(--show)
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> kwplot.imshow(img_part)
         """
         ds = self._ds
         width = ds.RasterXSize
@@ -655,24 +679,34 @@ class LazyGDalFrameFile(ub.NiceRepr):
             rb_indices = range(C)
             assert len(trailing_part) <= 1
 
-        # TODO: preallocate like kwimage
-        channels = []
-        for i in rb_indices:
-            rb = ds.GetRasterBand(1 + i)
-            xsize = rb.XSize
-            ysize = rb.YSize
+        ystart, ystop = map(int, [ypart.start, ypart.stop])
+        xstart, xstop = map(int, [xpart.start, xpart.stop])
 
-            ystart, ystop = map(int, [ypart.start, ypart.stop])
-            ysize = ystop - ystart
+        ysize = ystop - ystart
+        xsize = xstop - xstart
 
-            xstart, xstop = map(int, [xpart.start, xpart.stop])
-            xsize = xstop - xstart
+        gdalkw = dict(xoff=xstart, yoff=ystart,
+                      win_xsize=xsize, win_ysize=ysize)
 
-            gdalkw = dict(xoff=xstart, yoff=ystart, win_xsize=xsize, win_ysize=ysize)
-            channel = rb.ReadAsArray(**gdalkw)
-            channels.append(channel)
-
-        img_part = np.dstack(channels)
+        PREALLOC = 1
+        if PREALLOC:
+            # preallocate like kwimage.im_io._imread_gdal
+            from kwimage.im_io import _gdal_to_numpy_dtype
+            shape = (ysize, xsize, len(rb_indices))
+            bands = [ds.GetRasterBand(1 + rb_idx)
+                     for rb_idx in rb_indices]
+            gdal_dtype = bands[0].DataType
+            dtype = _gdal_to_numpy_dtype(gdal_dtype)
+            img_part = np.empty(shape, dtype=dtype)
+            for out_idx, rb in enumerate(bands):
+                img_part[:, :, out_idx] = rb.ReadAsArray(**gdalkw)
+        else:
+            channels = []
+            for rb_idx in rb_indices:
+                rb = ds.GetRasterBand(1 + rb_idx)
+                channel = rb.ReadAsArray(**gdalkw)
+                channels.append(channel)
+            img_part = np.dstack(channels)
         return img_part
 
     def validate(self, orig_fpath=None, orig_data=None):

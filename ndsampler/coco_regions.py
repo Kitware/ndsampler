@@ -24,7 +24,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import itertools as it
 import ubelt as ub  # NOQA
 import numpy as np
-from os.path import join
+from os.path import join  # NOQA
 from ndsampler.utils import util_misc
 from ndsampler import isect_indexer
 from ndsampler import coco_dataset
@@ -661,8 +661,8 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
             verbose = self.verbose
 
         if not disable and self.hashid and self.workdir:
-            enabled = self._enabled_caches[fname]
-            dpath = join(self.workdir, '_cache', fname)
+            enabled = self._enabled_caches.get(fname, True)
+            dpath = ub.ensuredir((self.workdir, '_cache', fname))
         else:
             dpath = None
             enabled = False  # forced disable
@@ -679,7 +679,7 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
             cfgstr = ub.hash_data(extra_deps)
 
         cacher = ub.Cacher(fname, cfgstr=cfgstr, dpath=dpath,
-                           verbose=self.verbose, protocol=2, enabled=enabled)
+                           verbose=self.verbose, enabled=enabled)
         return cacher
 
 

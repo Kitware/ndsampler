@@ -3,6 +3,22 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
+## Version 0.5.12 - Unreleased
+
+### Changed
+* Removed Python 3.5 support
+* No longer using protocol 2 in the Cacher
+* Better `LazyGDalFrameFile.demo` classmethod.
+
+### Fixed
+* Bug in accessing the LRU
+
+## Version 0.5.11 - Released 2020-08-26
+
+### Fixed
+* Minor compatibility fixes for `ndsampler.CategoryTree` and `kwcoco.CategoryTree`
+
+
 ## Version 0.5.10 - Released 2020-06-25
 
 ### Added
@@ -35,7 +51,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * `batch_validate_cog` to `util_gdal`
 
 
-## Version 0.5.6 - Unreleased
+## Version 0.5.6 - Released 2020-08-26
 
 ### Added
 * `util_lru` containing implementations of a dictionary based LRU cache. 
@@ -207,5 +223,3 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Initial code for CategoryTree
 * Initial code for CocoDataset
 * Initial code for dummy detection toydata
-
-## Version 0.5.11 - Unreleased

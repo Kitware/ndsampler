@@ -309,6 +309,8 @@ class Frames(object):
         """
         if image_id not in self.id_to_hashid:
             # Compute the hash if we it does not exist yet
+            # TODO: We may be able to take advantage of DVC's cache here if we
+            # are in that context.
             gpath = self._lookup_gpath(image_id)
             if self.hashid_mode == 'PATH':
                 # Hash the full path to the image data
@@ -428,22 +430,25 @@ class Frames(object):
         return data
 
     def _load_image_full(self, image_id):
-        if image_id in self._lru:
-            return self._lru[image_id]
+        if self._lru is not None:
+            if image_id in self._lru:
+                return self._lru[image_id]
 
         import kwimage
         gpath = self._lookup_gpath(image_id)
         raw_data = kwimage.imread(gpath)
 
-        self._lru[image_id] = raw_data
+        if self._lru is not None:
+            self._lru[image_id] = raw_data
         return raw_data
 
     def _load_image_npy(self, image_id):
         """
         Returns a memmapped reference to the entire image
         """
-        if image_id in self._lru:
-            return self._lru[image_id]
+        if self._lru is not None:
+            if image_id in self._lru:
+                return self._lru[image_id]
 
         gpath = self._lookup_gpath(image_id)
         gpath, cache_gpath = self._gnames(image_id, mode='npy')
@@ -493,15 +498,17 @@ class Frames(object):
                 print('\n\n')
                 raise
 
-        self._lru[image_id] = file
+        if self._lru is not None:
+            self._lru[image_id] = file
         return file
 
     def _load_image_cog(self, image_id):
         """
         Returns a special array-like object with a COG GeoTIFF backend
         """
-        if image_id in self._lru:
-            return self._lru[image_id]
+        if self._lru is not None:
+            if image_id in self._lru:
+                return self._lru[image_id]
 
         gpath, cache_gpath = self._gnames(image_id, mode='cog')
         cog_gpath = cache_gpath
@@ -570,7 +577,8 @@ class Frames(object):
                 print('</DEBUG INFO>')
 
         file = util_gdal.LazyGDalFrameFile(cog_gpath)
-        self._lru[image_id] = file
+        if self._lru is not None:
+            self._lru[image_id] = file
         return file
 
     @staticmethod
@@ -594,11 +602,13 @@ class Frames(object):
         _locked_cache_write(_npy_cache_write, gpath, cache_gpath=mem_gpath,
                             config=config)
 
-    def prepare(self, workers=0, use_stamp=True):
+    def prepare(self, gids=None, workers=0, use_stamp=True):
         """
         Precompute the cached frame conversions
 
         Args:
+            gids (List[int] | None): specific image ids to prepare.
+                If None prepare all images.
             workers (int, default=0): number of parallel threads for this
                 io-bound task
 
@@ -653,14 +663,19 @@ class Frames(object):
         hashid = getattr(self, 'hashid', None)
 
         # TODO:
-        #     Add some image preprocessing ability here
+        #     Add some image preprocessing ability here?
         stamp = ub.CacheStamp('prepare_frames_stamp', dpath=self.cache_dpath,
                               cfgstr=hashid, verbose=3)
-        stamp.cacher.enabled = bool(hashid) and bool(use_stamp)
+        stamp.cacher.enabled = bool(hashid) and bool(use_stamp) and gids is None
 
         # print('frames stamp hashid = {!r}'.format(hashid))
         # print('frames cache_dpath = {!r}'.format(self.cache_dpath))
         # print('stamp.cacher.enabled = {!r}'.format(stamp.cacher.enabled))
+
+        if self._backend is None:
+            mode = None
+        else:
+            mode = self._backend['type']
 
         if stamp.expired() or hashid is None:
             from ndsampler.utils import util_futures
@@ -668,15 +683,26 @@ class Frames(object):
             # Use thread mode, because we are mostly in doing io.
             executor = util_futures.Executor(mode='thread', max_workers=workers)
             with executor as executor:
-                job_list = []
-                gids = self.image_ids
-                for image_id in ub.ProgIter(gids, desc='Frames: submit prepare jobs'):
-                    gpath, cache_gpath = self._gnames(image_id)
-                    if not exists(cache_gpath):
-                        job = executor.submit(
-                            self.load_image, image_id, cache=True,
-                            noreturn=True)
-                        job_list.append(job)
+                if gids is None:
+                    gids = self.image_ids
+
+                path_list = [
+                    (image_id, self._gnames(image_id, mode=mode))
+                    for image_id in ub.ProgIter(gids, desc='lookup cache path')
+                ]
+                cache_gpath_list = [
+                    (image_id, cache_gpath)
+                    for (image_id, (gpath, cache_gpath)) in ub.ProgIter(path_list, desc='check exists')
+                    if not exists(cache_gpath)
+                ]
+
+                prog = ub.ProgIter(cache_gpath_list,
+                                   desc='Frames: submit prepare jobs')
+                job_list = [
+                    executor.submit(
+                        self.load_image, image_id, cache=True,
+                        noreturn=True)
+                    for image_id, cache_gpath in prog]
 
                 for job in ub.ProgIter(futures.as_completed(job_list),
                                        total=len(job_list), adjust=False, freq=1,
