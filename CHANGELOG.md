@@ -10,6 +10,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * No longer using protocol 2 in the Cacher
 * Better `LazyGDalFrameFile.demo` classmethod.
 
+### Fixed
+* Bug in accessing the LRU
+
 ## Version 0.5.11 - Released 2020-08-26
 
 ### Fixed
