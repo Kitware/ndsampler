@@ -15,12 +15,12 @@ Notes from YOLO-9000:
         hyponym of cutlery.
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
-import torch
 import kwarray
 import functools
 import networkx as nx
 import ubelt as ub
-import torch.nn.functional as F
+# import torch
+# import torch.nn.functional as F
 import numpy as np
 from kwcoco import CategoryTree as KWCOCO_CategoryTree  # raw category tree
 
@@ -42,6 +42,8 @@ class Mixin_CategoryTree_Torch:
             dim (int): dimension where each index corresponds to a class
 
         Example:
+            >>> # xdoctest: +REQUIRES(module:torch)
+            >>> import torch
             >>> from ndsampler.category_tree import *
             >>> graph = nx.generators.gnr_graph(30, 0.3, seed=321).reverse()
             >>> self = CategoryTree(graph)
@@ -52,6 +54,8 @@ class Mixin_CategoryTree_Torch:
             >>> cond_probs = torch.exp(cond_logprobs).numpy()
             >>> assert np.allclose(cond_probs.sum(axis=1), len(self.idx_groups))
         """
+        import torch
+        import torch.nn.functional as F
         cond_logprobs = torch.empty_like(class_energy)
         if class_energy.numel() == 0:
             return cond_logprobs
@@ -96,6 +100,7 @@ class Mixin_CategoryTree_Torch:
             Log-Probability chain rule:
                 log(P(node)) = log(P(node | parent)) + log(P(parent))
         """
+        import torch
         # The dynamic program was faster on the CPU in a dummy test case
         memo = {}
 
@@ -151,6 +156,8 @@ class Mixin_CategoryTree_Torch:
             dim (int): dimension corresponding to classes (usually 1)
 
         Example:
+            >>> # xdoctest: +REQUIRES(module:torch)
+            >>> import torch
             >>> from ndsampler.category_tree import *
             >>> graph = nx.generators.gnr_graph(20, 0.3, seed=328).reverse()
             >>> self = CategoryTree(graph)
@@ -200,6 +207,8 @@ class Mixin_CategoryTree_Torch:
             dim (int): dimension corresponding to classes (usually 1)
 
         Example:
+            >>> # xdoctest: +REQUIRES(module:torch)
+            >>> import torch
             >>> from ndsampler.category_tree import *
             >>> graph = nx.generators.gnr_graph(20, 0.3, seed=328).reverse()
             >>> self = CategoryTree(graph)
@@ -217,11 +226,15 @@ class Mixin_CategoryTree_Torch:
             ...         torch.allclose(child_sum, p_node)
 
         Ignore:
+            >>> # xdoctest: +REQUIRES(module:torch)
+            >>> import torch
             >>> class_logprobs1 = self.sink_log_softmax(class_energy, dim=1)
             >>> class_logprobs2 = self.source_log_softmax(class_energy, dim=1)
             >>> class_probs1 = torch.exp(class_logprobs1)
             >>> class_probs2 = torch.exp(class_logprobs2)
         """
+        import torch
+        import torch.nn.functional as F
         class_logprobs = torch.empty_like(class_energy)
         leaf_idxs = sorted(self.node_to_idx[node]
                            for node in sink_nodes(self.graph))
@@ -259,6 +272,7 @@ class Mixin_CategoryTree_Torch:
 
     def hierarchical_softmax(self, class_energy, dim):
         """ Convinience method which converts class-energy to final probs """
+        import torch
         class_logprobs = self.hierarchical_log_softmax(class_energy, dim)
         class_probs = torch.exp(class_logprobs)
         return class_probs
@@ -270,6 +284,7 @@ class Mixin_CategoryTree_Torch:
 
     def graph_softmax(self, class_energy, dim):
         """ Convinience method which converts class-energy to final probs """
+        import torch
         class_logprobs = self.hierarchical_log_softmax(class_energy, dim)
         class_probs = torch.exp(class_logprobs)
         return class_probs
@@ -279,6 +294,7 @@ class Mixin_CategoryTree_Torch:
         """
         Combines hierarchical_log_softmax and nll_loss in a single function
         """
+        import torch.nn.functional as F
         class_logprobs = self.hierarchical_log_softmax(class_energy, dim=1)
         loss = F.nll_loss(class_logprobs, targets, reduction=reduction)
         return loss
@@ -312,6 +328,8 @@ class Mixin_CategoryTree_Torch:
             targets (Tensor): true class for each example
 
         Example:
+            >>> # xdoctest: +REQUIRES(module:torch)
+            >>> import torch
             >>> from ndsampler.category_tree import *
             >>> graph = nx.from_dict_of_lists({
             >>>     'background': [],
@@ -343,6 +361,7 @@ class Mixin_CategoryTree_Torch:
             animal -> ['animal', 'background', 'mineral']
             background -> ['animal', 'background', 'mineral']
         """
+        import torch.nn.functional as F
         loss = F.nll_loss(class_logprobs, targets)
         return loss
 
@@ -357,6 +376,8 @@ class Mixin_CategoryTree_Torch:
                 detectio metrics.
 
         Example:
+            >>> # xdoctest: +REQUIRES(module:torch)
+            >>> import torch
             >>> from ndsampler.category_tree import *
             >>> import torch
             >>> from ndsampler import category_tree
@@ -434,6 +455,7 @@ class Mixin_CategoryTree_Torch:
 
     def _demo_probs(self, num=5, rng=0, nonrandom=3, hackargmax=True):
         """ dummy probabilities for testing """
+        import torch
         rng = kwarray.ensure_rng(rng)
         class_energy = torch.FloatTensor(rng.rand(num, len(self)))
 
@@ -491,6 +513,8 @@ class Mixin_CategoryTree_Torch:
                 pred_conf: associated confidence
 
         Example:
+            >>> # xdoctest: +REQUIRES(module:torch)
+            >>> import torch
             >>> from ndsampler.category_tree import *
             >>> self = CategoryTree.demo('btree', r=3, h=3)
             >>> rng = kwarray.ensure_rng(0)
@@ -516,6 +540,8 @@ class Mixin_CategoryTree_Torch:
             >>> pred_cnames = list(ub.take(self.idx_to_node, pred_idxs))
 
         Example:
+            >>> # xdoctest: +REQUIRES(module:torch)
+            >>> import torch
             >>> from ndsampler.category_tree import *
             >>> self = CategoryTree.demo('btree', r=3, h=3)
             >>> class_probs = self._demo_probs()
@@ -529,6 +555,8 @@ class Mixin_CategoryTree_Torch:
             >>> self.decision(class_probs, dim=1, ignore_class_idxs=self.idx_groups[1])
 
         Example:
+            >>> # xdoctest: +REQUIRES(module:torch)
+            >>> import torch
             >>> from ndsampler.category_tree import *
             >>> self = CategoryTree.demo('btree', r=3, h=3, add_zero=False)
             >>> class_probs = self._demo_probs(num=30, nonrandom=20)
@@ -543,6 +571,8 @@ class Mixin_CategoryTree_Torch:
             >>> assert 0 not in pred_idxs1
 
         Example:
+            >>> # xdoctest: +REQUIRES(module:torch)
+            >>> import torch
             >>> from ndsampler.category_tree import *
             >>> graph = nx.from_dict_of_lists({
             >>>     'a': ['b', 'q'],
@@ -560,6 +590,8 @@ class Mixin_CategoryTree_Torch:
             >>> assert np.all(pred_idxs1 == 4)
 
         Example:
+            >>> # xdoctest: +REQUIRES(module:torch)
+            >>> import torch
             >>> # FIXME: What do we do in this case?
             >>> # Do we always decend at level A?
             >>> from ndsampler.category_tree import *
@@ -808,6 +840,8 @@ def gini(probs, axis=1, impl=np):
     Approximates Shannon Entropy, but faster to compute
 
     Example:
+        >>> # xdoctest: +REQUIRES(module:torch)
+        >>> import torch
         >>> rng = kwarray.ensure_rng(0)
         >>> probs = torch.softmax(torch.Tensor(rng.rand(3, 10)), 1)
         >>> gini(probs.numpy(), impl=kwarray.ArrayAPI.coerce('numpy'))
@@ -823,6 +857,8 @@ def entropy(probs, axis=1, impl=np):
     Standard Shannon (Information Theory) Entropy
 
     Example:
+        >>> # xdoctest: +REQUIRES(module:torch)
+        >>> import torch
         >>> rng = kwarray.ensure_rng(0)
         >>> probs = torch.softmax(torch.Tensor(rng.rand(3, 10)), 1)
         >>> entropy(probs.numpy(), impl=kwarray.ArrayAPI.coerce('numpy'))
