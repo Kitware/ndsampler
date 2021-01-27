@@ -337,46 +337,47 @@ test_full/cp36-cp36m-linux:
 #    image:
 #        python:3.5
 
-.__local_docker_doc__: &__local_docker_doc__
-    - | 
-        # Docker rate limiting messed us up
-        # On my local machine
-        
-        docker login gitlab.kitware.com:4567
-        
-        docker pull python:3.8
-        docker pull python:3.7
-        docker pull python:3.6
+.__local_docker_doc__:
+        - | 
+            # Docker rate limiting messed us up
+            # On my local machine
+            
+            docker login gitlab.kitware.com:4567
+            
+            docker pull python:3.8
+            docker pull python:3.7
+            docker pull python:3.6
 
-        docker tag python:3.6 gitlab.kitware.com:4567/computer-vision/ndsampler/python:3.6
-        docker tag python:3.7 gitlab.kitware.com:4567/computer-vision/ndsampler/python:3.7
-        docker tag python:3.8 gitlab.kitware.com:4567/computer-vision/ndsampler/python:3.8
+            docker tag python:3.6 gitlab.kitware.com:4567/computer-vision/ndsampler/python:3.6
+            docker tag python:3.7 gitlab.kitware.com:4567/computer-vision/ndsampler/python:3.7
+            docker tag python:3.8 gitlab.kitware.com:4567/computer-vision/ndsampler/python:3.8
 
-        docker push gitlab.kitware.com:4567/computer-vision/ndsampler/python:3.6
-        docker push gitlab.kitware.com:4567/computer-vision/ndsampler/python:3.7
-        docker push gitlab.kitware.com:4567/computer-vision/ndsampler/python:3.8
+            docker push gitlab.kitware.com:4567/computer-vision/ndsampler/python:3.6
+            docker push gitlab.kitware.com:4567/computer-vision/ndsampler/python:3.7
+            docker push gitlab.kitware.com:4567/computer-vision/ndsampler/python:3.8
 
 
-.__local_docker_test__: &__local_docker_test__
-    -| 
-        ```bash
-        docker run -it python:3.8 bash
+.__local_docker_test__:
+        - | 
+            # Docker rate limiting messed us up
+            # On my local machine
+            docker run -it python:3.8 bash
 
-        apt update -y && apt install git -y
-        git clone https://gitlab.kitware.com/computer-vision/ndsampler.git
-        cd ndsampler
+            apt update -y && apt install git -y
+            git clone https://gitlab.kitware.com/computer-vision/ndsampler.git
+            cd ndsampler
 
-        python setup.py bdist_wheel --universal
-        python -V  # Print out python version for debugging
-        export PYVER=$(python -c "import sys; print('{}{}'.format(*sys.version_info[0:2]))")
-        pip install virtualenv
-        virtualenv venv$PYVER
-        source venv$PYVER/bin/activate
-        pip install pip -U
-        pip install pip setuptools -U
-        python -V  # Print out python version for debugging
-        pip install -r requirements.txt
-        pip install .  
+            python setup.py bdist_wheel --universal
+            python -V  # Print out python version for debugging
+            export PYVER=$(python -c "import sys; print('{}{}'.format(*sys.version_info[0:2]))")
+            pip install virtualenv
+            virtualenv venv$PYVER
+            source venv$PYVER/bin/activate
+            pip install pip -U
+            pip install pip setuptools -U
+            python -V  # Print out python version for debugging
+            pip install -r requirements.txt
+            pip install .  
 
-        apt update && apt install libgl1-mesa-glx -y && rm -rf /var/lib/apt/lists/*  
-        ./run_tests.py
+            apt update && apt install libgl1-mesa-glx -y && rm -rf /var/lib/apt/lists/*  
+            ./run_tests.py
