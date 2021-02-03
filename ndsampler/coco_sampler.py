@@ -133,7 +133,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             self._init()
 
     def _init(self):
-        self.dset._ensure_imgsize()
+        if hasattr(self.dset, '_ensure_imgsize'):
+            self.dset._ensure_imgsize()
+
         if self.dset.anns is None:
             self.dset._build_index()
         self.regions = coco_regions.CocoRegions(self.dset,
@@ -828,8 +830,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     # x = _coerce_coco_segmentation(coco_sseg, data_dims)
                     # abs_sseg = kwimage.Mask.coerce(coco_sseg, dims=data_dims)
                     abs_sseg = kwimage.MultiPolygon.coerce(coco_sseg, dims=data_dims)
-                    # abs_sseg = abs_sseg.to_multi_polygon()
-                    rel_sseg = abs_sseg.translate(offset)
+                    if abs_sseg is None:
+                        rel_sseg = None
+                    else:
+                        # abs_sseg = abs_sseg.to_multi_polygon()
+                        rel_sseg = abs_sseg.translate(offset)
 
             kpts_list.append(rel_points)
             sseg_list.append(rel_sseg)
