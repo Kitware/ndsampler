@@ -6,6 +6,12 @@ from os.path import join
 import ubelt as ub
 
 
+try:
+    from xdev import profile
+except Exception:
+    profile = ub.identity
+
+
 if 0:
     # Maybe?
     import smqtk
@@ -88,6 +94,7 @@ class CocoFrames(abstract_frames.Frames, util.HashIdentifiable):
         self.verbose = verbose
         self._image_ids = None
 
+    @profile
     def _lookup_gpath(self, image_id):
         img = self.dset.imgs[image_id]
         if self.dset.img_root:

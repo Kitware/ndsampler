@@ -36,6 +36,12 @@ DEBUG_LOAD_COG = int(ub.argflag('--debug-load-cog'))
 RUN_COG_CORRUPTION_CHECKS = True
 
 
+try:
+    from xdev import profile
+except Exception:
+    profile = ub.identity
+
+
 class CorruptCOG(Exception):
     pass
 
@@ -159,6 +165,18 @@ class Frames(object):
 
         if self.hashid_mode not in ['PATH', 'PIXELS', 'GIVEN']:
             raise KeyError(self.hashid_mode)
+
+    def __getstate__(self):
+        # don't carry the LRU cache throuch pickle operations
+        state = self.__dict__.copy()
+        if state['_lru'] is not None:
+            state['_lru'] = True
+        return state
+
+    def __setstate__(self, state):
+        if state['_lru'] is True:
+            state['_lru'] = util_lru.LRUDict.new(max_size=1, impl='auto')
+        self.__dict__.update(state)
 
     def _update_backend(self, backend):
         """ change the backend and update internals accordingly """
@@ -331,6 +349,7 @@ class Frames(object):
 
         return self.id_to_hashid[image_id]
 
+    @profile
     def load_region(self, image_id, region=None, bands=None, scale=0):
         """
         Ammortized O(1) image subregion loading (assuming constant region size)
@@ -386,6 +405,7 @@ class Frames(object):
             region = tuple(region) + tail
         return region
 
+    @profile
     def load_image(self, image_id, bands=None, scale=0, cache=True,
                    noreturn=False):
         """
@@ -429,6 +449,7 @@ class Frames(object):
             data = None
         return data
 
+    @profile
     def _load_image_full(self, image_id):
         if self._lru is not None:
             if image_id in self._lru:

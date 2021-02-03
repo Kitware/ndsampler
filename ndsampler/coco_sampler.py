@@ -54,6 +54,11 @@ from ndsampler import coco_frames
 from ndsampler import abstract_sampler
 from ndsampler.utils import util_misc
 
+try:
+    from xdev import profile
+except Exception:
+    profile = ub.identity
+
 
 class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                   ub.NiceRepr):
@@ -436,6 +441,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                                   with_annots=with_annots)
         return sample
 
+    @profile
     def load_sample(self, tr, pad=None, window_dims=None, visible_thresh=0.0,
                     with_annots=True, padkw={'mode': 'constant'}):
         """
@@ -635,6 +641,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
         return data_slice, extra_padding, st_dims
 
+    @profile
     def _infer_target_attributes(self, tr):
         """
         Infer unpopulated target attribues
@@ -653,8 +660,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         if 'aid' in tr_:
             # If the annotation id is specified, infer other unspecified fields
             aid = tr['aid']
-            if aid in self.dset.anns:
+            try:
                 ann = self.dset.anns[aid]
+            except KeyError:
+                pass
+            else:
                 if 'gid' not in tr_:
                     tr_['gid'] = ann['image_id']
                 if len({'cx', 'cy', 'width', 'height'} & set(tr_)) != 4:
@@ -676,6 +686,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             pass
         return tr_
 
+    @profile
     def _load_slice(self, tr, window_dims=None, pad=None,
                     padkw={'mode': 'constant'}):
         """
@@ -742,6 +753,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         }
         return sample
 
+    @profile
     def _populate_overlap(self, sample, visible_thresh=0.1, with_annots=True):
         """
         Add information about annotations overlapping the sample.
@@ -782,16 +794,18 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             gid, sample_tlbr, visible_thresh=visible_thresh)
 
         # Get info about all annotations inside this window
-        overlap_annots = self.dset.annots(overlap_aids)
-        overlap_cids = overlap_annots.cids
 
-        abs_boxes = overlap_annots.boxes
+        if 0:
+            overlap_annots = self.dset.annots(overlap_aids)
+            overlap_cids = overlap_annots.cids
+            abs_boxes = overlap_annots.boxes
+        else:
+            overlap_anns = [self.dset.anns[aid] for aid in overlap_aids]
+            overlap_cids = [ann['category_id'] for ann in overlap_anns]
+            abs_boxes = kwimage.Boxes(
+                [ann['bbox'] for ann in overlap_anns], 'xywh')
 
-        # overlap_keypoints = [
-        #     for aid in overlap_aids
-        # ]
         # Transform spatial information to be relative to the sample
-
         rel_boxes = abs_boxes.translate(offset)
 
         # Handle segmentations and keypoints if they exist
@@ -800,9 +814,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
         coco_dset = self.dset
         kp_classes = self.kp_classes
-        for aid in overlap_aids:
-            ann = coco_dset.anns[aid]
-
+        for ann in overlap_anns:
             # TODO: it should probably be the regions's responsibilty to load
             # and return these kwimage data structures.
             rel_points = None

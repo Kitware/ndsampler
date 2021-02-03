@@ -9,6 +9,12 @@ import kwarray
 import kwimage
 
 
+try:
+    from xdev import profile
+except Exception:
+    profile = ub.identity
+
+
 class FrameIntersectionIndex(ub.NiceRepr):
     """
     Build spatial tree for each frame so we can quickly determine if a random
@@ -95,6 +101,7 @@ class FrameIntersectionIndex(ub.NiceRepr):
                 qtree.aid_to_tlbr[aid] = tlbr_box
         return qtrees
 
+    @profile
     def overlapping_aids(self, gid, box):
         """
         Find all annotation-ids within an image that have some overlap with a
