@@ -711,11 +711,20 @@ def tabular_coco_targets(dset):
     import warnings
     # TODO: better handling of non-bounding box annotations; ignore for now
 
-    gid_to_width = {gid: img['width'] for gid, img in dset.imgs.items()}
-    gid_to_height = {gid: img['height'] for gid, img in dset.imgs.items()}
+    if hasattr(dset, 'tabular_targets'):
+        # In the SQL case, we can write a single query that
+        # builds the table more efficiently.
+        return dset.tabular_targets()
+
+    img_items = list(dset.imgs.items())
+    gid_to_width = {gid: img['width'] for gid, img in img_items}
+    gid_to_height = {gid: img['height'] for gid, img in img_items}
 
     try:
         anns = dset.dataset['annotations']
+        if not isinstance(anns, list):
+            anns = list(anns)
+
         xywh = [ann['bbox'] for ann in anns]
         xywh = np.array(xywh, dtype=np.float32)
     except Exception:
