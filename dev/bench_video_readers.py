@@ -120,10 +120,10 @@ def benchmark_video_readers():
     except Exception:
         vi3o = None
 
-    video_fpath = ub.grabdata('https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4')
+    # video_fpath = ub.grabdata('https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4')
     video_fpath = ub.grabdata('https://file-examples-com.github.io/uploads/2018/04/file_example_MOV_1280_1_4MB.mov')
 
-    ti = timerit.Timerit(2, bestof=2, verbose=3, unit='ms')
+    ti = timerit.Timerit(10, bestof=3, verbose=3, unit='ms')
 
     video_length = len(CV2VideoReader(video_fpath))
     num_frames = min(5, video_length)
