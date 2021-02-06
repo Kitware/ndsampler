@@ -1,3 +1,10 @@
+"""
+See Also:
+    https://docs.nvidia.com/deeplearning/dali/user-guide/docs/examples/sequence_processing/video/video_reader_label_example.html
+
+    pyav
+"""
+
 import pandas as pd
 import ubelt as ub
 import cv2
@@ -6,6 +13,22 @@ import timerit
 
 
 class CV2VideoReader(ub.NiceRepr):
+    """
+    References:
+        # Alternative wrapper
+        https://github.com/postpop/videoreader/blob/master/videoreader.py
+
+    Ignore:
+        >>> fpath = ub.grabdata('https://file-examples-com.github.io/uploads/2018/04/file_example_MOV_1280_1_4MB.mov')
+        >>> self = CV2VideoReader(fpath)
+        >>> frames = list(self)
+        >>> assert len(frames) == len(self)
+        >>> import ubelt as ub
+        >>> for idx, seq_frame in ub.ProgIter(list(enumerate(frames)), desc='check frames'):
+        >>>     ra_frame = self[idx]
+        >>>     assert np.all(ra_frame == seq_frame)
+
+    """
     def __init__(self, fpath):
         self.fpath = fpath
         self._cap = cv2.VideoCapture(fpath)

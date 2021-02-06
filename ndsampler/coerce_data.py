@@ -1,9 +1,15 @@
+"""
+Moved to netharn
+"""
 import ubelt as ub
 
 
 def coerce_datasets(config, build_hashid=False, verbose=1):
     """
     Coerce train / val / test datasets from standard netharn config keys
+
+    TODO:
+        * Does this belong in netharn?
 
     This only looks at the following keys in config:
         * datasets
