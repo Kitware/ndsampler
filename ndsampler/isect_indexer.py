@@ -47,7 +47,7 @@ class FrameIntersectionIndex(ub.NiceRepr):
             return len(self.all_gids)
 
     @classmethod
-    def from_coco(cls, dset):
+    def from_coco(cls, dset, verbose=0):
         """
         Args:
             dset (ndsampler.CocoDataset): positive annotation data
@@ -56,7 +56,7 @@ class FrameIntersectionIndex(ub.NiceRepr):
             FrameIntersectionIndex
         """
         self = cls()
-        self.qtrees = self._build_index(dset)
+        self.qtrees = self._build_index(dset, verbose=verbose)
         self.all_gids = sorted(self.qtrees.keys())
         return self
 
@@ -81,21 +81,25 @@ class FrameIntersectionIndex(ub.NiceRepr):
         return self
 
     @staticmethod
-    def _build_index(dset):
+    def _build_index(dset, verbose=0):
         """
-
         """
+        if verbose:
+            print('Building isect index')
         qtrees = {
             img['id']: pyqtree.Index((0, 0, img['width'], img['height']))
-            for img in dset.dataset['images']
+            for img in ub.ProgIter(dset.dataset['images'],
+                                   desc='init qtrees', verbose=verbose)
         }
         for qtree in qtrees.values():
             qtree.aid_to_tlbr = {}  # Add extra index to track boxes
-        for ann in dset.dataset['annotations']:
-            if 'bbox' in ann:
+        for ann in ub.ProgIter(dset.dataset['annotations'],
+                               desc='populate qtrees', verbose=verbose):
+            bbox = ann.get('bbox', None)
+            if bbox is not None:
                 aid = ann['id']
                 qtree = qtrees[ann['image_id']]
-                xywh_box = kwimage.Boxes(ann['bbox'], 'xywh')
+                xywh_box = kwimage.Boxes(bbox, 'xywh')
                 tlbr_box = xywh_box.to_tlbr().data
                 qtree.insert(aid, tlbr_box)
                 qtree.aid_to_tlbr[aid] = tlbr_box
