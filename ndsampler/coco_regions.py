@@ -22,13 +22,12 @@ Cases to Handle:
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 import itertools as it
-import ubelt as ub  # NOQA
-import numpy as np
-from os.path import join  # NOQA
-from ndsampler.utils import util_misc
-from ndsampler import isect_indexer
 import kwarray
 import kwimage
+import numpy as np
+import ubelt as ub
+from ndsampler.utils import util_misc
+from ndsampler import isect_indexer
 
 
 try:
