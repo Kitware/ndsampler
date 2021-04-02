@@ -3,11 +3,10 @@ mkinit ~/code/ndsampler/ndsampler/__init__.py -w
 """
 __version__ = '0.5.14'
 
-from ndsampler.utils.util_misc import (HashIdentifiable, stats_dict,)
+from ndsampler.utils.util_misc import (HashIdentifiable,)
 
 __explicit__ = [
     'HashIdentifiable',
-    'stats_dict',
 ]
 
 #  ---
@@ -23,8 +22,6 @@ __submodules__ = [
 
         # DEPRECATED (moved to kwcoco)
         'toydata',
-        'toypatterns',
-        'coco_dataset',
 ]
 from ndsampler import abstract_frames
 from ndsampler import abstract_sampler
@@ -34,8 +31,6 @@ from ndsampler import coco_regions
 from ndsampler import coco_sampler
 from ndsampler import isect_indexer
 from ndsampler import toydata
-from ndsampler import toypatterns
-from ndsampler import coco_dataset
 
 from ndsampler.abstract_frames import (CorruptCOG, DEBUG_COG_ATOMIC_WRITE,
                                        DEBUG_FILE_LOCK_CACHE_WRITE,
@@ -51,7 +46,6 @@ from ndsampler.coco_regions import (CocoRegions, MissingNegativePool, Targets,
 from ndsampler.coco_sampler import (CocoSampler, padded_slice,)
 from ndsampler.isect_indexer import (FrameIntersectionIndex,)
 from ndsampler.toydata import (DynamicToySampler,)
-from ndsampler.coco_dataset import (CocoDataset,)
 
 __all__ = ['AbstractSampler', 'CategoryTree', 'CocoDataset', 'CocoFrames',
            'CocoRegions', 'CocoSampler', 'CorruptCOG',
@@ -60,6 +54,6 @@ __all__ = ['AbstractSampler', 'CategoryTree', 'CocoDataset', 'CocoFrames',
            'Frames', 'HashIdentifiable', 'MissingNegativePool',
            'RUN_COG_CORRUPTION_CHECKS', 'SimpleFrames', 'Targets',
            'abstract_frames', 'abstract_sampler', 'category_tree',
-           'coco_dataset', 'coco_frames', 'coco_regions', 'coco_sampler',
+           'coco_frames', 'coco_regions', 'coco_sampler',
            'isect_indexer', 'padded_slice', 'select_positive_regions',
-           'stats_dict', 'tabular_coco_targets', 'toydata', 'toypatterns']
+           'tabular_coco_targets', 'toydata']

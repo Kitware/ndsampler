@@ -22,9 +22,9 @@ class FrameIntersectionIndex(ub.NiceRepr):
 
     Example:
         >>> from ndsampler.isect_indexer import *
-        >>> import ndsampler
+        >>> import kwcoco
         >>> import ubelt as ub
-        >>> dset = ndsampler.CocoDataset.demo()
+        >>> dset = kwcoco.CocoDataset.demo()
         >>> dset._ensure_imgsize()
         >>> dset.remove_annotations([ann for ann in dset.anns.values()
         >>>                          if 'bbox' not in ann])
@@ -50,7 +50,7 @@ class FrameIntersectionIndex(ub.NiceRepr):
     def from_coco(cls, dset, verbose=0):
         """
         Args:
-            dset (ndsampler.CocoDataset): positive annotation data
+            dset (kwcoco.CocoDataset): positive annotation data
 
         Returns:
             FrameIntersectionIndex
@@ -66,14 +66,14 @@ class FrameIntersectionIndex(ub.NiceRepr):
         Create a demo intersection index.
 
         Args:
-            *args: see ndsampler.CocoDataset.demo
-            **kwargs: see ndsampler.CocoDataset.demo
+            *args: see kwcoco.CocoDataset.demo
+            **kwargs: see kwcoco.CocoDataset.demo
 
         Returns:
             FrameIntersectionIndex
         """
-        import ndsampler
-        dset = ndsampler.CocoDataset.demo(*args, **kwargs)
+        import kwcoco
+        dset = kwcoco.CocoDataset.demo(*args, **kwargs)
         dset._ensure_imgsize()
         dset.remove_annotations([ann for ann in dset.anns.values()
                                  if 'bbox' not in ann])
@@ -208,9 +208,9 @@ class FrameIntersectionIndex(ub.NiceRepr):
 
         Example:
             >>> from ndsampler.isect_indexer import *
-            >>> from ndsampler import toydata
             >>> import ndsampler
-            >>> dset = ndsampler.CocoDataset(toydata.demodata_toy_dset())
+            >>> import kwcoco
+            >>> dset = kwcoco.CocoDataset.demo('shapes8')
             >>> self = FrameIntersectionIndex.from_coco(dset)
             >>> anchors = np.array([[.35, .15], [.2, .2], [.1, .1]])
             >>> #num = 25
@@ -231,9 +231,8 @@ class FrameIntersectionIndex(ub.NiceRepr):
 
         Example:
             >>> from ndsampler.isect_indexer import *
-            >>> from ndsampler import toydata
-            >>> import ndsampler
-            >>> dset = ndsampler.CocoDataset(toydata.demodata_toy_dset())
+            >>> import kwcoco
+            >>> dset = kwcoco.CocoDataset.demo('shapes8')
             >>> self = FrameIntersectionIndex.from_coco(dset)
             >>> #num = 25
             >>> num = 5

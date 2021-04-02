@@ -27,7 +27,6 @@ import numpy as np
 from os.path import join  # NOQA
 from ndsampler.utils import util_misc
 from ndsampler import isect_indexer
-from ndsampler import coco_dataset
 import kwarray
 import kwimage
 
@@ -195,8 +194,8 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
 
     @classmethod
     def demo(CocoRegions):
-        from ndsampler import toydata
-        dset = coco_dataset.CocoDataset(toydata.demodata_toy_dset())
+        import kwcoco
+        dset = kwcoco.CocoDataset.demo('shapes8')
         dset._ensure_imgsize()
         self = CocoRegions(dset)
         return self
@@ -611,8 +610,8 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
 
         Example:
             >>> from ndsampler.coco_regions import *
-            >>> from ndsampler import coco_sampler
-            >>> self = coco_sampler.CocoSampler.demo().regions
+            >>> import ndsampler
+            >>> self = ndsampler.CocoSampler.demo().regions
             >>> num = 100
             >>> self._preselect_negatives(num, window_dims=(30, 30))
         """
@@ -780,9 +779,8 @@ def select_positive_regions(targets, window_dims=(300, 300), thresh=0.0,
 
     Example:
         >>> from ndsampler.coco_regions import *
-        >>> from ndsampler import toydata
-        >>> from ndsampler import coco_sampler
-        >>> dset = coco_dataset.CocoDataset(toydata.demodata_toy_dset())
+        >>> import kwcoco
+        >>> dset = kwcoco.CocoDataset.demo('shapes8')
         >>> targets = tabular_coco_targets(dset)
         >>> window_dims = (300, 300)
         >>> selected = select_positive_regions(targets, window_dims)

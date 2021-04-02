@@ -62,6 +62,7 @@ class Frames(object):
 
         hashid_mode (str, default='PATH'): The method used to compute a unique
             identifier for every image. to can be PATH, PIXELS, or GIVEN.
+            TODO: Add DVC as a method (where it uses the name of the symlink)?
 
         workdir (PathLike): This is the directory where `Frames` can store
             cached results. This SHOULD be specified.
@@ -132,7 +133,6 @@ class Frames(object):
         'config': {
             'compress': 'auto',
         },
-        '_hack_old_names': False,  # This will be removed in the future
         '_hack_use_cli': True,  # Uses the gdal-CLI to create cogs, which frustratingly seems to be faster
     }
 
@@ -256,14 +256,8 @@ class Frames(object):
             if backend_type is None:
                 return None
             elif backend_type == 'cog':
-                if self._backend['_hack_old_names']:
-                    # Old style didn't care about the particular config. Used whatever the first config was.
-                    dpath = join(self.workdir, '_cache', 'frames',
-                                 backend_type)
-                else:
-                    # New style respects user config choice
-                    dpath = join(self.workdir, '_cache', 'frames',
-                                 backend_type, self._backend_hashid)
+                dpath = join(self.workdir, '_cache', 'frames', backend_type,
+                             self._backend_hashid)
             elif backend_type == 'npy':
                 dpath = join(self.workdir, '_cache', 'frames', backend_type)
             else:
@@ -742,8 +736,9 @@ def _cog_cache_write(gpath, cache_gpath, config=None):
         >>> # xdoctest: +REQUIRES(module:gdal)
         >>> import ndsampler
         >>> from ndsampler.abstract_frames import *
+        >>> import kwcoco
         >>> workdir = ub.ensure_app_cache_dir('ndsampler')
-        >>> dset = ndsampler.CocoDataset.demo()
+        >>> dset = kwcoco.CocoDataset.demo()
         >>> imgs = dset.images()
         >>> id_to_name = imgs.lookup('file_name', keepid=True)
         >>> id_to_path = {gid: join(dset.img_root, name)
@@ -950,8 +945,8 @@ class SimpleFrames(Frames):
         """
         Get a smple frames object
         """
-        import ndsampler
-        dset = ndsampler.CocoDataset.demo()
+        import kwcoco
+        dset = kwcoco.CocoDataset.demo()
         imgs = dset.images()
         id_to_name = imgs.lookup('file_name', keepid=True)
         id_to_path = {gid: join(dset.img_root, name)

@@ -48,7 +48,7 @@ import ubelt as ub
 import numpy as np
 import kwimage
 import six
-from ndsampler import coco_dataset
+import kwcoco
 from ndsampler import coco_regions
 from ndsampler import coco_frames
 from ndsampler import abstract_sampler
@@ -69,7 +69,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
     Does data loading, padding, etc...
 
     Args:
-        dset (ndsampler.CocoDataset): a coco-formatted dataset
+        dset (kwcoco.CocoDataset): a coco-formatted dataset
 
         backend (str | Dict): either 'cog' or 'npy', or a dict with
             `{'type': str, 'config': Dict}`. See AbstractFrames for more
@@ -108,9 +108,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         Create a toy coco sampler for testing and demo puposes
 
         SeeAlso:
-            * ndsampler.CocoDataset.demo
+            * kwcoco.CocoDataset.demo
         """
-        dset = coco_dataset.CocoDataset.demo(key=key, **kw)
+        dset = kwcoco.CocoDataset.demo(key=key, **kw)
         if key == 'photos':
             toremove = [ann for ann in dset.anns.values() if 'bbox' not in ann]
             dset.remove_annotations(toremove)
@@ -560,7 +560,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> # xdoc: +REQUIRES(--show)
             >>> import kwplot
             >>> kwplot.autompl()
-            >>> abs_frame = self.frames.load_image(sample['tr']['gid'])
+            >>> abs_frame = self.frames.load_image(sample['tr']['gid'])[:]
             >>> tf_rel_to_abs = sample['params']['tf_rel_to_abs']
             >>> abs_boxes = annots['rel_boxes'].warp(tf_rel_to_abs)
             >>> abs_ssegs = annots['rel_ssegs'].warp(tf_rel_to_abs)
@@ -893,6 +893,9 @@ def padded_slice(data, in_slice, ndim=None, pad_slice=None,
     """
     Allows slices with out-of-bound coordinates.  Any out of bounds coordinate
     will be sampled via padding.
+
+    TODO:
+        - [ ] : Deprecate for version in kwimage
 
     Note:
         Negative slices have a different meaning here then they usually do.

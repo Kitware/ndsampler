@@ -155,8 +155,8 @@ def _split_train_vali_test(coco_dset, factor=3):
 
     Example:
         >>> from ndsampler.coerce_data import _split_train_vali_test
-        >>> import ndsampler
-        >>> coco_dset = ndsampler.CocoDataset.demo('shapes8')
+        >>> import kwcoco
+        >>> coco_dset = kwcoco.CocoDataset.demo('shapes8')
         >>> split_gids = _split_train_vali_test(coco_dset)
         >>> print('split_gids = {}'.format(ub.repr2(split_gids, nl=1)))
     """

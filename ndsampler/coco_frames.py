@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
 from . import abstract_frames
-from . import util
+from .utils import util_misc
 from os.path import join
 import ubelt as ub
 
@@ -62,7 +62,7 @@ if 0:
             return spec
 
 
-class CocoFrames(abstract_frames.Frames, util.HashIdentifiable):
+class CocoFrames(abstract_frames.Frames, util_misc.HashIdentifiable):
     """
     wrapper around coco-style dataset to allow for getitem syntax
 
@@ -72,9 +72,10 @@ class CocoFrames(abstract_frames.Frames, util.HashIdentifiable):
     Example:
         >>> from ndsampler.coco_frames import *
         >>> import ndsampler
+        >>> import kwcoco
         >>> import ubelt as ub
         >>> workdir = ub.ensure_app_cache_dir('ndsampler')
-        >>> dset = ndsampler.CocoDataset.demo(workdir=workdir)
+        >>> dset = kwcoco.CocoDataset.demo(workdir=workdir)
         >>> dset._ensure_imgsize()
         >>> self = CocoFrames(dset, workdir=workdir)
         >>> assert self.load_image(1).shape == (512, 512, 3)

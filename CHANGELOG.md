@@ -5,11 +5,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Version 0.5.14 - Unreleased
 
+### Removed
+
+* `_hack_old_names` from `AbstractFrames`
+* `CocoDataset` which was moved to `kwcoco`
+* `toypatterns` which was moved to `kwcoco`
+* `stats_dict`, which now exists in `kwarray`
+* `ndsampler.util` module, use `ndsampler.utils.util_misc` instead.
+* `ndsampler.util_futures`, which now lives in `ndsampler.utils.util_futures`
+* `make_demo_coco`, use `kwcoco toydata` instead.
+
 
 ## Version 0.5.13 - Released 2021-01-26
-
-
-## Version 0.5.12 - Released 2021-01-26
 
 ### Changed
 * Removed Python 3.5 support
