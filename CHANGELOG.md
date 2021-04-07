@@ -3,7 +3,7 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
-## Version 0.5.14 - Unreleased
+## Version 0.6.0 - Unreleased
 
 ### Removed
 
@@ -14,6 +14,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * `ndsampler.util` module, use `ndsampler.utils.util_misc` instead.
 * `ndsampler.util_futures`, which now lives in `ndsampler.utils.util_futures`
 * `make_demo_coco`, use `kwcoco toydata` instead.
+
+### Modified
+
+* Overhaul of `AbstractFrames` for better auxiliary data integration
 
 
 ## Version 0.5.13 - Released 2021-01-26

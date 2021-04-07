@@ -13,7 +13,7 @@ except ImportError:
 
 def have_gdal():
     try:
-        import gdal
+        from osgeo import gdal
     except ImportError:
         return False
     else:
@@ -22,7 +22,7 @@ def have_gdal():
 
 def _fix_conda_gdal_hack():
     import os
-    import gdal  # NOQA
+    from osgeo import gdal  # NOQA
     if os.pathsep != ';' and ';' in os.environ["PATH"]:
         # Workaround conda gdal issue
         # https://github.com/OSGeo/gdal/issues/1231
@@ -49,7 +49,7 @@ def _doctest_check_cog(data, fpath):
 
 
 def _numpy_to_gdal_dtype(numpy_dtype):
-    import gdal
+    from osgeo import gdal
     kindsize = (numpy_dtype.kind, numpy_dtype.itemsize)
     if kindsize == ('u', 1):
         eType = gdal.GDT_Byte
@@ -387,7 +387,7 @@ def _cli_convert_cloud_optimized_geotiff(src_fpath, dst_fpath, compress='auto',
         >>> for timer in ti.reset('SSD-api'):
         >>>     _cli_convert_cloud_optimized_geotiff(src_fpath, dst_fpath)
     """
-    import gdal
+    from osgeo import gdal
     options = [
         'TILED=YES',
         'BIGTIFF=YES',
@@ -454,7 +454,7 @@ def _api_convert_cloud_optimized_geotiff(src_fpath, dst_fpath,
         xdoctest -m ~/code/ndsampler/ndsampler/utils/util_gdal.py _api_convert_cloud_optimized_geotiff --bench
 
     """
-    import gdal
+    from osgeo import gdal
     # data_set = gdal.Open(src_fpath)
     data_set = gdal.Open(src_fpath, gdal.GA_ReadOnly)
 
@@ -506,7 +506,7 @@ def _api_convert_cloud_optimized_geotiff2(src_fpath, dst_fpath,
     CommandLine:
         xdoctest -m ~/code/ndsampler/ndsampler/utils/util_gdal.py _api_convert_cloud_optimized_geotiff --bench
     """
-    import gdal
+    from osgeo import gdal
     # data_set = gdal.Open(src_fpath)
     data_set = gdal.Open(src_fpath, gdal.GA_ReadOnly)
 
@@ -590,7 +590,7 @@ class LazyGDalFrameFile(ub.NiceRepr):
 
     @ub.memoize_property
     def _ds(self):
-        import gdal
+        from osgeo import gdal
         if not exists(self.cog_fpath):
             raise Exception('File does not exist: {}'.format(self.cog_fpath))
         ds = gdal.Open(self.cog_fpath, gdal.GA_ReadOnly)

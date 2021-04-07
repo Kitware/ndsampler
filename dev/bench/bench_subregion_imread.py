@@ -14,7 +14,7 @@ def gdal_subregion_imread(img_fpath, index):
     References:
         https://gis.stackexchange.com/questions/162095/gdal-driver-create-typeerror
     """
-    import gdal
+    from osgeo import gdal
     ypart, xpart = index[0:2]
     trailing_part = index[2:]
 
@@ -68,7 +68,7 @@ def imwrite_cloud_optimized_geotiff(fpath, data):
         kwimage.imwrite(fpath3, data)
         print(nh.util.get_file_info(fpath3))
     """
-    import gdal
+    from osgeo import gdal
     y_size, x_size, num_bands = data.shape
     # driver = gdal.GetDriverByName('GTiff')
     # data_set = driver.Create(fpath, x_size, y_size, num_bands,
@@ -164,7 +164,9 @@ def time_ondisk_crop(size=512, dim=3, region='small_random', num=24):
         pil_img.save(v)
 
     img_fpaths['cog'] = join(dpath, 'foo.cog')
-    imwrite_cloud_optimized_geotiff(img_fpaths['cog'], data)
+    # kwimage.imwrite(img_fpaths['cog'], data, backend='gdal', compress='LZW')
+    kwimage.imwrite(img_fpaths['cog'], data, backend='gdal', compress='ZSTD')
+    # imwrite_cloud_optimized_geotiff(img_fpaths['cog'], data)
 
     if DATA == 'custom':
         from os.path import splitext

@@ -15,25 +15,20 @@ TODO:
 from __future__ import absolute_import, division, print_function, unicode_literals
 import itertools as it
 import numpy as np
-import os
 import ubelt as ub
-# import lockfile
-# https://stackoverflow.com/questions/489861/locking-a-file-in-python
-import fasteners  # supercedes lockfile / oslo_concurrency?
-import atomicwrites
+import os
 import six
+import copy
 
 import warnings
-from os.path import exists
-from os.path import join
+from os.path import exists, join, dirname
 from ndsampler.utils import util_gdal
 from ndsampler.utils import util_lru
+from ndsampler.frame_cache import (
+    _cog_cache_write, _npy_cache_write, _locked_cache_write, CorruptCOG)
 
 
-DEBUG_COG_ATOMIC_WRITE = 0
-DEBUG_FILE_LOCK_CACHE_WRITE = 0
 DEBUG_LOAD_COG = int(ub.argflag('--debug-load-cog'))
-RUN_COG_CORRUPTION_CHECKS = True
 
 
 try:
@@ -42,24 +37,15 @@ except Exception:
     profile = ub.identity
 
 
-class CorruptCOG(Exception):
-    pass
-
-
 class Frames(object):
     """
     Abstract implementation of Frames.
 
-    While this is an abstract class, it contains most of the `Frames`
+    While this is an abstract class, it contains most of the ``Frames``
     functionality. The inheriting class needs to overload the constructor and
-    `_lookup_gpath`, which maps an image-id to its path on disk.
+    ``_lookup_gpath``, which maps an image-id to its path on disk.
 
     Args:
-        id_to_hashid (Dict, optional):
-            A custom mapping from image-id to a globally unique hashid for that
-            image. Typically you should not specify this unless
-            hashid_mode='GIVEN'.
-
         hashid_mode (str, default='PATH'): The method used to compute a unique
             identifier for every image. to can be PATH, PIXELS, or GIVEN.
             TODO: Add DVC as a method (where it uses the name of the symlink)?
@@ -75,7 +61,7 @@ class Frames(object):
                 {
                     'type': 'cog',
                     'config': {
-                    'compress': <'LZW' | 'JPEG | 'DEFLATE' | 'auto'>,
+                    'compress': <'LZW' | 'JPEG | 'DEFLATE' | 'ZSTD' | 'auto'>,
                     }
                 }
 
@@ -136,8 +122,7 @@ class Frames(object):
         '_hack_use_cli': True,  # Uses the gdal-CLI to create cogs, which frustratingly seems to be faster
     }
 
-    def __init__(self, id_to_hashid=None, hashid_mode='PATH', workdir=None,
-                 backend='auto'):
+    def __init__(self, hashid_mode='PATH', workdir=None, backend='auto'):
 
         self._backend = None
         self._backend_hashid = None  # hash of backend config parameters
@@ -148,12 +133,8 @@ class Frames(object):
 
         self._update_backend(backend)
 
-        if id_to_hashid is None:
-            id_to_hashid = {}
-        else:
-            hashid_mode = 'GIVEN'
-
-        self.id_to_hashid = id_to_hashid
+        # This is a cache that will be populated on the fly
+        self._id_to_pathinfo = {}
 
         if workdir is None:
             workdir = ub.get_app_cache_dir('ndsampler')
@@ -164,6 +145,7 @@ class Frames(object):
         self.hashid_mode = hashid_mode
 
         if self.hashid_mode not in ['PATH', 'PIXELS', 'GIVEN']:
+            # TODO: DVC
             raise KeyError(self.hashid_mode)
 
     def __getstate__(self):
@@ -184,6 +166,7 @@ class Frames(object):
         self._cache_dpath = None
         self._backend_hashid = ub.hash_data(
             sorted(self._backend['config'].items()))[0:8]
+        self._id_to_pathinfo = {}
 
     @classmethod
     def _coerce_backend_config(cls, backend='auto'):
@@ -195,8 +178,6 @@ class Frames(object):
                 and 'config', which is a dictionary of parameters for the
                 specific type.
         """
-        import copy
-
         if backend is None:
             return {'type': None, 'config': {}}
 
@@ -232,7 +213,8 @@ class Frames(object):
         default_kw = final['config']
         unknown_config_keys = set(inner_kw) - set(default_kw)
         if unknown_config_keys:
-            raise ValueError('Backend config got unknown keys: {}'.format(unknown_config_keys))
+            raise ValueError('Backend config got unknown keys: {}'.format(
+                unknown_config_keys))
 
         # Only update expected values in the subconfig
         # Update the outer config
@@ -261,45 +243,99 @@ class Frames(object):
             elif backend_type == 'npy':
                 dpath = join(self.workdir, '_cache', 'frames', backend_type)
             else:
-                raise KeyError(backend_type)
+                raise KeyError('backend_type = {}'.format(backend_type))
             self._cache_dpath = ub.ensuredir(dpath)
         return self._cache_dpath
 
-    def _gnames(self, image_id, mode=None):
+    def _build_pathinfo(self, image_id):
         """
-        Lookup the original image name and its cached efficient representation
-        name
-        """
-        gpath = self._lookup_gpath(image_id)
-        if mode is None:
-            if self._backend is None:
-                return gpath, None
-            else:
-                mode = self._backend['type']
-        hashid = self._lookup_hashid(image_id)
-        fname_base = os.path.basename(gpath).split('.')[0]
-        # We actually don't want to write the image-id in the filename because
-        # the same file may be in different datasets with different ids.
-        if mode == 'cog':
-            cache_gname = '{}_{}.cog.tiff'.format(fname_base, hashid)
-        elif mode == 'npy':
-            cache_gname = '{}_{}.npy'.format(fname_base, hashid)
-        else:
-            raise KeyError(mode)
-        cache_gpath = join(self.cache_dpath, cache_gname)
-        return gpath, cache_gpath
+        A user specified function that maps an image id to paths to relevant
+        resources on disk. These resources are also indexed by channel.
 
-    def _lookup_gpath(self, image_id):
-        """
-        A user specified function that maps an image id to its path on disk.
+        SeeAlso:
+            ``_populate_chan_info`` for helping populate cache info in each
+            channel.
 
         Args:
             image_id: the image id (usually an integer)
 
         Returns:
-            PathLike: path to the image
+            Dict: with the following structure:
+                {
+                    <NotFinalized>
+                    'channels': {
+                        <channel_spec>: {'path': <abspath>, ...},
+                        ...
+                    }
+                }
         """
         raise NotImplementedError
+
+    def _lookup_pathinfo(self, image_id):
+        if image_id in self._id_to_pathinfo:
+            pathinfo = self._id_to_pathinfo[image_id]
+        else:
+            pathinfo = self._build_pathinfo(image_id)
+            self._id_to_pathinfo[image_id] = pathinfo
+        return pathinfo
+
+    def _populate_chan_info(self, chan, root=''):
+        """
+        Helper to construct a path dictionary in the ``_build_pathinfo`` method
+        based on the current hashing and caching settings.
+        """
+        backend_type = self._backend['type']
+
+        if 'file_name' in chan:
+            fname = chan['file_name']
+            gpath = join(root, fname)
+            chan['path'] = gpath
+        elif 'path' in chan:
+            gpath = chan['path']
+            fname = gpath
+        else:
+            raise Exception('no file_name or path info')
+
+        if backend_type is not None:
+            if backend_type == 'cog':
+                ext = '.cog.tiff'
+            elif backend_type == 'npy':
+                ext = '.npy'
+            else:
+                raise KeyError('backend_type = {}'.format(backend_type))
+
+            hashid_mode = self.hashid_mode
+
+            # hash directory structure
+            cache_dpath = self.cache_dpath
+            hashid = self._build_file_hashid(root, fname, hashid_mode)
+            cache_gpath = join(cache_dpath, hashid[0:2], hashid[2:] + ext)
+            chan['hashid'] = hashid
+            chan['hashid_mode'] = hashid_mode
+            chan['cache'] = cache_gpath
+
+        chan['cache_type'] = backend_type
+
+    @staticmethod
+    def _build_file_hashid(root, suffix, hashid_mode):
+        """
+        Build a hashid for a specific file given as a path root and suffix.
+        """
+        gpath = join(root, suffix)
+        if hashid_mode == 'PATH':
+            # Hash the full path to the image data
+            # NOTE: this logic is not machine independent
+            hashid = ub.hash_data(suffix, hasher='sha1', base='hex')
+        elif hashid_mode == 'PIXELS':
+            # Hash the pixels in the image
+            hashid = ub.hash_file(gpath, hasher='sha1', base='hex')
+        elif hashid_mode == 'DVC':
+            raise NotImplementedError('todo')
+        elif hashid_mode == 'GIVEN':
+            raise Exception('given mode no longer supported')
+        else:
+            raise KeyError(hashid_mode)
+        return hashid
 
     @property
     def image_ids(self):
@@ -312,62 +348,45 @@ class Frames(object):
         image_id = self.image_ids[index]
         return self.load_image(image_id)
 
-    def _lookup_hashid(self, image_id):
-        """
-        Get the hashid of a particular image.
-
-        NOTE: THIS IS OVERWRITTEN BY THE COCO FRAMES TO ONLY USE THE RELATIVE
-        FILE PATH
-        """
-        if image_id not in self.id_to_hashid:
-            # Compute the hash if we it does not exist yet
-            # TODO: We may be able to take advantage of DVC's cache here if we
-            # are in that context.
-            gpath = self._lookup_gpath(image_id)
-            if self.hashid_mode == 'PATH':
-                # Hash the full path to the image data
-                # NOTE: this logic is not machine independent
-                hashid = ub.hash_data(gpath, hasher='sha1', base='hex')
-            elif self.hashid_mode == 'PIXELS':
-                # Hash the pixels in the image
-                hashid = ub.hash_file(gpath, hasher='sha1', base='hex')
-            elif self.hashid_mode == 'GIVEN':
-                raise IndexError(
-                    'Requested image_id={} was not given'.format(image_id))
-            else:
-                raise KeyError(self.hashid_mode)
-
-            # Assume the image info will not change and cache the hashid.
-            # If the info does change this cache must be notified and cleared.
-            self.id_to_hashid[image_id] = hashid
-
-        return self.id_to_hashid[image_id]
-
     @profile
-    def load_region(self, image_id, region=None, bands=None, scale=0):
+    def load_region(self, image_id, region=None, channels=None, scale=0,
+                    width=None, height=None):
         """
         Ammortized O(1) image subregion loading (assuming constant region size)
 
         Args:
             image_id (int): image identifier
             region (Tuple[slice, ...]): space-time region within an image
-            bands (str): NotImplemented
+            channels (str): NotImplemented
             scale (float): NotImplemented
+            width (int): if the width of the entire image is know specify it
+            height (int): if the height of the entire image is know specify it
         """
-        region = self._rectify_region(region)
-        if all(r.start is None and r.stop is None for r in region):
-            # Avoid forcing a cache computation when loading the full image
-            im = self.load_image(image_id, bands=bands, scale=scale,
-                                 cache=False)
-        else:
-            file = self.load_image(image_id, bands=bands, scale=scale,
-                                   cache=True)
+        if region is not None:
+            if len(region) < 2:
+                # Add empty dimensions
+                tail = tuple([slice(None)] * (2 - len(region)))
+                region = tuple(region) + tail
+            if all(r.start is None and r.stop is None for r in region):
+                # Avoid forcing a cache computation when loading the full image
+                flag = (
+                    region[0].stop in [None, height] and
+                    region[1].stop in [None, width]
+                )
+                if flag:
+                    region = None
+
+        # setting region to None disables memmap/geotiff caching
+        cache = region is not None
+        file = self.load_image(image_id, channels=channels, scale=scale,
+                               cache=cache)
+        if region is not None:
             im = file[region]
         return im
 
     def load_frame(self, image_id):
         """
-        TODO: FINISHME
+        TODO: FINISHME or rename to lazy frame?
 
         Returns a frame object that lazy loads on slice
         """
@@ -393,14 +412,10 @@ class Frames(object):
     def _rectify_region(self, region):
         if region is None:
             region = tuple([])
-        if len(region) < 2:
-            # Add empty dimensions
-            tail = tuple([slice(None)] * (2 - len(region)))
-            region = tuple(region) + tail
         return region
 
     @profile
-    def load_image(self, image_id, bands=None, scale=0, cache=True,
+    def load_image(self, image_id, channels=None, scale=0, cache=True,
                    noreturn=False):
         """
         Load the image data for a particular image id
@@ -409,7 +424,7 @@ class Frames(object):
             image_id (int): the id of the image to load
             cache (bool, default=True): ensure and return the efficient backend
                 cached representation.
-            bands : NotImplemented
+            channels : NotImplemented
             scale : NotImplemented
 
             noreturn (bool, default=False): if True, nothing is returned.
@@ -420,57 +435,64 @@ class Frames(object):
             ArrayLike: an indexable array like representation, possibly
                 memmapped.
         """
-        if bands is not None:
-            raise NotImplementedError('cannot handle different bands')
-
         if scale != 0:
             raise NotImplementedError('can only handle scale=0')
 
+        pathinfo = self._lookup_pathinfo(image_id)
+        if channels is None:
+            channels = pathinfo['default']
+
+        chan = pathinfo['channels'][channels]
+        gpath = chan['path']
+
         if not cache :
             import kwimage
-            gpath = self._lookup_gpath(image_id)
             data = kwimage.imread(gpath)
         else:
-            if self._backend['type'] is None:
-                data = self._load_image_full(image_id)
-            elif self._backend['type'] == 'cog':
-                data = self._load_image_cog(image_id)
-            elif self._backend['type'] == 'npy':
-                data = self._load_image_npy(image_id)
+            cache_key = (image_id, channels)
+
+            if self._lru is not None:
+                if cache_key in self._lru:
+                    file = self._lru[cache_key]
+                    return file
+
+            pathinfo['channels'][channels]
+            if self._backend['type'] != chan['cache_type']:
+                raise Exception('inconsistent backend')
+
+            if chan['cache_type'] is None:
+                import kwimage
+                file = kwimage.imread(gpath)
+            elif chan['cache_type'] == 'cog':
+                cache_gpath = chan['cache']
+                file = self._ensure_image_cog(gpath, cache_gpath)
+            elif chan['cache_type'] == 'npy':
+                cache_gpath = chan['cache']
+                file = self._ensure_image_npy(gpath, cache_gpath)
             else:
                 raise KeyError(self._backend['type'])
+
+            data = file
+
+            if self._lru is not None:
+                self._lru[cache_key] = data
+
         if noreturn:
             data = None
         return data
 
-    @profile
-    def _load_image_full(self, image_id):
-        if self._lru is not None:
-            if image_id in self._lru:
-                return self._lru[image_id]
-
-        import kwimage
-        gpath = self._lookup_gpath(image_id)
-        raw_data = kwimage.imread(gpath)
-
-        if self._lru is not None:
-            self._lru[image_id] = raw_data
-        return raw_data
-
-    def _load_image_npy(self, image_id):
+    def _ensure_image_npy(self, gpath, cache_gpath):
         """
+        Ensures that cache_gpath exists in a multiprocessing-safe way
+
         Returns a memmapped reference to the entire image
         """
-        if self._lru is not None:
-            if image_id in self._lru:
-                return self._lru[image_id]
+        cache_gpath = cache_gpath
 
-        gpath = self._lookup_gpath(image_id)
-        gpath, cache_gpath = self._gnames(image_id, mode='npy')
-        mem_gpath = cache_gpath
-
-        if not exists(mem_gpath):
-            self.ensure_npy_representation(gpath, mem_gpath)
+        if not exists(cache_gpath):
+            ub.ensuredir(dirname(cache_gpath))
+            _locked_cache_write(_npy_cache_write, gpath,
+                                cache_gpath=cache_gpath, config=None)
 
         # I can't figure out why a race condition exists here.  I can't
         # reproduce it with a small example. In the meantime, this hack should
@@ -479,13 +501,13 @@ class Frames(object):
         if HACKY_RACE_CONDITION_FIX:
             for try_num in it.count():
                 try:
-                    file = np.load(mem_gpath, mmap_mode='r')
+                    file = np.load(cache_gpath, mmap_mode='r')
                 except Exception as ex:
                     print('\n\n')
                     print('ERROR: FAILED TO LOAD CACHED FILE')
                     print('ex = {!r}'.format(ex))
-                    print('mem_gpath = {!r}'.format(mem_gpath))
-                    print('exists(mem_gpath) = {!r}'.format(exists(mem_gpath)))
+                    print('cache_gpath = {!r}'.format(cache_gpath))
+                    print('exists(cache_gpath) = {!r}'.format(exists(cache_gpath)))
                     print('Recompute cache: Try number {}'.format(try_num))
                     print('\n\n')
 
@@ -493,10 +515,11 @@ class Frames(object):
                         # Something really bad must be happening, stop trying
                         raise
                     try:
-                        os.remove(mem_gpath)
+                        os.remove(cache_gpath)
                     except Exception:
                         print('WARNING: CANNOT REMOVE CACHED FRAME.')
-                    self.ensure_npy_representation(gpath, mem_gpath)
+                    _locked_cache_write(_npy_cache_write, gpath,
+                                        cache_gpath=cache_gpath, config=None)
                 else:
                     break
         else:
@@ -504,33 +527,29 @@ class Frames(object):
             # There seems to be a race condition that triggers the error:
             # ValueError: mmap length is greater than file size
             try:
-                file = np.load(mem_gpath, mmap_mode='r')
+                file = np.load(cache_gpath, mmap_mode='r')
             except ValueError:
                 print('\n\n')
                 print('ERROR')
-                print('mem_gpath = {!r}'.format(mem_gpath))
-                print('exists(mem_gpath) = {!r}'.format(exists(mem_gpath)))
+                print('cache_gpath = {!r}'.format(cache_gpath))
+                print('exists(cache_gpath) = {!r}'.format(exists(cache_gpath)))
                 print('\n\n')
                 raise
-
-        if self._lru is not None:
-            self._lru[image_id] = file
         return file
 
-    def _load_image_cog(self, image_id):
+    def _ensure_image_cog(self, gpath, cache_gpath):
         """
         Returns a special array-like object with a COG GeoTIFF backend
         """
-        if self._lru is not None:
-            if image_id in self._lru:
-                return self._lru[image_id]
-
-        gpath, cache_gpath = self._gnames(image_id, mode='cog')
         cog_gpath = cache_gpath
 
         if not exists(cog_gpath):
             if not exists(gpath):
-                raise OSError('Source image gpath={!r} for image_id={!r} does not exist!'.format(gpath, image_id))
+                raise OSError((
+                    'Source image gpath={!r} '
+                    'does not exist!').format(gpath))
+
+            ub.ensuredir(dirname(cog_gpath))
 
             # If the file already is a cog, just use it
             from ndsampler.utils.validate_cog import validate as _validate_cog
@@ -579,7 +598,16 @@ class Frames(object):
                             print(' * info(gpath) = ' + ub.repr2(nh.util.get_file_info(gpath)))
                         except ImportError:
                             pass
-                self._ensure_cog_representation(gpath, cog_gpath, config)
+                try:
+                    _locked_cache_write(_cog_cache_write, gpath,
+                                        cache_gpath=cog_gpath, config=config)
+                except CorruptCOG:
+                    import warnings
+                    msg = ('!!! COG was corrupted, trying once more')
+                    warnings.warn(msg)
+                    print(msg)
+                    _locked_cache_write(_cog_cache_write, gpath,
+                                        cache_gpath=cog_gpath, config=config)
 
             if DEBUG:
                 print('cog_gpath = {!r}'.format(cog_gpath))
@@ -592,30 +620,7 @@ class Frames(object):
                 print('</DEBUG INFO>')
 
         file = util_gdal.LazyGDalFrameFile(cog_gpath)
-        if self._lru is not None:
-            self._lru[image_id] = file
         return file
-
-    @staticmethod
-    def _ensure_cog_representation(gpath, cog_gpath, config):
-        try:
-            _locked_cache_write(_cog_cache_write, gpath, cache_gpath=cog_gpath,
-                                config=config)
-        except CorruptCOG:
-            import warnings
-            msg = ('!!! COG was corrupted, trying once more')
-            warnings.warn(msg)
-            print(msg)
-            _locked_cache_write(_cog_cache_write, gpath, cache_gpath=cog_gpath,
-                                config=config)
-
-    @staticmethod
-    def ensure_npy_representation(gpath, mem_gpath, config=None):
-        """
-        Ensures that mem_gpath exists in a multiprocessing-safe way
-        """
-        _locked_cache_write(_npy_cache_write, gpath, cache_gpath=mem_gpath,
-                            config=config)
 
     def prepare(self, gids=None, workers=0, use_stamp=True):
         """
@@ -679,18 +684,9 @@ class Frames(object):
 
         # TODO:
         #     Add some image preprocessing ability here?
-        stamp = ub.CacheStamp('prepare_frames_stamp', dpath=self.cache_dpath,
-                              cfgstr=hashid, verbose=3)
+        stamp = ub.CacheStamp('prepare_frames_stamp_v2', dpath=self.cache_dpath,
+                              depends=hashid, verbose=3)
         stamp.cacher.enabled = bool(hashid) and bool(use_stamp) and gids is None
-
-        # print('frames stamp hashid = {!r}'.format(hashid))
-        # print('frames cache_dpath = {!r}'.format(self.cache_dpath))
-        # print('stamp.cacher.enabled = {!r}'.format(stamp.cacher.enabled))
-
-        if self._backend is None:
-            mode = None
-        else:
-            mode = self._backend['type']
 
         if stamp.expired() or hashid is None:
             from ndsampler.utils import util_futures
@@ -701,23 +697,20 @@ class Frames(object):
                 if gids is None:
                     gids = self.image_ids
 
-                path_list = [
-                    (image_id, self._gnames(image_id, mode=mode))
-                    for image_id in ub.ProgIter(gids, desc='lookup cache path')
-                ]
-                cache_gpath_list = [
-                    (image_id, cache_gpath)
-                    for (image_id, (gpath, cache_gpath)) in ub.ProgIter(path_list, desc='check exists')
-                    if not exists(cache_gpath)
-                ]
+                missing_cache_infos = []
+                for gid in ub.ProgIter(gids, desc='lookup missing cache paths'):
+                    pathinfo = self._lookup_pathinfo(gid)
+                    for chan in pathinfo['channels'].values():
+                        if not exists(chan['cache']):
+                            missing_cache_infos.append((gid, chan['channels']))
 
-                prog = ub.ProgIter(cache_gpath_list,
+                prog = ub.ProgIter(missing_cache_infos,
                                    desc='Frames: submit prepare jobs')
                 job_list = [
                     executor.submit(
-                        self.load_image, image_id, cache=True,
-                        noreturn=True)
-                    for image_id, cache_gpath in prog]
+                        self.load_image, image_id, channels=channels,
+                        cache=True, noreturn=True)
+                    for image_id, channels in prog]
 
                 for job in ub.ProgIter(futures.as_completed(job_list),
                                        total=len(job_list), adjust=False, freq=1,
@@ -726,196 +719,10 @@ class Frames(object):
             stamp.renew()
 
 
-# @profile
-def _cog_cache_write(gpath, cache_gpath, config=None):
-    """
-    CommandLine:
-        xdoctest -m ndsampler.abstract_frames _cog_cache_write
-
-    Example:
-        >>> # xdoctest: +REQUIRES(module:gdal)
-        >>> import ndsampler
-        >>> from ndsampler.abstract_frames import *
-        >>> import kwcoco
-        >>> workdir = ub.ensure_app_cache_dir('ndsampler')
-        >>> dset = kwcoco.CocoDataset.demo()
-        >>> imgs = dset.images()
-        >>> id_to_name = imgs.lookup('file_name', keepid=True)
-        >>> id_to_path = {gid: join(dset.img_root, name)
-        >>>               for gid, name in id_to_name.items()}
-        >>> self = SimpleFrames(id_to_path, workdir=workdir)
-        >>> image_id = ub.peek(id_to_name)
-        >>> gpath = self._lookup_gpath(image_id)
-        >>> hashid = self._lookup_hashid(image_id)
-        >>> cog_gname = '{}_{}.cog.tiff'.format(image_id, hashid)
-        >>> cache_gpath = cog_gpath = join(self.cache_dpath, cog_gname)
-        >>> _cog_cache_write(gpath, cache_gpath, {})
-    """
-    assert config is not None
-
-    # FIXME: if gdal_translate is not installed (because libgdal exists, but
-    # gdal-bin doesn't) then this seems to fail without throwing an error when
-    # hack_use_cli=1.
-    hack_use_cli = config.pop('hack_use_cli', False)
-
-    if DEBUG_COG_ATOMIC_WRITE:
-        import multiprocessing
-        from multiprocessing import current_process
-        from threading import current_thread
-        is_main = (current_thread().name == 'MainThread' and
-                   current_process().name == 'MainProcess')
-        proc = multiprocessing.current_process()
-        def _debug(msg):
-            msg_ = '[{}, {}, {}] '.format(ub.timestamp(), proc, proc.pid) + msg + '\n'
-            if is_main:
-                print(msg_)
-            with open(cache_gpath + '.atomic.debug', 'a') as f:
-                f.write(msg_)
-        _debug('attempts aquire'.format())
-
-    if not hack_use_cli:
-        # Load all the image data and dump it to cog format
-        import kwimage
-        if DEBUG_COG_ATOMIC_WRITE:
-            _debug('reading data')
-        raw_data = kwimage.imread(gpath)
-        # raw_data = kwimage.atleast_3channels(raw_data, copy=False)
-    # TODO: THERE HAS TO BE A CORRECT WAY TO DO THIS.
-    # However, I'm not sure what it is. I extend my appologies to whoever is
-    # maintaining this code. Note: mode MUST be 'w'
-
-    with atomicwrites.atomic_write(cache_gpath + '.atomic', mode='w', overwrite=True) as file:
-        if DEBUG_COG_ATOMIC_WRITE:
-            _debug('begin')
-            _debug('gpath = {}'.format(gpath))
-            _debug('cache_gpath = {}'.format(cache_gpath))
-        try:
-            file.write('begin: {}\n'.format(ub.timestamp()))
-            file.write('gpath = {}\n'.format(gpath))
-            file.write('cache_gpath = {}\n'.format(cache_gpath))
-            if not exists(cache_gpath):
-                if not hack_use_cli:
-                    util_gdal._imwrite_cloud_optimized_geotiff(
-                        cache_gpath, raw_data, **config)
-                else:
-                    # The CLI is experimental and might make this pipeline
-                    # faster by avoiding the initial read.
-                    util_gdal._cli_convert_cloud_optimized_geotiff(
-                        gpath, cache_gpath, **config)
-                if DEBUG_COG_ATOMIC_WRITE:
-                    _debug('finished write: {}\n'.format(ub.timestamp()))
-            else:
-                if DEBUG_COG_ATOMIC_WRITE:
-                    _debug('ALREADY EXISTS did not write: {}\n'.format(ub.timestamp()))
-            file.write('end: {}\n'.format(ub.timestamp()))
-        except Exception as ex:
-            file.write('FAILED DUE TO EXCEPTION: {}: {}\n'.format(ex, ub.timestamp()))
-            if DEBUG_COG_ATOMIC_WRITE:
-                _debug('FAILED DUE TO EXCEPTION: {}'.format(ex))
-            raise
-        finally:
-            if DEBUG_COG_ATOMIC_WRITE:
-                _debug('finally')
-
-    if RUN_COG_CORRUPTION_CHECKS:
-        # CHECK THAT THE DATA WAS WRITTEN CORRECTLY
-        file = util_gdal.LazyGDalFrameFile(cache_gpath)
-        is_valid = util_gdal.validate_nonzero_data(file)
-        if not is_valid:
-            if hack_use_cli:
-                import kwimage
-                raw_data = kwimage.imread(gpath)
-            # The check may fail on zero images, so check that
-            orig_sum = raw_data.sum()
-            # cache_sum = file[:].sum()
-            # if DEBUG:
-            #     _debug('is_valid = {}'.format(is_valid))
-            #     _debug('cache_sum = {}'.format(cache_sum))
-            if orig_sum > 0:
-                print('FAILED TO WRITE COG FILE')
-                print('orig_sum = {!r}'.format(orig_sum))
-                # print(kwimage.imread(cache_gpath).sum())
-                if DEBUG_COG_ATOMIC_WRITE:
-                    _debug('FAILED TO WRITE COG FILE')
-                ub.delete(cache_gpath)
-                raise CorruptCOG('FAILED TO WRITE COG FILE CORRECTLY')
-
-    # raise RuntimeError('FOOBAR')
-
-
-def _npy_cache_write(gpath, cache_gpath, config=None):
-    # Load all the image data and dump it to npy format
-    import kwimage
-    raw_data = kwimage.imread(gpath)
-    # raw_data = np.asarray(Image.open(gpath))
-
-    # Even with the file-lock and atomic save there is still a race
-    # condition somewhere. Not sure what it is.
-    # _semi_atomic_numpy_save(cache_gpath, raw_data)
-
-    # with atomicwrites.atomic_write(cache_gpath, mode='wb', overwrite=True) as file:
-    with open(cache_gpath, mode='wb') as file:
-        np.save(file, raw_data)
-
-
-def _locked_cache_write(_write_func, gpath, cache_gpath, config=None):
-    """
-    Ensures that mem_gpath exists in a multiprocessing-safe way
-    """
-    lock_fpath = cache_gpath + '.lock'
-
-    if DEBUG_FILE_LOCK_CACHE_WRITE:
-        import multiprocessing
-        from multiprocessing import current_process
-        from threading import current_thread
-        is_main = (current_thread().name == 'MainThread' and
-                   current_process().name == 'MainProcess')
-        proc = multiprocessing.current_process()
-        def _debug(msg):
-            msg_ = '[{}, {}, {}] '.format(ub.timestamp(), proc, proc.pid) + msg + '\n'
-            if is_main:
-                print(msg_)
-            with open(lock_fpath + '.debug', 'a') as f:
-                f.write(msg_)
-        _debug('lock_fpath = {}'.format(lock_fpath))
-        _debug('attempt aquire')
-
-    try:
-        # Ensure that another process doesn't write to the same image
-        # FIXME: lockfiles may not be cleaned up gracefully
-        # See: https://github.com/harlowja/fasteners/issues/26
-        with fasteners.InterProcessLock(lock_fpath):
-
-            if DEBUG_FILE_LOCK_CACHE_WRITE:
-                _debug('aquires')
-                _debug('will read {}'.format(gpath))
-                _debug('will write {}'.format(cache_gpath))
-
-            if not exists(cache_gpath):
-                _write_func(gpath, cache_gpath, config)
-
-                if DEBUG_FILE_LOCK_CACHE_WRITE:
-                    _debug('wrote'.format())
-            else:
-                if DEBUG_FILE_LOCK_CACHE_WRITE:
-                    _debug('does not need to write'.format())
-
-            if DEBUG_FILE_LOCK_CACHE_WRITE:
-                _debug('releasing'.format())
-
-        if DEBUG_FILE_LOCK_CACHE_WRITE:
-            _debug('released'.format())
-    except Exception as ex:
-        if DEBUG_FILE_LOCK_CACHE_WRITE:
-            _debug('GOT EXCEPTION: {}'.format(ex))
-    finally:
-        if DEBUG_FILE_LOCK_CACHE_WRITE:
-            _debug('finally')
-
-
 class SimpleFrames(Frames):
     """
-    Basic concrete implementation of frames objects
+    Basic concrete implementation of frames objects for images where there is a
+    strict one-file-to-one-image mapping (i.e. no auxiliary images).
 
     Args:
         id_to_path (Dict): mapping from image-id to image path
@@ -923,14 +730,15 @@ class SimpleFrames(Frames):
     Example:
         >>> from ndsampler.abstract_frames import *
         >>> self = SimpleFrames.demo(backend='npy')
+        >>> pathinfo = self._build_pathinfo(1)
+        >>> print('pathinfo = {}'.format(ub.repr2(pathinfo, nl=3)))
+
         >>> assert self.load_image(1).shape == (512, 512, 3)
         >>> assert self.load_region(1, (slice(-20), slice(-10))).shape == (492, 502, 3)
     """
-    def __init__(self, id_to_path, id_to_hashid=None, hashid_mode='PATH',
-                 workdir=None, **kw):
-        super(SimpleFrames, self).__init__(id_to_hashid=id_to_hashid,
-                                           hashid_mode=hashid_mode,
-                                           workdir=workdir, **kw)
+    def __init__(self, id_to_path, workdir=None, backend='auto'):
+        super(SimpleFrames, self).__init__(
+            hashid_mode='PATH', workdir=workdir, backend=backend)
         self.id_to_path = id_to_path
 
     def _lookup_gpath(self, image_id):
@@ -947,61 +755,27 @@ class SimpleFrames(Frames):
         """
         import kwcoco
         dset = kwcoco.CocoDataset.demo()
-        imgs = dset.images()
-        id_to_name = imgs.lookup('file_name', keepid=True)
-        id_to_path = {gid: join(dset.img_root, name)
-                      for gid, name in id_to_name.items()}
+        id_to_path = {
+            gid: dset.get_image_fpath(gid) for gid in dset.imgs.keys()
+        }
         if kw.get('workdir', None) is None:
             kw['workdir'] = ub.ensure_app_cache_dir('ndsampler')
         self = SimpleFrames(id_to_path, **kw)
         return self
 
-
-def __notes__():
-    """
-    Testing alternate implementations
-    """
-
-    def _subregion_with_pil(img, region):
-        """
-        References:
-            https://stackoverflow.com/questions/23253205/read-a-subset-of-pixels-with-pil-pillow/50823293#50823293
-        """
-        # It is much faster to crop out a subregion from a npy memmap file
-        # than it is to work with a raw image (apparently). Thus the first
-        # time we see an image, we load the entire thing, and dump it to a
-        # cache directory in npy format. Then any subsequent time the image
-        # is needed, we efficiently load it from numpy.
-        import kwimage
-        from PIL import Image
-        gpath = kwimage.grab_test_image_fpath()
-        # Directly load a crop region with PIL (this is slow, why?)
-        pil_img = Image.open(gpath)
-
-        width = img['width']
-        height = img['height']
-
-        yregion, xregion = region
-        left, right, _ = xregion.indices(width)
-        upper, lower, _ = yregion.indices(height)
-        area = left, upper, right, lower
-
-        # Ok, so loading images with PIL is still slow even with crop.  Not
-        # sure why. I though I measured that it was significantly better
-        # before. Oh well. Let hack this and the first time we read an image we
-        # will dump it to a numpy file and then memmap into it to crop out the
-        # appropriate slice.
-        sub_img = pil_img.crop(area)
-        im = np.asarray(sub_img)
-        return im
-
-    def _alternate_memap_creation(mem_gpath, img, region):
-        # not sure where the 128 magic number comes from
-        # https://stackoverflow.com/questions/51314748/is-the-bytes-offset-in-files-produced-by-np-save-always-128
-        width = img['width']
-        height = img['height']
-        img_shape = (height, width, 3)
-        img_dtype = np.dtype('uint8')
-        file = np.memmap(mem_gpath, dtype=img_dtype, shape=img_shape,
-                         offset=128, mode='r')
-        return file
+    def _build_pathinfo(self, image_id):
+        pathinfo = {
+            'id': image_id,
+            'path': self.id_to_path[image_id],
+            'channels': None,
+            'transform': None,
+        }
+        pathinfo = {
+            'default': None,
+            'channels': {
+                None: pathinfo,
+            }
+        }
+        for chan in pathinfo['channels'].values():
+            self._populate_chan_info(chan, root='')
+        return pathinfo

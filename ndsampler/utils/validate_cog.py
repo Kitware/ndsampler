@@ -59,8 +59,8 @@ def validate(ds, check_tiled=True):
       ValidateCloudOptimizedGeoTIFFException: Unable to open the file or the
         file is not a Tiff.
     """
-    # from osgeo import gdal
-    import gdal
+    from osgeo import gdal
+    # import gdal
     details = {}
     errors = []
     warnings = []
