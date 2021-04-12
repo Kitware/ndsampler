@@ -15,6 +15,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * `ndsampler.util_futures`, which now lives in `ndsampler.utils.util_futures`
 * `make_demo_coco`, use `kwcoco toydata` instead.
 
+*  `Frames._lookup_hashid` 
+*  `Frames._lookup_gpath` 
+*  `Frames._gnames` 
+
 ### Modified
 
 * Overhaul of `AbstractFrames` for better auxiliary data integration

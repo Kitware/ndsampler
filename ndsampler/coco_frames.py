@@ -92,6 +92,7 @@ class CocoFrames(abstract_frames.Frames, util_misc.HashIdentifiable):
 
         channels = {}
         pathinfo = {
+            'id': image_id,
             'channels': channels,
             'default': default_channels,
             'width': img.get('width', None),

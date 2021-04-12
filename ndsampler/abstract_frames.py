@@ -13,22 +13,15 @@ TODO:
         - [X] Convert to COG if needed
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
-import itertools as it
 import numpy as np
 import ubelt as ub
-import os
 import six
 import copy
-
 import warnings
-from os.path import exists, join, dirname
+from os.path import exists, join
 from ndsampler.utils import util_gdal
 from ndsampler.utils import util_lru
-from ndsampler.frame_cache import (
-    _cog_cache_write, _npy_cache_write, _locked_cache_write, CorruptCOG)
-
-
-DEBUG_LOAD_COG = int(ub.argflag('--debug-load-cog'))
+from ndsampler.frame_cache import (_ensure_image_cog, _ensure_image_npy)
 
 
 try:
@@ -362,6 +355,9 @@ class Frames(object):
             width (int): if the width of the entire image is know specify it
             height (int): if the height of the entire image is know specify it
         """
+        if scale != 0:
+            raise NotImplementedError('can only handle scale=0')
+
         if region is not None:
             if len(region) < 2:
                 # Add empty dimensions
@@ -378,11 +374,65 @@ class Frames(object):
 
         # setting region to None disables memmap/geotiff caching
         cache = region is not None
-        file = self.load_image(image_id, channels=channels, scale=scale,
-                               cache=cache)
+        imgdata = self._load_alignable(image_id, cache=cache)
         if region is not None:
-            im = file[region]
+            im = imgdata.load_region(region, channels=channels, fused=True)
         return im
+
+    def _load_alignable(self, image_id, cache=True):
+        _lru = self._lru
+        if cache and _lru is not None and image_id in _lru:
+            return _lru[image_id]
+
+        pathinfo = self._lookup_pathinfo(image_id)
+        imgdata = AlignableImageData(pathinfo, cache_backend=self._backend)
+
+        if cache and _lru is not None:
+            _lru[image_id] = imgdata
+        return imgdata
+
+    @profile
+    def load_image(self, image_id, channels=None, scale=0, cache=True,
+                   noreturn=False):
+        """
+        Load the image data for a particular image id
+
+        Args:
+            image_id (int): the id of the image to load
+            cache (bool, default=True): ensure and return the efficient backend
+                cached representation.
+            channels : NotImplemented
+            scale : NotImplemented
+
+            noreturn (bool, default=False): if True, nothing is returned.
+                This is useful if you simply want to ensure the cached
+                representation.
+
+
+        CAREFUL: THIS NEEDS TO MAINTAIN A STABLE API.
+        OTHER PROJECTS DEPEND ON IT.
+
+        Returns:
+            ArrayLike: an indexable array like representation, possibly
+                memmapped.
+        """
+        if scale != 0:
+            raise NotImplementedError('can only handle scale=0')
+
+        imgdata = self._load_alignable(image_id, cache=cache)
+
+        if channels is None:
+            # chan_name = channels
+            default_chan = imgdata.pathinfo['default']
+            chan_name = default_chan
+        else:
+            raise NotImplementedError
+
+        data = imgdata._load_native_channel(chan_name, cache=cache)
+
+        if noreturn:
+            data = None
+        return data
 
     def load_frame(self, image_id):
         """
@@ -408,219 +458,6 @@ class Frames(object):
                 return self._frame[region]
         im = LazyFrame(self, image_id)
         return im
-
-    def _rectify_region(self, region):
-        if region is None:
-            region = tuple([])
-        return region
-
-    @profile
-    def load_image(self, image_id, channels=None, scale=0, cache=True,
-                   noreturn=False):
-        """
-        Load the image data for a particular image id
-
-        Args:
-            image_id (int): the id of the image to load
-            cache (bool, default=True): ensure and return the efficient backend
-                cached representation.
-            channels : NotImplemented
-            scale : NotImplemented
-
-            noreturn (bool, default=False): if True, nothing is returned.
-                This is useful if you simply want to ensure the cached
-                representation.
-
-        Returns:
-            ArrayLike: an indexable array like representation, possibly
-                memmapped.
-        """
-        if scale != 0:
-            raise NotImplementedError('can only handle scale=0')
-
-        pathinfo = self._lookup_pathinfo(image_id)
-        if channels is None:
-            channels = pathinfo['default']
-
-        chan = pathinfo['channels'][channels]
-        gpath = chan['path']
-
-        if not cache :
-            import kwimage
-            data = kwimage.imread(gpath)
-        else:
-            cache_key = (image_id, channels)
-
-            if self._lru is not None:
-                if cache_key in self._lru:
-                    file = self._lru[cache_key]
-                    return file
-
-            pathinfo['channels'][channels]
-            if self._backend['type'] != chan['cache_type']:
-                raise Exception('inconsistent backend')
-
-            if chan['cache_type'] is None:
-                import kwimage
-                file = kwimage.imread(gpath)
-            elif chan['cache_type'] == 'cog':
-                cache_gpath = chan['cache']
-                file = self._ensure_image_cog(gpath, cache_gpath)
-            elif chan['cache_type'] == 'npy':
-                cache_gpath = chan['cache']
-                file = self._ensure_image_npy(gpath, cache_gpath)
-            else:
-                raise KeyError(self._backend['type'])
-
-            data = file
-
-            if self._lru is not None:
-                self._lru[cache_key] = data
-
-        if noreturn:
-            data = None
-        return data
-
-    def _ensure_image_npy(self, gpath, cache_gpath):
-        """
-        Ensures that cache_gpath exists in a multiprocessing-safe way
-
-        Returns a memmapped reference to the entire image
-        """
-        cache_gpath = cache_gpath
-
-        if not exists(cache_gpath):
-            ub.ensuredir(dirname(cache_gpath))
-            _locked_cache_write(_npy_cache_write, gpath,
-                                cache_gpath=cache_gpath, config=None)
-
-        # I can't figure out why a race condition exists here.  I can't
-        # reproduce it with a small example. In the meantime, this hack should
-        # mitigate the problem by simply trying again until it works.
-        HACKY_RACE_CONDITION_FIX = True
-        if HACKY_RACE_CONDITION_FIX:
-            for try_num in it.count():
-                try:
-                    file = np.load(cache_gpath, mmap_mode='r')
-                except Exception as ex:
-                    print('\n\n')
-                    print('ERROR: FAILED TO LOAD CACHED FILE')
-                    print('ex = {!r}'.format(ex))
-                    print('cache_gpath = {!r}'.format(cache_gpath))
-                    print('exists(cache_gpath) = {!r}'.format(exists(cache_gpath)))
-                    print('Recompute cache: Try number {}'.format(try_num))
-                    print('\n\n')
-
-                    if try_num > 20:
-                        # Something really bad must be happening, stop trying
-                        raise
-                    try:
-                        os.remove(cache_gpath)
-                    except Exception:
-                        print('WARNING: CANNOT REMOVE CACHED FRAME.')
-                    _locked_cache_write(_npy_cache_write, gpath,
-                                        cache_gpath=cache_gpath, config=None)
-                else:
-                    break
-        else:
-            # FIXME;
-            # There seems to be a race condition that triggers the error:
-            # ValueError: mmap length is greater than file size
-            try:
-                file = np.load(cache_gpath, mmap_mode='r')
-            except ValueError:
-                print('\n\n')
-                print('ERROR')
-                print('cache_gpath = {!r}'.format(cache_gpath))
-                print('exists(cache_gpath) = {!r}'.format(exists(cache_gpath)))
-                print('\n\n')
-                raise
-        return file
-
-    def _ensure_image_cog(self, gpath, cache_gpath):
-        """
-        Returns a special array-like object with a COG GeoTIFF backend
-        """
-        cog_gpath = cache_gpath
-
-        if not exists(cog_gpath):
-            if not exists(gpath):
-                raise OSError((
-                    'Source image gpath={!r} '
-                    'does not exist!').format(gpath))
-
-            ub.ensuredir(dirname(cog_gpath))
-
-            # If the file already is a cog, just use it
-            from ndsampler.utils.validate_cog import validate as _validate_cog
-            warnings, errors, details = _validate_cog(gpath)
-
-            if DEBUG_LOAD_COG:
-                from multiprocessing import current_process
-                from threading import current_thread
-                is_main = (
-                    current_thread().name == 'MainThread' and
-                    current_process().name == 'MainProcess'
-                )
-                DEBUG = 0
-                if is_main:
-                    DEBUG = 2
-            else:
-                DEBUG = 0
-
-            if DEBUG:
-                print('\n<DEBUG INFO>')
-                print('Missing cog_gpath={}'.format(cog_gpath))
-                print('gpath = {!r}'.format(gpath))
-
-            gpath_is_cog = not bool(errors)
-            if ub.argflag('--debug-validate-cog') or DEBUG > 2:
-                print('details = {}'.format(ub.repr2(details, nl=1)))
-                print('errors (why we need to ensure) = {}'.format(ub.repr2(errors, nl=1)))
-                print('warnings = {}'.format(ub.repr2(warnings, nl=1)))
-                print('gpath_is_cog = {!r}'.format(gpath_is_cog))
-
-            if gpath_is_cog:
-                # If we already are a cog, then just use it
-                if DEBUG:
-                    print('Image is already a cog, symlinking to cache')
-                ub.symlink(gpath, cog_gpath)
-            else:
-                config = self._backend['config'].copy()
-                config['hack_use_cli'] = self._backend['_hack_use_cli']
-                if DEBUG:
-                    print('BUILDING COG REPRESENTATION')
-                    print('gpath = {!r}'.format(gpath))
-                    print('cog config = {}'.format(ub.repr2(config, nl=2)))
-                    if DEBUG > 1:
-                        try:
-                            import netharn as nh
-                            print(' * info(gpath) = ' + ub.repr2(nh.util.get_file_info(gpath)))
-                        except ImportError:
-                            pass
-                try:
-                    _locked_cache_write(_cog_cache_write, gpath,
-                                        cache_gpath=cog_gpath, config=config)
-                except CorruptCOG:
-                    import warnings
-                    msg = ('!!! COG was corrupted, trying once more')
-                    warnings.warn(msg)
-                    print(msg)
-                    _locked_cache_write(_cog_cache_write, gpath,
-                                        cache_gpath=cog_gpath, config=config)
-
-            if DEBUG:
-                print('cog_gpath = {!r}'.format(cog_gpath))
-                if DEBUG > 1:
-                    try:
-                        import netharn as nh
-                        print(' * info(cog_gpath) = ' + ub.repr2(nh.util.get_file_info(cog_gpath)))
-                    except ImportError:
-                        pass
-                print('</DEBUG INFO>')
-
-        file = util_gdal.LazyGDalFrameFile(cog_gpath)
-        return file
 
     def prepare(self, gids=None, workers=0, use_stamp=True):
         """
@@ -764,18 +601,313 @@ class SimpleFrames(Frames):
         return self
 
     def _build_pathinfo(self, image_id):
-        pathinfo = {
-            'id': image_id,
+        default_channel = {
             'path': self.id_to_path[image_id],
             'channels': None,
             'transform': None,
         }
         pathinfo = {
+            'id': image_id,
             'default': None,
             'channels': {
-                None: pathinfo,
+                None: default_channel,
             }
         }
         for chan in pathinfo['channels'].values():
             self._populate_chan_info(chan, root='')
         return pathinfo
+
+
+class AlignableImageData(object):
+    """
+    Class for sampling channels / frames that are aligned with each other
+
+    TODO:
+        - [ ] This is more general than the older way of accessing image data
+        however, there is a lot more logic that hasn't been profiled, so we
+        may be able to find meaningful optimizations.
+
+    Example:
+        >>> from ndsampler.abstract_frames import *
+        >>> frames = SimpleFrames.demo(backend='npy')
+        >>> pathinfo = frames._build_pathinfo(1)
+        >>> cache_backend = frames._backend
+        >>> print('pathinfo = {}'.format(ub.repr2(pathinfo, nl=3)))
+        >>> self = AlignableImageData(pathinfo, cache_backend)
+
+        AlignableImageData(pathinfo)
+    """
+    def __init__(self, pathinfo, cache_backend):
+        self.pathinfo = pathinfo
+        self.cache_backend = cache_backend
+        self._channel_memcache = {}
+
+    @profile
+    def _load_native_channel(self, chan_name, cache=True):
+        """
+        Load a specific auxiliary channel, optionally caching it
+        """
+        chan = self.pathinfo['channels'][chan_name]
+
+        if not cache:
+            import kwimage
+            gpath = chan['path']
+            data = kwimage.imread(gpath)
+        else:
+            cache_key = chan_name
+            _channel_memcache = self._channel_memcache
+            if _channel_memcache is not None and cache_key in _channel_memcache:
+                return _channel_memcache[cache_key]
+
+            gpath = chan['path']
+            cache_type = chan['cache_type']
+            if cache_type is None:
+                import kwimage
+                data = kwimage.imread(gpath)
+            elif cache_type == 'cog':
+                cache_gpath = chan['cache']
+                config = self.cache_backend['config']
+                hack_use_cli = self.cache_backend['_hack_use_cli']
+                data = _ensure_image_cog(gpath, cache_gpath, config,
+                                         hack_use_cli)
+            elif cache_type == 'npy':
+                cache_gpath = chan['cache']
+                data = _ensure_image_npy(gpath, cache_gpath)
+            else:
+                raise KeyError(cache_type)
+
+            if _channel_memcache is not None:
+                _channel_memcache[cache_key] = data
+        return data
+
+    @profile
+    def _subregion_crop(self, base_corners, tf_to_chan):
+        if tf_to_chan is None:
+            chan_corners = base_corners
+        else:
+            # Warp the base coordinates into the target channel space
+            chan_corners = base_corners.warp(tf_to_chan)
+
+        chan_corners_box = chan_corners.bounding_box().to_ltrb()
+
+        # Quantize to a region that is possible to sample from
+        chan_sample_box = chan_corners_box.quantize()
+        lt_x, lt_y, rb_x, rb_y = chan_sample_box.data[0, 0:4]
+
+        chan_region = (slice(lt_y, rb_y), slice(lt_x, rb_x))
+
+        # Because we sampled a larget quantized region, we need to modify the
+        # chan-to-base transform to nudge it a bit to the left, undoing the
+        # quantization, which has a bit of extra padding on the left, before
+        # applying the final transform.
+        sample_offset = chan_sample_box.data[0, 0:2]
+        corner_offset = chan_corners_box.data[0, 0:2]
+        offset_xy =  sample_offset - corner_offset
+
+        if np.any(offset_xy != 0):
+            subpixel_offset = np.array([
+                [1, 0, offset_xy[0]],
+                [0, 1, offset_xy[1]],
+                [0, 0, 1],
+            ], dtype=np.float32)
+            # Resample the smaller region to align it with the base region
+            # Note: The right most transform is applied first
+            if tf_to_chan is None:
+                tf_to_base = subpixel_offset
+            else:
+                tf_to_base = np.linalg.inv(tf_to_chan) @ subpixel_offset
+        else:
+            if tf_to_chan is None:
+                tf_to_base = None
+            else:
+                tf_to_base = np.linalg.inv(tf_to_chan)
+
+        return chan_region, tf_to_base
+
+    @profile
+    def _native_subregion(self, chan_name, base_corners):
+        """
+        Crop out relevant region in a particular channel. Return it in its
+        native pixel coordinates with subpixel alignment information.
+        """
+        aux = self.pathinfo['channels'][chan_name]
+        tf_base_to_chan = aux.get('transform', None)
+        if tf_base_to_chan is not None:
+            tf_to_chan = np.array(tf_base_to_chan['matrix'])
+        else:
+            tf_to_chan = None
+
+        chan = self._load_native_channel(chan_name)
+
+        if base_corners is not None:
+            chan_region, tf_to_base = self._subregion_crop(
+                base_corners, tf_to_chan)
+        else:
+            tf_to_base = None if tf_to_chan is None else np.linalg.inv(tf_to_chan)
+            chan_crop = chan
+
+        # chan = self._frames.load_image(image_id, channels=chan_name)
+        chan_crop = chan[chan_region]
+
+        subregion = {
+            'im': chan_crop,
+            'channels': chan_name,
+            'tf_to_base': tf_to_base,
+        }
+        return subregion
+
+    @profile
+    def _load_prefused_region(self, base_region, channels=None):
+        """
+        Loads crops from multiple channels in their native coordinate system
+        packaged with transformation info on how to align them.
+        """
+        import kwimage
+        if channels is None:
+            if 'default' not in self.pathinfo:
+                raise Exception(
+                    'Channels is not specified and the image metadata does not specify a default')
+            default_chan = self.pathinfo['default']
+            channels = [default_chan]
+            # channels = self.pathinfo['channels'].keys()
+
+        print('base_region = {!r}'.format(base_region))
+        if base_region is not None:
+            height = self.pathinfo.get('height', None)
+            width = self.pathinfo.get('width', None)
+            if len(base_region) < 2:
+                # Add empty dimensions
+                tail = tuple([slice(None)] * (2 - len(base_region)))
+                base_region = tuple(base_region) + tail
+            if all(r.start is None and r.stop is None for r in base_region):
+                # Avoid forcing a cache computation when loading the full image
+                flag = (
+                    base_region[0].stop in [None, height] and
+                    base_region[1].stop in [None, width]
+                )
+                if flag:
+                    base_region = None
+
+        if base_region is not None:
+            # Find relevant points in the base-coordinate system
+            # y_sl, x_sl = base_region[0:2]
+            # base_box = kwimage.Boxes([[
+            #     x_sl.start, y_sl.start, x_sl.stop, y_sl.stop
+            # ]], 'ltrb')
+
+            # TODO: we are forcing width / height, which can be inefficient
+            try:
+                base_box = _slice_to_box(base_region, width=width, height=height)
+            except NeedsShape:
+                default_chan = self.pathinfo['default']
+                default_gpath = self.pathinfo['channels'][default_chan]['path']
+                height, width = kwimage.load_image_shape(default_gpath)[0:2]
+                base_box = _slice_to_box(base_region, width=width, height=height)
+
+            base_dsize = tuple(map(int, base_box.to_xywh().data[0, 2:4].tolist()))
+            base_corners = base_box.to_polygons()[0]
+
+            subregions = []
+            for chan_name in channels:
+                subregion = self._native_subregion(
+                    chan_name, base_corners)
+                subregions.append(subregion)
+        else:
+            base_dsize = None
+            subregions = []
+            for chan_name in channels:
+                aux = self.pathinfo['channels'][chan_name]
+                tf = aux.get('transform', None)
+                if tf is None:
+                    tf_chan_to_base = None
+                else:
+                    tf_base_to_chan = np.array(['matrix'])
+                    tf_chan_to_base = np.linalg.inv(tf_base_to_chan)
+                subregion = {
+                    'im': self._load_native_channel(chan_name),
+                    'channels': chan_name,
+                    'tf_to_base': tf_chan_to_base,
+                }
+                subregions.append(subregion)
+
+        prefused = {
+            'subregions': subregions,
+            'base_dsize': base_dsize,
+        }
+        return prefused
+
+    @profile
+    def _load_fused_region(self, base_region, channels=None):
+        """
+        Loads crops from multiple channels in aligned base coordinates.
+        """
+        import kwarray
+        import kwimage
+        import cv2
+        prefused = self._load_prefused_region(base_region, channels)
+        subregions = prefused['subregions']
+        base_dsize = prefused['base_dsize']
+        flags = kwimage.im_cv2._coerce_interpolation('linear')
+        parts = []
+        for subregion in subregions:
+            chan_crop = subregion['im']
+            tf_to_base = subregion['tf_to_base']
+            if tf_to_base is not None:
+                M = tf_to_base[0:2]
+                aligned_chan = cv2.warpAffine(chan_crop, M, dsize=base_dsize, flags=flags)
+            else:
+                aligned_chan = chan_crop
+            aligned_chan = kwarray.atleast_nd(aligned_chan, 3, front=False)
+            parts.append(aligned_chan)
+
+        if len(parts) > 1:
+            fused = np.concatenate(parts, axis=2)
+        else:
+            fused = parts[0]
+        return fused
+
+    def load_region(self, base_region, channels=None, fused=True):
+        if fused:
+            return self._load_fused_region(base_region, channels=channels)
+        else:
+            return self._load_prefused_region(base_region, channels=channels)
+
+    def __getitem__(self, base_region):
+        return self._load_fused_region(base_region)
+
+
+class NeedsShape(Exception):
+    pass
+
+
+def _slice_to_box(base_region, width=None, height=None):
+    import kwimage
+    y_sl, x_sl = base_region[0:2]
+    tl_x = y_sl.start
+    tl_y = y_sl.start
+    rb_x = x_sl.stop
+    rb_y = y_sl.stop
+
+    if tl_x is None or tl_x < 0:
+        tl_x = 0
+
+    if tl_y is None or tl_y < 0:
+        tl_y = 0
+
+    if rb_x is None:
+        rb_x = width
+    elif rb_x < 0:
+        if width is None:
+            raise NeedsShape
+        rb_x = width + rb_x
+
+    if rb_y is None:
+        rb_y = height
+    elif rb_y < 0:
+        if height is None:
+            raise NeedsShape
+        rb_y = height + rb_y
+
+    ltrb = np.array([[tl_x, tl_y, rb_x, rb_y]])
+    base_box = kwimage.Boxes(ltrb, 'ltrb')
+    return base_box

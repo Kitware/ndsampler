@@ -96,6 +96,69 @@ needs to scale, which should be a goal.
   overhaul
 
 
+* Got basic way to query channels in `Frames.load_region`. Now need to allow
+`load_sample` to get the appropriate regions from each channel and have those
+resampled such that the targets are aligned.
+
+
+
+
+#### On Caching:
+
+ * Caching need to happen at the level of each file path (i.e. id+channel-name)
+
+
+    """
+    I've updated ndsampler such that it's now aware of the multispectral
+    information in a kwcoco file. I also have some proof-of-concept logic
+    written such that given a bounding box specified in the "base image's"
+    pixel coordinates, it can sample the corresponding region from all other
+    channels and do the appropriate interpolated upsampling to align the
+    channels with subpixel accuracy. What I'm working on now is exposing that
+    API.
+
+    What I want to know is
+
+    For a particular image, what is the most natural way for ndsampler to pass to you the multispectral information?
+
+    1. Do you want a concatenated array of aligned - i.e. prefused - data?
+
+    2. Do you want a list containing the (potentially) upscaled data for each channel?
+
+    3. Do you want a list of dictionaries where each one contains the cropped data for each channel at its native resolution (which may include padding on either side) and the transformation that would upscale it to the aligned canvas?
+
+    I think I'll have to implement a combination (1 or 2) and 3
+
+
+    I've updated ndsampler so it's now aware of the multispectral information in a kwcoco file.
+
+    """
+
+
+
+Use case:
+
+In a dataloader we want to load some specific channels for a specific image.
+These channels will likely be the same over multiple images. We probably have
+some "constant" data loader variable that contains the channels of interest.
+
+Given an image-id, a region, and a list of channels of interest we should we
+able to efficiently load the subregions of each channel and align them as
+necessary.
+
+
+```
+tr = {
+    'gid': 100,
+    'region': (slice(100, 200), slice(200, 300)),
+    'channels': <List[str] | str | None>,
+    'fused': True | False,
+}
+sample = sampler.load_sample(tr)
+sample['im']
+```
+
+
 ## DECIDED CHANGELOG
 
 ### Removed:
