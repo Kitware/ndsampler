@@ -342,7 +342,7 @@ class Frames(object):
         return self.load_image(image_id)
 
     @profile
-    def load_region(self, image_id, region=None, channels=None, scale=0,
+    def load_region(self, image_id, region=None, channels=ub.NoParam,
                     width=None, height=None):
         """
         Ammortized O(1) image subregion loading (assuming constant region size)
@@ -351,13 +351,9 @@ class Frames(object):
             image_id (int): image identifier
             region (Tuple[slice, ...]): space-time region within an image
             channels (str): NotImplemented
-            scale (float): NotImplemented
             width (int): if the width of the entire image is know specify it
             height (int): if the height of the entire image is know specify it
         """
-        if scale != 0:
-            raise NotImplementedError('can only handle scale=0')
-
         if region is not None:
             if len(region) < 2:
                 # Add empty dimensions
@@ -371,6 +367,8 @@ class Frames(object):
                 )
                 if flag:
                     region = None
+            # FIXME: above rectification code is duplicated and we
+            # could do more with passed width / height
 
         # setting region to None disables memmap/geotiff caching
         cache = region is not None
@@ -392,7 +390,7 @@ class Frames(object):
         return imgdata
 
     @profile
-    def load_image(self, image_id, channels=None, scale=0, cache=True,
+    def load_image(self, image_id, channels=ub.NoParam, cache=True,
                    noreturn=False):
         """
         Load the image data for a particular image id
@@ -402,12 +400,10 @@ class Frames(object):
             cache (bool, default=True): ensure and return the efficient backend
                 cached representation.
             channels : NotImplemented
-            scale : NotImplemented
 
             noreturn (bool, default=False): if True, nothing is returned.
                 This is useful if you simply want to ensure the cached
                 representation.
-
 
         CAREFUL: THIS NEEDS TO MAINTAIN A STABLE API.
         OTHER PROJECTS DEPEND ON IT.
@@ -416,17 +412,17 @@ class Frames(object):
             ArrayLike: an indexable array like representation, possibly
                 memmapped.
         """
-        if scale != 0:
-            raise NotImplementedError('can only handle scale=0')
-
         imgdata = self._load_alignable(image_id, cache=cache)
 
-        if channels is None:
+        if channels is ub.NoParam:
             # chan_name = channels
             default_chan = imgdata.pathinfo['default']
             chan_name = default_chan
         else:
-            raise NotImplementedError
+            if ub.iterable(channels):
+                raise NotImplementedError
+            else:
+                chan_name = channels
 
         data = imgdata._load_native_channel(chan_name, cache=cache)
 
@@ -757,21 +753,21 @@ class AlignableImageData(object):
         return subregion
 
     @profile
-    def _load_prefused_region(self, base_region, channels=None):
+    def _load_prefused_region(self, base_region, channels=ub.NoParam):
         """
         Loads crops from multiple channels in their native coordinate system
         packaged with transformation info on how to align them.
         """
         import kwimage
-        if channels is None:
-            if 'default' not in self.pathinfo:
+        if channels is ub.NoParam:
+            default_chan = self.pathinfo.get('default', None)
+            if default_chan not in self.pathinfo['channels']:
                 raise Exception(
-                    'Channels is not specified and the image metadata does not specify a default')
-            default_chan = self.pathinfo['default']
+                    'Channels is not specified and the image metadata does have a default')
             channels = [default_chan]
+            # TODO: special key for all channels
             # channels = self.pathinfo['channels'].keys()
 
-        print('base_region = {!r}'.format(base_region))
         if base_region is not None:
             height = self.pathinfo.get('height', None)
             width = self.pathinfo.get('width', None)
@@ -837,7 +833,7 @@ class AlignableImageData(object):
         return prefused
 
     @profile
-    def _load_fused_region(self, base_region, channels=None):
+    def _load_fused_region(self, base_region, channels=ub.NoParam):
         """
         Loads crops from multiple channels in aligned base coordinates.
         """
@@ -866,7 +862,7 @@ class AlignableImageData(object):
             fused = parts[0]
         return fused
 
-    def load_region(self, base_region, channels=None, fused=True):
+    def load_region(self, base_region, channels=ub.NoParam, fused=True):
         if fused:
             return self._load_fused_region(base_region, channels=channels)
         else:
@@ -883,7 +879,7 @@ class NeedsShape(Exception):
 def _slice_to_box(base_region, width=None, height=None):
     import kwimage
     y_sl, x_sl = base_region[0:2]
-    tl_x = y_sl.start
+    tl_x = x_sl.start
     tl_y = y_sl.start
     rb_x = x_sl.stop
     rb_y = y_sl.stop
@@ -896,6 +892,8 @@ def _slice_to_box(base_region, width=None, height=None):
 
     if rb_x is None:
         rb_x = width
+        if width is None:
+            raise NeedsShape
     elif rb_x < 0:
         if width is None:
             raise NeedsShape
@@ -903,6 +901,8 @@ def _slice_to_box(base_region, width=None, height=None):
 
     if rb_y is None:
         rb_y = height
+        if height is None:
+            raise NeedsShape
     elif rb_y < 0:
         if height is None:
             raise NeedsShape
