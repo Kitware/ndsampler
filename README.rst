@@ -155,6 +155,13 @@ Also possible to use system packages
     python -c "from osgeo import gdal; print(gdal)"
 
 
+Kitware also has a pypi index that hosts GDAL wheels for linux systems:
+
+.. code-block:: bash
+
+    pip install --find-links https://girder.github.io/large_image_wheels GDAL
+
+
 TODO
 ----
 

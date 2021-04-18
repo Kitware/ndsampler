@@ -727,6 +727,9 @@ class AlignableImageData(object):
         native pixel coordinates with subpixel alignment information.
         """
         aux = self.pathinfo['channels'][chan_name]
+
+        # The kwcoco transformation goes from the "main" image space to the
+        # "auxiliary" image space.
         tf_base_to_chan = aux.get('transform', None)
         if tf_base_to_chan is not None:
             tf_to_chan = np.array(tf_base_to_chan['matrix'])
