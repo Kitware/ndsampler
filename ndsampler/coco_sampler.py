@@ -352,7 +352,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 overlaps the region of interest (subject to visibility_thresh).
                 Can also be a List[str] that specifies which specific subinfo
                 should be extracted. Valid strings in this list are: boxes,
-                keypoints, and segmenation.
+                keypoints, and segmentation.
 
         Returns:
             Dict: sample: dict containing keys
@@ -400,7 +400,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 overlaps the region of interest (subject to visibility_thresh).
                 Can also be a List[str] that specifies which specific subinfo
                 should be extracted. Valid strings in this list are: boxes,
-                keypoints, and segmenation.
+                keypoints, and segmentation.
 
         Returns:
             Dict: sample: dict containing keys
@@ -483,7 +483,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 overlaps the region of interest (subject to visibility_thresh).
                 Can also be a List[str] that specifies which specific subinfo
                 should be extracted. Valid strings in this list are: boxes,
-                keypoints, and segmenation.
+                keypoints, and segmentation.
 
         Returns:
             Dict: sample: dict containing keys
@@ -738,7 +738,6 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         # im = frame[data_slice]
 
         channels = tr_.get('channels', ub.NoParam)
-        print('self.frames.load_region = {!r}'.format(self.frames.load_region))
         im = self.frames.load_region(
             image_id=gid, region=data_slice, channels=channels)
         if extra_padding:

@@ -71,6 +71,7 @@ class Frames(object):
         >>> assert self.load_region(1, (slice(-20), slice(-10))).shape == (492, 502, 3)
 
     Benchmark:
+        >>> from ndsampler.abstract_frames import *  # NOQA
         >>> import ubelt as ub
         >>> #
         >>> ti = ub.Timerit(100, bestof=3, verbose=2)
