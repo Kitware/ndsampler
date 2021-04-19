@@ -352,7 +352,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 overlaps the region of interest (subject to visibility_thresh).
                 Can also be a List[str] that specifies which specific subinfo
                 should be extracted. Valid strings in this list are: boxes,
-                keypoints, and segmenation.
+                keypoints, and segmentation.
 
         Returns:
             Dict: sample: dict containing keys
@@ -400,7 +400,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 overlaps the region of interest (subject to visibility_thresh).
                 Can also be a List[str] that specifies which specific subinfo
                 should be extracted. Valid strings in this list are: boxes,
-                keypoints, and segmenation.
+                keypoints, and segmentation.
 
         Returns:
             Dict: sample: dict containing keys
@@ -483,7 +483,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 overlaps the region of interest (subject to visibility_thresh).
                 Can also be a List[str] that specifies which specific subinfo
                 should be extracted. Valid strings in this list are: boxes,
-                keypoints, and segmenation.
+                keypoints, and segmentation.
 
         Returns:
             Dict: sample: dict containing keys
@@ -510,6 +510,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> # The target (tr) lets you specify an arbitrary window
             >>> tr = {'gid': 1, 'cx': 5, 'cy': 2, 'width': 6, 'height': 6}
             >>> sample = self.load_sample(tr)
+            ...
             >>> print('sample.shape = {!r}'.format(sample['im'].shape))
             sample.shape = (6, 6, 3)
 
@@ -590,6 +591,24 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> kwplot.autompl()
             >>> kwplot.imshow(sample['im'], colorspace='rgb')
             >>> kwplot.show_if_requested()
+
+        Example:
+            >>> # Multispectral example
+            >>> from ndsampler.coco_sampler import *
+            >>> self = CocoSampler.demo('vidshapes1-multispectral')
+            >>> tr = self.regions.get_positive(1)
+            >>> window_dims = (300, 150)
+            >>> pad = None
+            >>> tr['channels'] = ub.NoParam
+            >>> import pytest
+            >>> with pytest.raises(Exception):
+            >>>     sample = self.load_sample(tr, pad, window_dims=window_dims)
+            >>> tr['channels'] = ['B1']
+            >>> sample = self.load_sample(tr, pad, window_dims=window_dims)
+            >>> assert sample['im'].shape[2] == 1
+            >>> tr['channels'] = ['B1', 'B8']
+            >>> sample = self.load_sample(tr, pad, window_dims=window_dims)
+            >>> assert sample['im'].shape[2] == 2
         """
         sample = self._load_slice(tr, window_dims, pad, padkw)
 
@@ -718,7 +737,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         # frame = self.frames.load_image(gid)  # TODO: lazy load on slice
         # im = frame[data_slice]
 
-        im = self.frames.load_region(gid, data_slice)
+        channels = tr_.get('channels', ub.NoParam)
+        im = self.frames.load_region(
+            image_id=gid, region=data_slice, channels=channels)
         if extra_padding:
             if im.ndim != len(extra_padding):
                 extra_padding = extra_padding + [(0, 0)]  # Handle channels

@@ -212,7 +212,7 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, compress='auto',
         >>>     with timer:
         >>>         _imwrite_cloud_optimized_geotiff(fpath2, data)
     """
-    import gdal
+    from osgeo import gdal
     if len(data.shape) == 2:
         data = data[:, :, None]
 
@@ -587,6 +587,7 @@ class LazyGDalFrameFile(ub.NiceRepr):
     """
     def __init__(self, cog_fpath):
         self.cog_fpath = cog_fpath
+        self.fpath = cog_fpath
 
     @ub.memoize_property
     def _ds(self):

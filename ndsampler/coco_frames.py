@@ -62,12 +62,13 @@ class CocoFrames(abstract_frames.Frames, util_misc.HashIdentifiable):
             _hashid = getattr(self.dset, 'hashid', None)
         return _hashid, None
 
-    def load_region(self, image_id, region=None):
+    def load_region(self, image_id, region=None, channels=ub.NoParam):
         img = self.dset.imgs[image_id]
         width = img.get('width', None)
         height = img.get('height', None)
         return super(CocoFrames, self).load_region(image_id, region,
-                                                   width=width, height=height)
+                                                   width=width, height=height,
+                                                   channels=channels)
 
     def _build_pathinfo(self, image_id):
         """
@@ -92,6 +93,7 @@ class CocoFrames(abstract_frames.Frames, util_misc.HashIdentifiable):
 
         channels = {}
         pathinfo = {
+            'id': image_id,
             'channels': channels,
             'default': default_channels,
             'width': img.get('width', None),

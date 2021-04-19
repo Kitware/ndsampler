@@ -3,10 +3,13 @@ Tools for caching intermediate frame representations.
 """
 # import lockfile
 # https://stackoverflow.com/questions/489861/locking-a-file-in-python
+from os.path import dirname
 import fasteners  # supercedes lockfile / oslo_concurrency?
 import atomicwrites
 import ubelt as ub
 import numpy as np
+import os
+import itertools as it
 from os.path import exists
 from ndsampler.utils import util_gdal
 
@@ -14,6 +17,7 @@ from ndsampler.utils import util_gdal
 DEBUG_COG_ATOMIC_WRITE = 0
 DEBUG_FILE_LOCK_CACHE_WRITE = 0
 RUN_COG_CORRUPTION_CHECKS = True
+DEBUG_LOAD_COG = int(ub.argflag('--debug-load-cog'))
 
 
 class CorruptCOG(Exception):
@@ -39,7 +43,7 @@ def _cog_cache_write(gpath, cache_gpath, config=None):
         >>>               for gid, name in id_to_name.items()}
         >>> self = SimpleFrames(id_to_path, workdir=workdir)
         >>> image_id = ub.peek(id_to_name)
-        >>> gpath = self._lookup_gpath(image_id)
+        >>> #gpath = self._lookup_gpath(image_id)
 
         #### EXIT
         # >>> hashid = self._lookup_hashid(image_id)
@@ -290,3 +294,145 @@ def _lookup_dvc_hash(path):
         return found
 
     # path.split(os.path.sep)
+
+
+def _ensure_image_npy(gpath, cache_gpath):
+    """
+    Ensures that cache_gpath exists in a multiprocessing-safe way
+
+    Returns a memmapped reference to the entire image
+    """
+    cache_gpath = cache_gpath
+
+    if not exists(cache_gpath):
+        ub.ensuredir(dirname(cache_gpath))
+        _locked_cache_write(_npy_cache_write, gpath,
+                            cache_gpath=cache_gpath, config=None)
+
+    # I can't figure out why a race condition exists here.  I can't
+    # reproduce it with a small example. In the meantime, this hack should
+    # mitigate the problem by simply trying again until it works.
+    HACKY_RACE_CONDITION_FIX = True
+    if HACKY_RACE_CONDITION_FIX:
+        for try_num in it.count():
+            try:
+                file = np.load(cache_gpath, mmap_mode='r')
+            except Exception as ex:
+                print('\n\n')
+                print('ERROR: FAILED TO LOAD CACHED FILE')
+                print('ex = {!r}'.format(ex))
+                print('cache_gpath = {!r}'.format(cache_gpath))
+                print('exists(cache_gpath) = {!r}'.format(exists(cache_gpath)))
+                print('Recompute cache: Try number {}'.format(try_num))
+                print('\n\n')
+
+                if try_num > 20:
+                    # Something really bad must be happening, stop trying
+                    raise
+                try:
+                    os.remove(cache_gpath)
+                except Exception:
+                    print('WARNING: CANNOT REMOVE CACHED FRAME.')
+                _locked_cache_write(_npy_cache_write, gpath,
+                                    cache_gpath=cache_gpath, config=None)
+            else:
+                break
+    else:
+        # FIXME;
+        # There seems to be a race condition that triggers the error:
+        # ValueError: mmap length is greater than file size
+        try:
+            file = np.load(cache_gpath, mmap_mode='r')
+        except ValueError:
+            print('\n\n')
+            print('ERROR')
+            print('cache_gpath = {!r}'.format(cache_gpath))
+            print('exists(cache_gpath) = {!r}'.format(exists(cache_gpath)))
+            print('\n\n')
+            raise
+    return file
+
+
+def _ensure_image_cog(gpath, cache_gpath, config, hack_use_cli=True):
+    """
+    Returns a special array-like object with a COG GeoTIFF backend
+    """
+    cog_gpath = cache_gpath
+
+    if not exists(cog_gpath):
+        if not exists(gpath):
+            raise OSError((
+                'Source image gpath={!r} '
+                'does not exist!').format(gpath))
+
+        ub.ensuredir(dirname(cog_gpath))
+
+        # If the file already is a cog, just use it
+        from ndsampler.utils.validate_cog import validate as _validate_cog
+        warnings, errors, details = _validate_cog(gpath)
+
+        if DEBUG_LOAD_COG:
+            from multiprocessing import current_process
+            from threading import current_thread
+            is_main = (
+                current_thread().name == 'MainThread' and
+                current_process().name == 'MainProcess'
+            )
+            DEBUG = 0
+            if is_main:
+                DEBUG = 2
+        else:
+            DEBUG = 0
+
+        if DEBUG:
+            print('\n<DEBUG INFO>')
+            print('Missing cog_gpath={}'.format(cog_gpath))
+            print('gpath = {!r}'.format(gpath))
+
+        gpath_is_cog = not bool(errors)
+        if ub.argflag('--debug-validate-cog') or DEBUG > 2:
+            print('details = {}'.format(ub.repr2(details, nl=1)))
+            print('errors (why we need to ensure) = {}'.format(ub.repr2(errors, nl=1)))
+            print('warnings = {}'.format(ub.repr2(warnings, nl=1)))
+            print('gpath_is_cog = {!r}'.format(gpath_is_cog))
+
+        if gpath_is_cog:
+            # If we already are a cog, then just use it
+            if DEBUG:
+                print('Image is already a cog, symlinking to cache')
+            ub.symlink(gpath, cog_gpath)
+        else:
+            config = config.copy()
+            if DEBUG:
+                print('BUILDING COG REPRESENTATION')
+                print('gpath = {!r}'.format(gpath))
+                print('cog config = {}'.format(ub.repr2(config, nl=2)))
+                if DEBUG > 1:
+                    try:
+                        import netharn as nh
+                        print(' * info(gpath) = ' + ub.repr2(nh.util.get_file_info(gpath)))
+                    except ImportError:
+                        pass
+            try:
+                _locked_cache_write(_cog_cache_write, gpath,
+                                    cache_gpath=cog_gpath, config=config)
+            except CorruptCOG:
+                import warnings
+                msg = ('!!! COG was corrupted, trying once more')
+                warnings.warn(msg)
+                print(msg)
+                _locked_cache_write(_cog_cache_write, gpath,
+                                    cache_gpath=cog_gpath, config=config)
+
+        if DEBUG:
+            print('cog_gpath = {!r}'.format(cog_gpath))
+            if DEBUG > 1:
+                try:
+                    import netharn as nh
+                    print(' * info(cog_gpath) = ' + ub.repr2(nh.util.get_file_info(cog_gpath)))
+                except ImportError:
+                    pass
+            print('</DEBUG INFO>')
+
+    file = util_gdal.LazyGDalFrameFile(cog_gpath)
+    return file
