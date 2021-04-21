@@ -110,12 +110,12 @@ def __devcheck_align_regions():
     base_region = (slice(197, 512), (slice(125, 512)))
 
     chan1 = self.load_image(1, channels='B1')
-    tf1_base_to_chan = np.array(pathinfo['channels']['B1']['transform']['matrix'])
+    tf1_base_to_chan = np.array(pathinfo['channels']['B1']['base_to_aux']['matrix'])
 
     channels2 = 'B11'
     channels2 = 'B8'
     chan2 = frames.load_image(1, channels=channels2)
-    tf2_base_to_chan = np.array(pathinfo['channels'][channels2]['transform']['matrix'])
+    tf2_base_to_chan = np.array(pathinfo['channels'][channels2]['base_to_aux']['matrix'])
 
 
     chan = chan1
@@ -149,9 +149,9 @@ def __devcheck_align_regions():
         chan_crop = chan[chan_region]
 
         # Because we sampled a larget quantized region, we need to modify the
-        # chan-to-base transform to nudge it a bit to the left, undoing the
+        # chan-to-base base_to_aux to nudge it a bit to the left, undoing the
         # quantization, which has a bit of extra padding on the left, before
-        # applying the final transform.
+        # applying the final base_to_aux.
         sample_offset = chan_sample_box.data[0, 0:2]
         corner_offset = chan_corners_box.data[0, 0:2]
         offset_xy =  sample_offset - corner_offset
@@ -162,7 +162,7 @@ def __devcheck_align_regions():
         ])
 
         # Resample the smaller region to align it with the base region
-        # Note: The right most transform is applied first
+        # Note: The right most base_to_aux is applied first
         tf_crop_to_base =  tf_chan_to_base @ dequantize_offset
 
         M = tf_crop_to_base[0:2]

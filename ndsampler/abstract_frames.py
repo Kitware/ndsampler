@@ -601,7 +601,7 @@ class SimpleFrames(Frames):
         default_channel = {
             'path': self.id_to_path[image_id],
             'channels': None,
-            'transform': None,
+            'base_to_aux': None,
         }
         pathinfo = {
             'id': image_id,
@@ -731,7 +731,7 @@ class AlignableImageData(object):
 
         # The kwcoco transformation goes from the "main" image space to the
         # "auxiliary" image space.
-        tf_base_to_chan = aux.get('transform', None)
+        tf_base_to_chan = aux.get('base_to_aux', None)
         if tf_base_to_chan is not None:
             tf_to_chan = np.array(tf_base_to_chan['matrix'])
         else:
@@ -817,11 +817,11 @@ class AlignableImageData(object):
             subregions = []
             for chan_name in channels:
                 aux = self.pathinfo['channels'][chan_name]
-                tf = aux.get('transform', None)
+                tf = aux.get('base_to_aux', None)
                 if tf is None:
                     tf_chan_to_base = None
                 else:
-                    tf_base_to_chan = np.array(['matrix'])
+                    tf_base_to_chan = np.array(tf['matrix'])
                     tf_chan_to_base = np.linalg.inv(tf_base_to_chan)
                 subregion = {
                     'im': self._load_native_channel(chan_name),

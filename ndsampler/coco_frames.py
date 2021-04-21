@@ -112,7 +112,7 @@ class CocoFrames(abstract_frames.Frames, util_misc.HashIdentifiable):
             chan = {
                 'file_name': fname,
                 'channels': aux['channels'],
-                'transform': aux.get('transform', None),
+                'base_to_aux': aux.get('base_to_aux', None),
             }
             channels[aux['channels']] = chan
 
