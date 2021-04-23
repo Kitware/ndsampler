@@ -1,6 +1,6 @@
 #!/bin/bash
 __heredoc__='''
-Script to publish a new version of this library on PyPI. 
+Script to publish a new version of this library on PyPI.
 
 If your script has binary dependencies then we assume that you have built a
 proper binary wheel with auditwheel and it exists in the wheelhouse directory.
@@ -37,10 +37,10 @@ Usage:
 
     source $(secret_loader.sh)
 
-    MB_PYTHON_TAG=cp38-cp38m 
-    MB_PYTHON_TAG=cp37-cp37m 
-    MB_PYTHON_TAG=cp36-cp36m 
-    MB_PYTHON_TAG=cp35-cp35m 
+    MB_PYTHON_TAG=cp38-cp38m
+    MB_PYTHON_TAG=cp37-cp37m
+    MB_PYTHON_TAG=cp36-cp36m
+    MB_PYTHON_TAG=cp35-cp35m
     MB_PYTHON_TAG=cp27-cp27mu
 
     echo "MB_PYTHON_TAG = $MB_PYTHON_TAG"
@@ -133,10 +133,10 @@ DO_BUILD=${DO_BUILD}
 
 # Verify that we want to tag
 if [[ "$DO_TAG" == "True" ]]; then
-    echo "About to tag VERSION='$VERSION'" 
+    echo "About to tag VERSION='$VERSION'"
 else
     if [[ "$DO_TAG" == "False" ]]; then
-        echo "We are NOT about to tag VERSION='$VERSION'" 
+        echo "We are NOT about to tag VERSION='$VERSION'"
     else
         read -p "Do you want to git tag version='$VERSION'? (input 'yes' to confirm)" ANS
         echo "ANS = $ANS"
@@ -148,10 +148,10 @@ fi
 
 # Verify that we want to publish
 if [[ "$DO_UPLOAD" == "True" ]]; then
-    echo "About to publish VERSION='$VERSION'" 
+    echo "About to publish VERSION='$VERSION'"
 else
     if [[ "$DO_UPLOAD" == "False" ]]; then
-        echo "We are NOT about to publish VERSION='$VERSION'" 
+        echo "We are NOT about to publish VERSION='$VERSION'"
     else
         read -p "Are you ready to publish version='$VERSION'? (input 'yes' to confirm)" ANS
         echo "ANS = $ANS"
