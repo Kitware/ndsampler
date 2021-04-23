@@ -725,6 +725,25 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
         tr_ = self._infer_target_attributes(tr)
 
+        # TODO: need to accept vidid
+        vidid = tr_.get('vidid', None)
+        if vidid is not None:
+            # TODO: kwcoco should have a way to ensure these are already in
+            # frame_index order.
+            gids = self.dset.vidid_to_gids[vidid]
+            frame_idxs = self.dset.images(gids).lookup('frame_index')
+            gids = [t[1] for t in sorted(zip(frame_idxs, gids))]
+
+            video = self.dset.videos[vidid]
+            vid_width = video.get('width', None)
+            vid_height = video.get('height', None)
+            if vid_height is None or vid_width is None:
+                # Fallback on the first image
+                img = self.dset.imgs[gids[0]]
+                vid_width = img['width']
+                vid_height = img['height']
+            raise NotImplementedError('next version should have this')
+
         gid = tr_['gid']
         # Determine the image extent
         img = self.dset.imgs[gid]
