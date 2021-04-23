@@ -74,6 +74,7 @@ stages:
         - pip install pip -U
         - pip install pip setuptools -U
         - python -V  # Print out python version for debugging
+        - pip install opencv-python-headless  # handle opencv 
         - pip install -r requirements.txt
         - pip install .  
         # FIXME: we should start from a docker iamge that already has LibGL setup
