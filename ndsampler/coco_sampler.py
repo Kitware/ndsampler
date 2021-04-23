@@ -48,11 +48,16 @@ import ubelt as ub
 import numpy as np
 import kwimage
 import six
-from ndsampler import coco_dataset
+import kwcoco
 from ndsampler import coco_regions
 from ndsampler import coco_frames
 from ndsampler import abstract_sampler
 from ndsampler.utils import util_misc
+
+try:
+    from xdev import profile
+except Exception:
+    profile = ub.identity
 
 
 class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
@@ -64,7 +69,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
     Does data loading, padding, etc...
 
     Args:
-        dset (ndsampler.CocoDataset): a coco-formatted dataset
+        dset (kwcoco.CocoDataset): a coco-formatted dataset
 
         backend (str | Dict): either 'cog' or 'npy', or a dict with
             `{'type': str, 'config': Dict}`. See AbstractFrames for more
@@ -103,9 +108,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         Create a toy coco sampler for testing and demo puposes
 
         SeeAlso:
-            * ndsampler.CocoDataset.demo
+            * kwcoco.CocoDataset.demo
         """
-        dset = coco_dataset.CocoDataset.demo(key=key, **kw)
+        dset = kwcoco.CocoDataset.demo(key=key, **kw)
         if key == 'photos':
             toremove = [ann for ann in dset.anns.values() if 'bbox' not in ann]
             dset.remove_annotations(toremove)
@@ -133,7 +138,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             self._init()
 
     def _init(self):
-        self.dset._ensure_imgsize()
+        if hasattr(self.dset, '_ensure_imgsize'):
+            self.dset._ensure_imgsize()
+
         if self.dset.anns is None:
             self.dset._build_index()
         self.regions = coco_regions.CocoRegions(self.dset,
@@ -345,7 +352,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 overlaps the region of interest (subject to visibility_thresh).
                 Can also be a List[str] that specifies which specific subinfo
                 should be extracted. Valid strings in this list are: boxes,
-                keypoints, and segmenation.
+                keypoints, and segmentation.
 
         Returns:
             Dict: sample: dict containing keys
@@ -393,7 +400,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 overlaps the region of interest (subject to visibility_thresh).
                 Can also be a List[str] that specifies which specific subinfo
                 should be extracted. Valid strings in this list are: boxes,
-                keypoints, and segmenation.
+                keypoints, and segmentation.
 
         Returns:
             Dict: sample: dict containing keys
@@ -434,6 +441,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                                   with_annots=with_annots)
         return sample
 
+    @profile
     def load_sample(self, tr, pad=None, window_dims=None, visible_thresh=0.0,
                     with_annots=True, padkw={'mode': 'constant'}):
         """
@@ -475,7 +483,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 overlaps the region of interest (subject to visibility_thresh).
                 Can also be a List[str] that specifies which specific subinfo
                 should be extracted. Valid strings in this list are: boxes,
-                keypoints, and segmenation.
+                keypoints, and segmentation.
 
         Returns:
             Dict: sample: dict containing keys
@@ -502,6 +510,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> # The target (tr) lets you specify an arbitrary window
             >>> tr = {'gid': 1, 'cx': 5, 'cy': 2, 'width': 6, 'height': 6}
             >>> sample = self.load_sample(tr)
+            ...
             >>> print('sample.shape = {!r}'.format(sample['im'].shape))
             sample.shape = (6, 6, 3)
 
@@ -552,7 +561,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> # xdoc: +REQUIRES(--show)
             >>> import kwplot
             >>> kwplot.autompl()
-            >>> abs_frame = self.frames.load_image(sample['tr']['gid'])
+            >>> abs_frame = self.frames.load_image(sample['tr']['gid'])[:]
             >>> tf_rel_to_abs = sample['params']['tf_rel_to_abs']
             >>> abs_boxes = annots['rel_boxes'].warp(tf_rel_to_abs)
             >>> abs_ssegs = annots['rel_ssegs'].warp(tf_rel_to_abs)
@@ -582,6 +591,24 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> kwplot.autompl()
             >>> kwplot.imshow(sample['im'], colorspace='rgb')
             >>> kwplot.show_if_requested()
+
+        Example:
+            >>> # Multispectral example
+            >>> from ndsampler.coco_sampler import *
+            >>> self = CocoSampler.demo('vidshapes1-multispectral')
+            >>> tr = self.regions.get_positive(1)
+            >>> window_dims = (300, 150)
+            >>> pad = None
+            >>> tr['channels'] = ub.NoParam
+            >>> import pytest
+            >>> with pytest.raises(Exception):
+            >>>     sample = self.load_sample(tr, pad, window_dims=window_dims)
+            >>> tr['channels'] = ['B1']
+            >>> sample = self.load_sample(tr, pad, window_dims=window_dims)
+            >>> assert sample['im'].shape[2] == 1
+            >>> tr['channels'] = ['B1', 'B8']
+            >>> sample = self.load_sample(tr, pad, window_dims=window_dims)
+            >>> assert sample['im'].shape[2] == 2
         """
         sample = self._load_slice(tr, window_dims, pad, padkw)
 
@@ -633,6 +660,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
         return data_slice, extra_padding, st_dims
 
+    @profile
     def _infer_target_attributes(self, tr):
         """
         Infer unpopulated target attribues
@@ -651,8 +679,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         if 'aid' in tr_:
             # If the annotation id is specified, infer other unspecified fields
             aid = tr['aid']
-            if aid in self.dset.anns:
+            try:
                 ann = self.dset.anns[aid]
+            except KeyError:
+                pass
+            else:
                 if 'gid' not in tr_:
                     tr_['gid'] = ann['image_id']
                 if len({'cx', 'cy', 'width', 'height'} & set(tr_)) != 4:
@@ -674,6 +705,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             pass
         return tr_
 
+    @profile
     def _load_slice(self, tr, window_dims=None, pad=None,
                     padkw={'mode': 'constant'}):
         """
@@ -693,6 +725,25 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
         tr_ = self._infer_target_attributes(tr)
 
+        # TODO: need to accept vidid
+        vidid = tr_.get('vidid', None)
+        if vidid is not None:
+            # TODO: kwcoco should have a way to ensure these are already in
+            # frame_index order.
+            gids = self.dset.vidid_to_gids[vidid]
+            frame_idxs = self.dset.images(gids).lookup('frame_index')
+            gids = [t[1] for t in sorted(zip(frame_idxs, gids))]
+
+            video = self.dset.videos[vidid]
+            vid_width = video.get('width', None)
+            vid_height = video.get('height', None)
+            if vid_height is None or vid_width is None:
+                # Fallback on the first image
+                img = self.dset.imgs[gids[0]]
+                vid_width = img['width']
+                vid_height = img['height']
+            raise NotImplementedError('next version should have this')
+
         gid = tr_['gid']
         # Determine the image extent
         img = self.dset.imgs[gid]
@@ -705,7 +756,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         # frame = self.frames.load_image(gid)  # TODO: lazy load on slice
         # im = frame[data_slice]
 
-        im = self.frames.load_region(gid, data_slice)
+        channels = tr_.get('channels', ub.NoParam)
+        im = self.frames.load_region(
+            image_id=gid, region=data_slice, channels=channels)
         if extra_padding:
             if im.ndim != len(extra_padding):
                 extra_padding = extra_padding + [(0, 0)]  # Handle channels
@@ -740,6 +793,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         }
         return sample
 
+    @profile
     def _populate_overlap(self, sample, visible_thresh=0.1, with_annots=True):
         """
         Add information about annotations overlapping the sample.
@@ -780,16 +834,18 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             gid, sample_tlbr, visible_thresh=visible_thresh)
 
         # Get info about all annotations inside this window
-        overlap_annots = self.dset.annots(overlap_aids)
-        overlap_cids = overlap_annots.cids
 
-        abs_boxes = overlap_annots.boxes
+        if 0:
+            overlap_annots = self.dset.annots(overlap_aids)
+            overlap_cids = overlap_annots.cids
+            abs_boxes = overlap_annots.boxes
+        else:
+            overlap_anns = [self.dset.anns[aid] for aid in overlap_aids]
+            overlap_cids = [ann['category_id'] for ann in overlap_anns]
+            abs_boxes = kwimage.Boxes(
+                [ann['bbox'] for ann in overlap_anns], 'xywh')
 
-        # overlap_keypoints = [
-        #     for aid in overlap_aids
-        # ]
         # Transform spatial information to be relative to the sample
-
         rel_boxes = abs_boxes.translate(offset)
 
         # Handle segmentations and keypoints if they exist
@@ -798,9 +854,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
         coco_dset = self.dset
         kp_classes = self.kp_classes
-        for aid in overlap_aids:
-            ann = coco_dset.anns[aid]
-
+        for ann in overlap_anns:
             # TODO: it should probably be the regions's responsibilty to load
             # and return these kwimage data structures.
             rel_points = None
@@ -828,8 +882,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     # x = _coerce_coco_segmentation(coco_sseg, data_dims)
                     # abs_sseg = kwimage.Mask.coerce(coco_sseg, dims=data_dims)
                     abs_sseg = kwimage.MultiPolygon.coerce(coco_sseg, dims=data_dims)
-                    # abs_sseg = abs_sseg.to_multi_polygon()
-                    rel_sseg = abs_sseg.translate(offset)
+                    if abs_sseg is None:
+                        rel_sseg = None
+                    else:
+                        # abs_sseg = abs_sseg.to_multi_polygon()
+                        rel_sseg = abs_sseg.translate(offset)
 
             kpts_list.append(rel_points)
             sseg_list.append(rel_sseg)
@@ -876,6 +933,9 @@ def padded_slice(data, in_slice, ndim=None, pad_slice=None,
     """
     Allows slices with out-of-bound coordinates.  Any out of bounds coordinate
     will be sampled via padding.
+
+    TODO:
+        - [ ] : Deprecate for version in kwimage
 
     Note:
         Negative slices have a different meaning here then they usually do.

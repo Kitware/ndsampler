@@ -8,8 +8,8 @@ import kwarray
 import kwimage
 
 # Moved to kwcoco
-from kwcoco.toypatterns import CategoryPatterns
-from kwcoco.toydata import demodata_toy_img, demodata_toy_dset  # NOQA
+from kwcoco.demo.toypatterns import CategoryPatterns
+from kwcoco.demo.toydata import demodata_toy_img, demodata_toy_dset  # NOQA
 
 
 class DynamicToySampler(abstract_sampler.AbstractSampler):
@@ -18,7 +18,7 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
 
     Note:
         Its probably more robust to generate a static fixed-size dataset with
-        'demodata_toy_dset' or `ndsampler.CocoDataset.demo`. However, if you
+        'demodata_toy_dset' or `kwcoco.CocoDataset.demo`. However, if you
         need a sampler that dynamically generates toydata, this is for you.
 
     Ignore:

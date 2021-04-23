@@ -22,14 +22,18 @@ Cases to Handle:
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 import itertools as it
-import ubelt as ub  # NOQA
-import numpy as np
-from os.path import join  # NOQA
-from ndsampler.utils import util_misc
-from ndsampler import isect_indexer
-from ndsampler import coco_dataset
 import kwarray
 import kwimage
+import numpy as np
+import ubelt as ub
+from ndsampler.utils import util_misc
+from ndsampler import isect_indexer
+
+
+try:
+    from xdev import profile
+except Exception:
+    profile = ub.identity
 
 
 class MissingNegativePool(AssertionError):
@@ -189,8 +193,8 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
 
     @classmethod
     def demo(CocoRegions):
-        from ndsampler import toydata
-        dset = coco_dataset.CocoDataset(toydata.demodata_toy_dset())
+        import kwcoco
+        dset = kwcoco.CocoDataset.demo('shapes8')
         dset._ensure_imgsize()
         self = CocoRegions(dset)
         return self
@@ -290,6 +294,7 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
             self._neg_anchors = neg_anchors
         return self._neg_anchors
 
+    @profile
     def overlapping_aids(self, gid, region, visible_thresh=0.0):
         """
         Finds the other annotations in this image that overlap a region
@@ -306,8 +311,13 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
         overlap_aids = self.isect_index.overlapping_aids(gid, region)
         if visible_thresh > 0 and len(overlap_aids) > 0:
             # Get info about all annotations inside this window
-            overlap_annots = self.dset.annots(overlap_aids)
-            abs_boxes = overlap_annots.boxes
+            if 0:
+                overlap_annots = self.dset.annots(overlap_aids)
+                abs_boxes = overlap_annots.boxes
+            else:
+                overlap_anns = [self.dset.anns[aid] for aid in overlap_aids]
+                abs_boxes = kwimage.Boxes(
+                    [ann['bbox'] for ann in overlap_anns], 'xywh')
             # Remove annotations that are not mostly invisible
             if len(abs_boxes) > 0:
                 eps = 1e-6
@@ -317,7 +327,7 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
                 is_visible = visibility > visible_thresh
                 abs_boxes = abs_boxes[is_visible]
                 overlap_aids = list(it.compress(overlap_aids, is_visible))
-                overlap_annots = self.dset.annots(overlap_aids)
+                # overlap_annots = self.dset.annots(overlap_aids)
         return overlap_aids
 
     def get_segmentations(self, aids):
@@ -511,8 +521,14 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
             targets['cy'] = cxywh.T[1]
             targets['width'] = cxywh.T[2]
             targets['height'] = cxywh.T[3]
-        targets['img_width'] = self.dset.images(gids).width
-        targets['img_height'] = self.dset.images(gids).height
+
+        if 0:
+            targets['img_width'] = self.dset.images(gids).width
+            targets['img_height'] = self.dset.images(gids).height
+        else:
+            imgs = [self.dset.imgs[gid] for gid in gids]
+            targets['img_width'] = [img['width'] for img in imgs]
+            targets['img_height'] = [img['height'] for img in imgs]
         return targets
 
     def _preselect_positives(self, num=None, window_dims=None, rng=None,
@@ -593,8 +609,8 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
 
         Example:
             >>> from ndsampler.coco_regions import *
-            >>> from ndsampler import coco_sampler
-            >>> self = coco_sampler.CocoSampler.demo().regions
+            >>> import ndsampler
+            >>> self = ndsampler.CocoSampler.demo().regions
             >>> num = 100
             >>> self._preselect_negatives(num, window_dims=(30, 30))
         """
@@ -683,6 +699,7 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
         return cacher
 
 
+@profile
 def tabular_coco_targets(dset):
     """
     Transforms COCO box annotations into a tabular form
@@ -692,11 +709,20 @@ def tabular_coco_targets(dset):
     import warnings
     # TODO: better handling of non-bounding box annotations; ignore for now
 
-    gid_to_width = {gid: img['width'] for gid, img in dset.imgs.items()}
-    gid_to_height = {gid: img['height'] for gid, img in dset.imgs.items()}
+    if hasattr(dset, 'tabular_targets'):
+        # In the SQL case, we can write a single query that
+        # builds the table more efficiently.
+        return dset.tabular_targets()
+
+    img_items = list(dset.imgs.items())
+    gid_to_width = {gid: img['width'] for gid, img in img_items}
+    gid_to_height = {gid: img['height'] for gid, img in img_items}
 
     try:
         anns = dset.dataset['annotations']
+        if not isinstance(anns, list):
+            anns = list(anns)
+
         xywh = [ann['bbox'] for ann in anns]
         xywh = np.array(xywh, dtype=np.float32)
     except Exception:
@@ -741,10 +767,10 @@ def tabular_coco_targets(dset):
 
     # table = ub.map_vals(np.asarray, table)
     targets = kwarray.DataFrameArray(table)
-
     return targets
 
 
+@profile
 def select_positive_regions(targets, window_dims=(300, 300), thresh=0.0,
                             rng=None, verbose=0):
     """
@@ -752,9 +778,8 @@ def select_positive_regions(targets, window_dims=(300, 300), thresh=0.0,
 
     Example:
         >>> from ndsampler.coco_regions import *
-        >>> from ndsampler import toydata
-        >>> from ndsampler import coco_sampler
-        >>> dset = coco_dataset.CocoDataset(toydata.demodata_toy_dset())
+        >>> import kwcoco
+        >>> dset = kwcoco.CocoDataset.demo('shapes8')
         >>> targets = tabular_coco_targets(dset)
         >>> window_dims = (300, 300)
         >>> selected = select_positive_regions(targets, window_dims)

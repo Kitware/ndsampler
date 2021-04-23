@@ -51,6 +51,7 @@ def test_variable_backend():
         import pytest
         pytest.skip('cog requires gdal')
     import ndsampler
+    import kwcoco
     import ubelt as ub
     dpath = ub.ensure_app_cache_dir('ndsampler/tests/test_variable_backend')
     ub.delete(dpath)
@@ -101,7 +102,7 @@ def test_variable_backend():
             'data.dtype': data.dtype,
         }, nl=0))
 
-    dset = ndsampler.CocoDataset.from_image_paths(fpaths)
+    dset = kwcoco.CocoDataset.from_image_paths(fpaths)
     sampler = ndsampler.CocoSampler(dset, backend='cog', workdir=dpath)
     frames = sampler.frames
     # frames.prepare()

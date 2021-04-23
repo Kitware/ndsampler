@@ -1,62 +1,17 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
-from . import abstract_frames
-from . import util
-from os.path import join
+from ndsampler import abstract_frames
+from ndsampler.utils import util_misc
 import ubelt as ub
 
 
-if 0:
-    # Maybe?
-    import smqtk
-    import abc
-    smqtk.Pluggable = smqtk.utils.plugin.Pluggable
-    smqtk.Configurable = smqtk.utils.configuration.Configurable
-
-    """
-    {
-        "frames": {
-            "ndsampler.CogFrames:0": {
-                'compression': 'JPEG',
-            },
-            "ndsampler.NPYFrames": {
-            },
-            "type": "ndsampler.CogFrames"
-        }
-    }
-    """
-
-    class AbstractFrames(smqtk.Pluggable, smqtk.Configurable):
-
-        def __init__(self, config, foo=1):
-            pass
-
-        @abc.abstractmethod
-        def load_region(self, spec):
-            pass
-
-        @classmethod
-        def is_usable(cls):
-            return True
-
-    class CogFrames(AbstractFrames):
-
-        # default_config = {
-        #     'compression': Value(
-        #         default='JPEG', choices=['JPEG', 'DEFLATE']),
-        # }
-        # def __init__(self, **kwargs):
-        #     super().__init__(**kwargs)
-
-        def load_region(self, spec):
-            return spec
-
-    class NPYFrames(AbstractFrames):
-        def load_region(self, spec):
-            return spec
+try:
+    from xdev import profile
+except Exception:
+    profile = ub.identity
 
 
-class CocoFrames(abstract_frames.Frames, util.HashIdentifiable):
+class CocoFrames(abstract_frames.Frames, util_misc.HashIdentifiable):
     """
     wrapper around coco-style dataset to allow for getitem syntax
 
@@ -66,9 +21,10 @@ class CocoFrames(abstract_frames.Frames, util.HashIdentifiable):
     Example:
         >>> from ndsampler.coco_frames import *
         >>> import ndsampler
+        >>> import kwcoco
         >>> import ubelt as ub
         >>> workdir = ub.ensure_app_cache_dir('ndsampler')
-        >>> dset = ndsampler.CocoDataset.demo(workdir=workdir)
+        >>> dset = kwcoco.CocoDataset.demo(workdir=workdir)
         >>> dset._ensure_imgsize()
         >>> self = CocoFrames(dset, workdir=workdir)
         >>> assert self.load_image(1).shape == (512, 512, 3)
@@ -81,20 +37,13 @@ class CocoFrames(abstract_frames.Frames, util.HashIdentifiable):
         >>> assert self.load_image(1).shape == (600, 600, 3)
         >>> assert self.load_image(1)[:-20, :-10].shape == (580, 590, 3)
     """
-    def __init__(self, dset, hashid_mode='PATH', workdir=None, verbose=0, backend='auto'):
+    def __init__(self, dset, hashid_mode='PATH', workdir=None, verbose=0,
+                 backend='auto'):
         super(CocoFrames, self).__init__(hashid_mode=hashid_mode,
                                          workdir=workdir, backend=backend)
         self.dset = dset
         self.verbose = verbose
         self._image_ids = None
-
-    def _lookup_gpath(self, image_id):
-        img = self.dset.imgs[image_id]
-        if self.dset.img_root:
-            gpath = join(self.dset.img_root, img['file_name'])
-        else:
-            gpath = img['file_name']
-        return gpath
 
     @property
     def image_ids(self):
@@ -113,32 +62,60 @@ class CocoFrames(abstract_frames.Frames, util.HashIdentifiable):
             _hashid = getattr(self.dset, 'hashid', None)
         return _hashid, None
 
-    def load_region(self, image_id, region=None):
-        region = self._rectify_region(region)
-        # Check to see if the region is the entire image
-        if all(r.start is None and r.stop is None for r in region):
-            region = None
-        elif all(r.start in [0, None] for r in region):
-            img = self.dset.imgs[image_id]
-            flag = region[0].stop in [None, img['height']]
-            flag &= region[1].stop in [None, img['width']]
-            if flag:
-                region = None  # setting region to None disables memmap/geotiff caching
+    def load_region(self, image_id, region=None, channels=ub.NoParam):
+        img = self.dset.imgs[image_id]
+        width = img.get('width', None)
+        height = img.get('height', None)
+        return super(CocoFrames, self).load_region(image_id, region,
+                                                   width=width, height=height,
+                                                   channels=channels)
 
-        return super(CocoFrames, self).load_region(image_id, region)
+    def _build_pathinfo(self, image_id):
+        """
+        Returns:
+            See Parent Method Docs
 
-    def _lookup_hashid(self, image_id):
+        Example:
+            >>> import ndsampler
+            >>> sampler1 = ndsampler.CocoSampler.demo('vidshapes5-aux')
+            >>> sampler2 = ndsampler.CocoSampler.demo('vidshapes5-multispectral')
+            >>> self = sampler1.frames
+            >>> pathinfo = self._build_pathinfo(1)
+            >>> print('pathinfo = {}'.format(ub.repr2(pathinfo, nl=3)))
+
+            >>> self = sampler2.frames
+            >>> pathinfo = self._build_pathinfo(1)
+            >>> print('pathinfo = {}'.format(ub.repr2(pathinfo, nl=3)))
         """
-        Get the hashid of a particular image
-        """
-        if image_id not in self.id_to_hashid:
-            USE_RELATIVE_PATH = not self._backend.get('_hack_old_names', False)
-            if USE_RELATIVE_PATH and self.hashid_mode == 'PATH':
-                # Hash the relative path to the image data
-                img = self.dset.imgs[image_id]
-                rel_gpath = img['file_name']
-                hashid = ub.hash_data(rel_gpath, hasher='sha1', base='hex')
-                self.id_to_hashid[image_id] = hashid
-            else:
-                return super(CocoFrames, self)._lookup_hashid(image_id)
-        return self.id_to_hashid[image_id]
+        img = self.dset.imgs[image_id]
+        default_fname = img.get('file_name', None)
+        default_channels = img.get('channels', None)
+
+        channels = {}
+        pathinfo = {
+            'id': image_id,
+            'channels': channels,
+            'default': default_channels,
+            'width': img.get('width', None),
+            'height': img.get('height', None),
+        }
+        root = self.dset.bundle_dpath
+        if default_fname is not None:
+            chan = {
+                'file_name': default_fname,
+                'channels': default_channels,
+            }
+            channels[default_channels] = chan
+
+        for aux in img.get('auxiliary', []):
+            fname = aux['file_name']
+            chan = {
+                'file_name': fname,
+                'channels': aux['channels'],
+                'base_to_aux': aux.get('base_to_aux', None),
+            }
+            channels[aux['channels']] = chan
+
+        for chan in pathinfo['channels'].values():
+            self._populate_chan_info(chan, root=root)
+        return pathinfo

@@ -1,3 +1,10 @@
+"""
+See Also:
+    https://docs.nvidia.com/deeplearning/dali/user-guide/docs/examples/sequence_processing/video/video_reader_label_example.html
+
+    pyav
+"""
+
 import pandas as pd
 import ubelt as ub
 import cv2
@@ -6,6 +13,22 @@ import timerit
 
 
 class CV2VideoReader(ub.NiceRepr):
+    """
+    References:
+        # Alternative wrapper
+        https://github.com/postpop/videoreader/blob/master/videoreader.py
+
+    Ignore:
+        >>> fpath = ub.grabdata('https://file-examples-com.github.io/uploads/2018/04/file_example_MOV_1280_1_4MB.mov')
+        >>> self = CV2VideoReader(fpath)
+        >>> frames = list(self)
+        >>> assert len(frames) == len(self)
+        >>> import ubelt as ub
+        >>> for idx, seq_frame in ub.ProgIter(list(enumerate(frames)), desc='check frames'):
+        >>>     ra_frame = self[idx]
+        >>>     assert np.all(ra_frame == seq_frame)
+
+    """
     def __init__(self, fpath):
         self.fpath = fpath
         self._cap = cv2.VideoCapture(fpath)
@@ -47,13 +70,80 @@ class CV2VideoReader(ub.NiceRepr):
 
 
 def benchmark_video_readers():
+    """
+    "On My Machine" I get:
+
+        ti.measures = {
+            'mean'    : {
+                'cv2 sequential access'          : 0.0137,
+                'decord sequential access'       : 0.0175,
+                'cv2 open + first access'        : 0.0222,
+                'decord open + first access'     : 0.0565,
+                'vi3o sequential access'         : 0.0642,
+                'cv2 open + one random access'   : 0.0723,
+                'decord open + one random access': 0.0946,
+                'vi3o open + first access'       : 0.1045,
+                'cv2 random access'              : 0.3316,
+                'decord random access'           : 0.3472,
+                'decord random batch access'     : 0.3482,
+                'vi3o open + one random access'  : 0.3590,
+                'vi3o random access'             : 1.6660,
+            },
+            'mean+std': {
+                'cv2 sequential access'          : 0.0145,
+                'decord sequential access'       : 0.0182,
+                'cv2 open + first access'        : 0.0230,
+                'vi3o sequential access'         : 0.0881,
+                'decord open + first access'     : 0.1038,
+                'vi3o open + first access'       : 0.1059,
+                'cv2 open + one random access'   : 0.1151,
+                'decord open + one random access': 0.1329,
+                'cv2 random access'              : 0.3334,
+                'decord random access'           : 0.3496,
+                'decord random batch access'     : 0.3511,
+                'vi3o open + one random access'  : 0.5215,
+                'vi3o random access'             : 1.6890,
+            },
+            'mean-std': {
+                'decord open + first access'     : 0.0091,
+                'cv2 sequential access'          : 0.0130,
+                'decord sequential access'       : 0.0168,
+                'cv2 open + first access'        : 0.0214,
+                'cv2 open + one random access'   : 0.0295,
+                'vi3o sequential access'         : 0.0403,
+                'decord open + one random access': 0.0563,
+                'vi3o open + first access'       : 0.1032,
+                'vi3o open + one random access'  : 0.1965,
+                'cv2 random access'              : 0.3299,
+                'decord random access'           : 0.3448,
+                'decord random batch access'     : 0.3452,
+                'vi3o random access'             : 1.6429,
+            },
+            'min'     : {
+                'cv2 sequential access'          : 0.0128,
+                'decord sequential access'       : 0.0166,
+                'cv2 open + first access'        : 0.0210,
+                'vi3o sequential access'         : 0.0233,
+                'decord open + first access'     : 0.0251,
+                'cv2 open + one random access'   : 0.0282,
+                'decord open + one random access': 0.0527,
+                'vi3o open + one random access'  : 0.1013,
+                'vi3o open + first access'       : 0.1026,
+                'cv2 random access'              : 0.3299,
+                'decord random access'           : 0.3433,
+                'decord random batch access'     : 0.3452,
+                'vi3o random access'             : 1.6423,
+            },
+        }
+
+    """
     # video_fpath = ub.grabdata('https://download.blender.org/peach/bigbuckbunny_movies/big_buck_bunny_720p_h264.mov')
     try:
         import vi3o
     except Exception:
         vi3o = None
 
-    video_fpath = ub.grabdata('https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4')
+    # video_fpath = ub.grabdata('https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4')
     video_fpath = ub.grabdata('https://file-examples-com.github.io/uploads/2018/04/file_example_MOV_1280_1_4MB.mov')
 
     ti = timerit.Timerit(10, bestof=3, verbose=3, unit='ms')
@@ -175,7 +265,7 @@ def benchmark_video_readers():
     import kwplot
     import seaborn as sns
     sns.set()
-    kwplot.autompl()
+    plt = kwplot.autoplt()
 
     df = pd.DataFrame(ti.measures)
     df['key'] = df.index
@@ -201,6 +291,8 @@ def benchmark_video_readers():
     sns.barplot(
         x="expt", y=y_key, data=sub_df, hue='module', ax=ax)
     ax.set_title('cpu video reading benchmarks')
+
+    plt.show()
 
 
 if __name__ == '__main__':

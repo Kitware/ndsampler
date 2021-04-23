@@ -3,10 +3,28 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
-## Version 0.5.13 - Unreleased
+## Version 0.6.0 - Unreleased
+
+### Removed
+
+* `_hack_old_names` from `AbstractFrames`
+* `CocoDataset` which was moved to `kwcoco`
+* `toypatterns` which was moved to `kwcoco`
+* `stats_dict`, which now exists in `kwarray`
+* `ndsampler.util` module, use `ndsampler.utils.util_misc` instead.
+* `ndsampler.util_futures`, which now lives in `ndsampler.utils.util_futures`
+* `make_demo_coco`, use `kwcoco toydata` instead.
+
+*  `Frames._lookup_hashid` 
+*  `Frames._lookup_gpath` 
+*  `Frames._gnames` 
+
+### Modified
+
+* Overhaul of `AbstractFrames` for better auxiliary data integration
 
 
-## Version 0.5.12 - Released 2021-01-26
+## Version 0.5.13 - Released 2021-01-26
 
 ### Changed
 * Removed Python 3.5 support
