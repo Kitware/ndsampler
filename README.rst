@@ -21,6 +21,40 @@ CocoSampler class will let you sample positive and negative regions.
 For classification tasks the MS-COCO data could just be that every image has an
 annotation that takes up the entire image.
 
+Installation
+------------
+
+The `ndsampler <https://pypi.org/project/ndsampler/>`_.  package can be installed via pip:
+
+.. code-block:: bash
+
+    pip install ndsampler
+
+
+Note that ndsampler depends on `kwimage <https://pypi.org/project/kwimage/>`_,
+where there is a known compatibility issue between `opencv-python <https://pypi.org/project/opencv-python/>`_
+and `opencv-python-headless <https://pypi.org/project/opencv-python-headless/>`_. Please ensure that one
+or the other (but not both) are installed as well:
+
+.. code-block:: bash
+
+    pip install opencv-python-headless
+
+    # OR
+
+    pip install opencv-python
+
+
+Lastly, to fully leverage ndsampler's features GDAL must be installed (although
+much of ndsampler can work without it).  Kitware has a pypi index that hosts
+GDAL wheels for linux systems, but other systems will need to find some way of
+installing gdal (conda is safe choice).
+
+.. code-block:: bash
+
+    pip install --find-links https://girder.github.io/large_image_wheels GDAL
+
+
 Features
 --------
 
