@@ -531,6 +531,33 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
             targets['img_height'] = [img['height'] for img in imgs]
         return targets
 
+    def new_sample_grid(self, task, window_dims, window_overlap=0):
+        """
+        New experimental method to replace preselect positives / negatives
+
+        Args:
+            task (str): can be
+                video_detection
+                # image_detection
+                # video_classification
+                # image_classification
+
+        Example:
+            >>> from ndsampler.coco_regions import *
+            >>> from ndsampler import coco_sampler
+            >>> self = coco_sampler.CocoSampler.demo('vidshapes1').regions
+            >>> self.dset.conform()
+            >>> sample_grid = self.new_sample_grid('video_detection', window_dims=(2, 100, 100))
+        """
+        dset = self.dset
+        if task == 'video_detection':
+            sample_grid = new_video_sample_grid(dset, window_dims,
+                                                window_overlap)
+        else:
+            raise NotImplementedError(task)
+
+        return sample_grid
+
     def _preselect_positives(self, num=None, window_dims=None, rng=None,
                              verbose=None):
         """"
@@ -831,22 +858,22 @@ def new_video_sample_grid(dset, window_dims, window_overlap=0.0,
     Example:
         >>> from ndsampler.coco_regions import *  # NOQA
         >>> import kwcoco
-        >>> dset = kwcoco.CocoDataset.demo('shapes8')
         >>> dset = kwcoco.CocoDataset.demo('vidshapes8-multispectral', num_frames=5)
         >>> dset.conform()
         >>> window_dims = (2, 224, 224)
-        >>> positives, negatives = new_video_sample_grid(dset, window_dims)
-        >>> print('positives = {}'.format(ub.repr2(positives, nl=1)))
-        >>> print('negatives = {}'.format(ub.repr2(negatives, nl=1)))
+        >>> sample_grid = new_video_sample_grid(dset, window_dims)
+        >>> print('sample_grid = {}'.format(ub.repr2(sample_grid, nl=2)))
 
     Ignore:
         import xdev
         globals().update(xdev.get_func_kwargs(new_video_sample_grid))
     """
-
     import kwarray
     from ndsampler import isect_indexer
     keepbound = True
+
+    if classes_of_interest:
+        raise NotImplementedError
 
     # Create a sliding window object for each specific image (because they may
     # have different sizes, technically we could memoize this)
@@ -857,7 +884,8 @@ def new_video_sample_grid(dset, window_dims, window_overlap=0.0,
         full_dims = [num_frames, video['height'], video['width']]
         window_dims_ = full_dims if window_dims == 'full' else window_dims
         slider = kwarray.SlidingWindow(full_dims, window_dims_,
-                                       overlap=window_overlap, keepbound=keepbound,
+                                       overlap=window_overlap,
+                                       keepbound=keepbound,
                                        allow_overshoot=True)
 
         vidid_to_slider[vidid] = slider
@@ -867,27 +895,27 @@ def new_video_sample_grid(dset, window_dims, window_overlap=0.0,
     positives = []
     negatives = []
     for vidid, slider in vidid_to_slider.items():
-        boxes = []
-        box_gids = []
         regions = list(slider)
         gids = dset.index.vidid_to_gids[vidid]
+        boxes = []
+        box_gids = []
         for region in regions:
             t_sl, y_sl, x_sl = region
             region_gids = gids[t_sl]
             box_gids.append(region_gids)
             boxes.append([x_sl.start,  y_sl.start, x_sl.stop, y_sl.stop])
-        boxes = kwimage.Boxes(np.array(boxes), 'tlbr')
+        boxes = kwimage.Boxes(np.array(boxes), 'ltrb')
 
         for region, region_gids, box in zip(regions, box_gids, boxes):
             # Check to see what annotations this window-box overlaps with
             region_aids = []
             for gid in region_gids:
+                # TODO: memoize to prevent dup queries (box is not hashable)
                 aids = _isect_index.overlapping_aids(gid, box)
                 region_aids.append(aids)
 
             pos_aids = sorted(ub.flatten(region_aids))
 
-            # aids = sampler.regions.overlapping_aids(gid, box, visible_thresh=0.001)
             tr = {
                 'vidid': vidid,
                 'slices': region,
@@ -901,7 +929,11 @@ def new_video_sample_grid(dset, window_dims, window_overlap=0.0,
 
     print('Found {} positives'.format(len(positives)))
     print('Found {} negatives'.format(len(negatives)))
-    return positives, negatives
+    sample_grid = {
+        'positives': positives,
+        'negatives': negatives,
+    }
+    return sample_grid
 
 
 def new_image_sample_grid(dset, window_dims, window_overlap=0.0,
@@ -916,9 +948,8 @@ def new_image_sample_grid(dset, window_dims, window_overlap=0.0,
         >>> dset = kwcoco.CocoDataset.demo('shapes8')
         >>> dset = kwcoco.CocoDataset.demo('vidshapes8-multispectral')
         >>> window_dims = (224, 224)
-        >>> positives, negatives = new_image_sample_grid(dset, window_dims)
-        >>> print('positives = {}'.format(ub.repr2(positives, nl=1)))
-        >>> print('negatives = {}'.format(ub.repr2(negatives, nl=1)))
+        >>> sample_grid = new_image_sample_grid(dset, window_dims)
+        >>> print('sample_grid = {}'.format(ub.repr2(sample_grid, nl=2)))
 
     Ignore:
         import xdev
@@ -952,7 +983,7 @@ def new_image_sample_grid(dset, window_dims, window_overlap=0.0,
         for region in regions:
             y_sl, x_sl = region
             boxes.append([x_sl.start,  y_sl.start, x_sl.stop, y_sl.stop])
-        boxes = kwimage.Boxes(np.array(boxes), 'tlbr')
+        boxes = kwimage.Boxes(np.array(boxes), 'ltrb')
 
         for region, box in zip(regions, boxes):
             # Check to see what annotations this window-box overlaps with
@@ -1023,4 +1054,8 @@ def new_image_sample_grid(dset, window_dims, window_overlap=0.0,
 
     print('Found {} positives'.format(len(positives)))
     print('Found {} negatives'.format(len(negatives)))
-    return positives, negatives
+    sample_grid = {
+        'positives': positives,
+        'negatives': negatives,
+    }
+    return sample_grid

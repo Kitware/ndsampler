@@ -217,6 +217,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
     def preselect(self, **kwargs):
         return self.regions.preselect(**kwargs)
 
+    def new_sample_grid(self, task, window_dims, window_overlap=0):
+        sample_grid = self.regions.new_sample_grid(
+            task, window_dims, window_overlap)
+        return sample_grid
+
     def load_image_with_annots(self, image_id, cache=True):
         """
         Args:
@@ -596,6 +601,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> # Multispectral example
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo('vidshapes1-multispectral')
+            >>> self.dset.conform()
+            >>> sample_grid = self.new_sample_grid('video_detection', (2, 32, 32))
             >>> tr = self.regions.get_positive(1)
             >>> window_dims = (300, 150)
             >>> pad = None
