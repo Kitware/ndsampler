@@ -23,6 +23,6 @@ pyqtree >= 1.0.0
 
 kwimage >= 0.4.0
 kwarray >= 0.5.16
-kwcoco >= 0.2.2
+kwcoco >= 0.2.1
 
 futures>=3.2.0;python_version=="2.7"
