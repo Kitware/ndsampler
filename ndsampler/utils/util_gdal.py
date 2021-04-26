@@ -169,7 +169,7 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, compress='auto',
         xdoctest -m ndsampler.utils.util_gdal _imwrite_cloud_optimized_geotiff
 
     Example:
-        >>> # xdoctest: +REQUIRES(module:gdal)
+        >>> # xdoctest: +REQUIRES(module:osgeo)
         >>> from ndsampler.utils.util_gdal import *  # NOQA
         >>> from ndsampler.utils.util_gdal import _imwrite_cloud_optimized_geotiff
         >>> from ndsampler.utils.util_gdal import _doctest_check_cog
@@ -572,7 +572,7 @@ class LazyGDalFrameFile(ub.NiceRepr):
               height, width, and channels if possible.
 
     Example:
-        >>> # xdoctest: +REQUIRES(module:gdal)
+        >>> # xdoctest: +REQUIRES(module:osgeo)
         >>> from ndsampler.utils.util_gdal import *  # NOQA
         >>> self = LazyGDalFrameFile.demo()
         >>> cog_fpath = self.cog_fpath
@@ -792,7 +792,7 @@ def validate_nonzero_data(file):
     May fail on all-black images
 
     Example:
-        >>> # xdoctest: +REQUIRES(module:gdal)
+        >>> # xdoctest: +REQUIRES(module:osgeo)
         >>> from ndsampler.utils.util_gdal import LazyGDalFrameFile
         >>> import kwimage
         >>> gpath = kwimage.grab_test_image_fpath()

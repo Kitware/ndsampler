@@ -31,7 +31,7 @@ def _cog_cache_write(gpath, cache_gpath, config=None):
         xdoctest -m ndsampler.abstract_frames _cog_cache_write
 
     Example:
-        >>> # xdoctest: +REQUIRES(module:gdal)
+        >>> # xdoctest: +REQUIRES(module:osgeo)
         >>> import ndsampler
         >>> from ndsampler.abstract_frames import *
         >>> import kwcoco

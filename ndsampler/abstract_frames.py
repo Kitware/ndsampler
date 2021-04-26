@@ -65,7 +65,7 @@ class Frames(object):
         >>> print('file = {!r}'.format(file))
         >>> assert self.load_image(1).shape == (512, 512, 3)
         >>> assert self.load_region(1, (slice(-20), slice(-10))).shape == (492, 502, 3)
-        >>> # xdoctest: +REQUIRES(module:gdal)
+        >>> # xdoctest: +REQUIRES(module:osgeo)
         >>> self = SimpleFrames.demo(backend='cog')
         >>> assert self.load_image(1).shape == (512, 512, 3)
         >>> assert self.load_region(1, (slice(-20), slice(-10))).shape == (492, 502, 3)
@@ -498,7 +498,7 @@ class Frames(object):
             >>> self.prepare(workers=3)  # parallel, hit
             >>> #
             >>> ## TEST COG
-            >>> # xdoctest: +REQUIRES(module:gdal)
+            >>> # xdoctest: +REQUIRES(module:osgeo)
             >>> sampler = ndsampler.CocoSampler.demo(workdir=workdir, backend='cog')
             >>> self = sampler.frames
             >>> ub.delete(self.cache_dpath)  # reset
