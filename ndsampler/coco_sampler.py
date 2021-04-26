@@ -601,21 +601,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> # Multispectral example
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo('vidshapes1-multispectral')
-            >>> self.dset.conform()
             >>> sample_grid = self.new_sample_grid('video_detection', (2, 32, 32))
-            >>> tr = self.regions.get_positive(1)
+            >>> tr = sample_grid['positives'][0]
             >>> window_dims = (300, 150)
-            >>> pad = None
-            >>> tr['channels'] = ub.NoParam
-            >>> import pytest
-            >>> with pytest.raises(Exception):
-            >>>     sample = self.load_sample(tr, pad, window_dims=window_dims)
-            >>> tr['channels'] = ['B1']
-            >>> sample = self.load_sample(tr, pad, window_dims=window_dims)
-            >>> assert sample['im'].shape[2] == 1
             >>> tr['channels'] = ['B1', 'B8']
-            >>> sample = self.load_sample(tr, pad, window_dims=window_dims)
-            >>> assert sample['im'].shape[2] == 2
+            >>> sample = self.load_sample(tr, window_dims=window_dims)
+
+            xdoctest -m ndsampler.coco_sampler CocoSampler.load_sample:5
         """
         sample = self._load_slice(tr, window_dims, pad, padkw)
 
@@ -737,68 +729,76 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         if vidid is not None:
             # TODO: kwcoco should have a way to ensure these are already in
             # frame_index order.
-            gids = self.dset.vidid_to_gids[vidid]
+            gids = self.dset.index.vidid_to_gids[vidid]
             frame_idxs = self.dset.images(gids).lookup('frame_index')
             gids = [t[1] for t in sorted(zip(frame_idxs, gids))]
 
-            video = self.dset.videos[vidid]
+            video = self.dset.index.videos[vidid]
             vid_width = video.get('width', None)
             vid_height = video.get('height', None)
+            num_frames = len(gids)
             if vid_height is None or vid_width is None:
                 # Fallback on the first image
                 img = self.dset.imgs[gids[0]]
                 vid_width = img['width']
                 vid_height = img['height']
+
+            data_dims = (num_frames, vid_height, vid_width)
+
             raise NotImplementedError('next version should have this')
 
-        gid = tr_['gid']
-        # Determine the image extent
-        img = self.dset.imgs[gid]
-        data_dims = (img['height'], img['width'])
+            data_slice, extra_padding, st_dims = self._rectify_tr(
+                tr_, data_dims, window_dims=window_dims, pad=pad)
 
-        data_slice, extra_padding, st_dims = self._rectify_tr(
-            tr_, data_dims, window_dims=window_dims, pad=pad)
+        else:
+            gid = tr_['gid']
+            # Determine the image extent
+            img = self.dset.imgs[gid]
+            data_dims = (img['height'], img['width'])
 
-        # Load the image data
-        # frame = self.frames.load_image(gid)  # TODO: lazy load on slice
-        # im = frame[data_slice]
+            data_slice, extra_padding, st_dims = self._rectify_tr(
+                tr_, data_dims, window_dims=window_dims, pad=pad)
 
-        channels = tr_.get('channels', ub.NoParam)
-        im = self.frames.load_region(
-            image_id=gid, region=data_slice, channels=channels)
-        if extra_padding:
-            if im.ndim != len(extra_padding):
-                extra_padding = extra_padding + [(0, 0)]  # Handle channels
-            im = np.pad(im, extra_padding, **padkw)
+            # Load the image data
+            # frame = self.frames.load_image(gid)  # TODO: lazy load on slice
+            # im = frame[data_slice]
 
-        # Translations for real sub-pixel center positions
-        if extra_padding:
-            pad_dims = extra_padding[0:ndim]
-            st_dims = [(s - pad[0], t + pad[1])
-                       for (s, t), pad in zip(st_dims, pad_dims)]
+            channels = tr_.get('channels', ub.NoParam)
+            im = self.frames.load_region(
+                image_id=gid, region=data_slice, channels=channels)
+            if extra_padding:
+                if im.ndim != len(extra_padding):
+                    extra_padding = extra_padding + [(0, 0)]  # Handle channels
+                im = np.pad(im, extra_padding, **padkw)
 
-        (y_start, y_stop), (x_start, x_stop) = st_dims[-2:]
-        sample_tlbr = kwimage.Boxes([x_start, y_start, x_stop, y_stop], 'tlbr')
+            # Translations for real sub-pixel center positions
+            if extra_padding:
+                pad_dims = extra_padding[0:ndim]
+                st_dims = [(s - pad[0], t + pad[1])
+                           for (s, t), pad in zip(st_dims, pad_dims)]
 
-        offset = np.array([-x_start, -y_start])
+            (y_start, y_stop), (x_start, x_stop) = st_dims[-2:]
+            sample_tlbr = kwimage.Boxes([x_start, y_start, x_stop, y_stop], 'tlbr')
 
-        tf_rel_to_abs = skimage.transform.AffineTransform(
-            translation=-offset
-        ).params
+            offset = np.array([-x_start, -y_start])
 
-        sample = {
-            'im': im,
-            'tr': tr_.copy(),
-            'params': {
-                'offset': offset,
-                'tf_rel_to_abs': tf_rel_to_abs,
-                'sample_tlbr': sample_tlbr,
-                'st_dims': st_dims,
-                'data_dims': data_dims,
-                'pad': pad,
-            },
-        }
-        return sample
+            tf_rel_to_abs = skimage.transform.AffineTransform(
+                translation=-offset
+            ).params
+
+            sample = {
+                'im': im,
+                'tr': tr_.copy(),
+                'params': {
+                    'offset': offset,
+                    'tf_rel_to_abs': tf_rel_to_abs,
+                    'sample_tlbr': sample_tlbr,
+                    'st_dims': st_dims,
+                    'data_dims': data_dims,
+                    'pad': pad,
+                },
+            }
+            return sample
 
     @profile
     def _populate_overlap(self, sample, visible_thresh=0.1, with_annots=True):
