@@ -40,7 +40,7 @@ from ndsampler.coco_frames import (CocoFrames,)
 from ndsampler.coco_regions import (CocoRegions, MissingNegativePool, Targets,
                                     select_positive_regions,
                                     tabular_coco_targets,)
-from ndsampler.coco_sampler import (CocoSampler, padded_slice,)
+from ndsampler.coco_sampler import (CocoSampler,)
 from ndsampler.isect_indexer import (FrameIntersectionIndex,)
 from ndsampler.toydata import (DynamicToySampler,)
 
@@ -49,5 +49,5 @@ __all__ = ['AbstractSampler', 'CategoryTree', 'CocoFrames', 'CocoRegions',
            'Frames', 'HashIdentifiable', 'MissingNegativePool', 'SimpleFrames',
            'Targets', 'abstract_frames', 'abstract_sampler', 'category_tree',
            'coco_frames', 'coco_regions', 'coco_sampler', 'isect_indexer',
-           'padded_slice', 'select_positive_regions', 'tabular_coco_targets',
+           'select_positive_regions', 'tabular_coco_targets',
            'toydata']

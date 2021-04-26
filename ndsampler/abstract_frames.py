@@ -842,12 +842,12 @@ class AlignableImageData(object):
         Loads crops from multiple channels in aligned base coordinates.
         """
         import kwarray
-        import kwimage
+        from kwimage import im_cv2
         import cv2
         prefused = self._load_prefused_region(base_region, channels)
         subregions = prefused['subregions']
         base_dsize = prefused['base_dsize']
-        flags = kwimage.im_cv2._coerce_interpolation('linear')
+        flags = im_cv2._coerce_interpolation('linear')
         parts = []
         for subregion in subregions:
             chan_crop = subregion['im']

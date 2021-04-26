@@ -478,6 +478,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 'extent' or 'square', which determines the final size using
                 target information.
 
+                DEPRECATED. IF DESIRED SPECIFY IN THE TARGET DICTIONARY
+
             visible_thresh (float): does not return annotations with visibility
                 less than this threshold.
 
@@ -539,10 +541,12 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> self = CocoSampler.demo()
             >>> tr = self.regions.get_positive(0)
             >>> pad = (25, 25)
-            >>> sample = self.load_sample(tr, pad, window_dims='square')
+            >>> tr['window_dims'] = 'square'
+            >>> sample = self.load_sample(tr, pad)
             >>> print('im.shape = {!r}'.format(sample['im'].shape))
             im.shape = (135, 135, 3)
             >>> pad = (0, 0)
+            >>> tr['window_dims'] = None
             >>> sample = self.load_sample(tr, pad)
             >>> print('im.shape = {!r}'.format(sample['im'].shape))
             im.shape = (52, 85, 3)
@@ -559,7 +563,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> tr = self.regions.get_positive(0)
             >>> window_dims = None
             >>> window_dims = (364, 364)
-            >>> sample = self.load_sample(tr, window_dims=window_dims)
+            >>> tr['window_dims'] = window_dims
+            >>> sample = self.load_sample(tr)
             >>> annots = sample['annots']
             >>> assert len(annots['aids']) > 0
             >>> assert len(annots['rel_cxywh']) == len(annots['aids'])
@@ -589,7 +594,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> tr = self.regions.get_positive(1)
             >>> window_dims = (300, 150)
             >>> pad = None
-            >>> sample = self.load_sample(tr, pad, window_dims=window_dims)
+            >>> tr['window_dims'] = window_dims
+            >>> sample = self.load_sample(tr, pad)
             >>> assert sample['im'].shape[0:2] == window_dims
             >>> # xdoc: +REQUIRES(--show)
             >>> import kwplot
@@ -598,14 +604,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> kwplot.show_if_requested()
 
         Example:
-            >>> # Multispectral example
+            >>> # Multispectral video sample example
             >>> from ndsampler.coco_sampler import *
-            >>> self = CocoSampler.demo('vidshapes1-multispectral')
-            >>> sample_grid = self.new_sample_grid('video_detection', (2, 32, 32))
+            >>> self = CocoSampler.demo('vidshapes1-multispectral', num_frames=5)
+            >>> sample_grid = self.new_sample_grid('video_detection', (3, 128, 128))
             >>> tr = sample_grid['positives'][0]
-            >>> window_dims = (300, 150)
             >>> tr['channels'] = ['B1', 'B8']
-            >>> sample = self.load_sample(tr, window_dims=window_dims)
+            >>> sample = self.load_sample(tr)
 
             xdoctest -m ndsampler.coco_sampler CocoSampler.load_sample:5
         """
@@ -615,52 +620,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             self._populate_overlap(sample, visible_thresh, with_annots)
         return sample
 
-    def _rectify_tr(self, tr, data_dims, window_dims=None, pad=None):
-        """
-        Use the target to compute the actual slice within the image as well as
-        what additional padding is needed, if any.
-        """
-        ndim = 2  # number of space-time dimensions (ignore channel)
-        if pad is None:
-            pad = 0
-        pad = tuple(_ensure_iterablen(pad, ndim))
-
-        if 'slices' in tr:
-            # Slice was explicitly specified
-            import warnings
-            if bool(set(tr) & {'cx', 'cy', 'height', 'width'}) or window_dims:
-                warnings.warn('data_slice was specified, but ignored keys are present')
-            requested_slice = tr['slices']
-            data_slice, extra_padding = _rectify_slice2(requested_slice, data_dims, pad)
-        else:
-            # A center / width / height was specified
-            center = (tr['cy'], tr['cx'])
-            # Determine the requested window size
-            if window_dims is None:
-                window_dims = 'extent'
-
-            if isinstance(window_dims, six.string_types):
-                if window_dims == 'extent':
-                    window_dims = (tr['height'], tr['width'])
-                    window_dims = np.ceil(np.array(window_dims)).astype(np.int)
-                    window_dims = tuple(window_dims.tolist())
-                elif window_dims == 'square':
-                    window_dims = (tr['height'], tr['width'])
-                    window_dims = np.ceil(np.array(window_dims)).astype(np.int)
-                    window_dims = tuple(window_dims.tolist())
-                    maxdim = max(window_dims)
-                    window_dims = (maxdim, maxdim)
-                else:
-                    raise KeyError(window_dims)
-
-            data_slice, extra_padding = _get_slice(data_dims, center, window_dims, pad=pad)
-
-        st_dims = [(sl.start, sl.stop) for sl in data_slice[0:ndim]]
-
-        return data_slice, extra_padding, st_dims
-
     @profile
-    def _infer_target_attributes(self, tr):
+    def _infer_target_attributes(self, tr, window_dims=None):
         """
         Infer unpopulated target attribues
 
@@ -677,7 +638,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         tr_ = tr.copy()
         if 'aid' in tr_:
             # If the annotation id is specified, infer other unspecified fields
-            aid = tr['aid']
+            aid = tr_['aid']
             try:
                 ann = self.dset.anns[aid]
             except KeyError:
@@ -696,12 +657,40 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                         tr_['width'] = width
                     if 'height' not in tr_:
                         tr_['height'] = height
-                if 'category_id' not in tr:
+                if 'category_id' not in tr_:
                     tr_['category_id'] = ann['category_id']
 
-        if 'slices' in tr:
-            # TODO: consolidate with _rectify_tr slides logic
-            pass
+        if 'slices' in tr_:
+            # Slice was explicitly specified
+            import warnings
+            if bool(set(tr_) & {'cx', 'cy', 'height', 'width'}) or window_dims:
+                warnings.warn('data_slice was specified, but ignored keys are present')
+        else:
+            # if ndim != 2:
+            #     raise NotImplementedError('only slices support 3d sampling for now')
+            # A center / width / height was specified
+            center = (tr_['cy'], tr_['cx'])
+            # Determine the requested window size
+            window_dims = tr_.get('window_dims', window_dims)
+            if window_dims is None:
+                window_dims = 'extent'
+
+            if isinstance(window_dims, six.string_types):
+                if window_dims == 'extent':
+                    window_dims = (tr_['height'], tr_['width'])
+                    window_dims = np.ceil(np.array(window_dims)).astype(np.int)
+                    window_dims = tuple(window_dims.tolist())
+                elif window_dims == 'square':
+                    window_dims = (tr_['height'], tr_['width'])
+                    window_dims = np.ceil(np.array(window_dims)).astype(np.int)
+                    window_dims = tuple(window_dims.tolist())
+                    maxdim = max(window_dims)
+                    window_dims = (maxdim, maxdim)
+                else:
+                    raise KeyError(window_dims)
+            tr_['window_dims'] = window_dims
+            tr_['slices'] = _center_extent_to_slice(center, window_dims)
+
         return tr_
 
     @profile
@@ -717,21 +706,22 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> print('sample = {!r}'.format(ub.map_vals(type, sample)))
         """
         import skimage
-        ndim = 2  # number of space-time dimensions (ignore channel)
+        import kwarray
         if pad is None:
             pad = 0
-        pad = tuple(_ensure_iterablen(pad, ndim))
 
-        tr_ = self._infer_target_attributes(tr)
+        tr_ = self._infer_target_attributes(tr, window_dims=window_dims)
+        assert 'slices' in tr_
+        requested_slice = tr_['slices']
+        channels = tr_.get('channels', ub.NoParam)
 
-        # TODO: need to accept vidid
         vidid = tr_.get('vidid', None)
         if vidid is not None:
-            # TODO: kwcoco should have a way to ensure these are already in
-            # frame_index order.
+            ndim = 3  # number of space-time dimensions (ignore channel)
+            pad = tuple(_ensure_iterablen(pad, ndim))
+
+            # As of kwcoco 0.2.1 gids are ordered by frame index
             gids = self.dset.index.vidid_to_gids[vidid]
-            frame_idxs = self.dset.images(gids).lookup('frame_index')
-            gids = [t[1] for t in sorted(zip(frame_idxs, gids))]
 
             video = self.dset.index.videos[vidid]
             vid_width = video.get('width', None)
@@ -745,60 +735,75 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
             data_dims = (num_frames, vid_height, vid_width)
 
-            raise NotImplementedError('next version should have this')
+            data_slice, extra_padding = kwarray.embed_slice(
+                requested_slice, data_dims, pad)
 
-            data_slice, extra_padding, st_dims = self._rectify_tr(
-                tr_, data_dims, window_dims=window_dims, pad=pad)
+            # TODO: frames should have better nd-support, hack it for now to
+            # just load the 2d data for each image
+            time_slice, *space_slice = data_slice
+            time_gids = gids[time_slice]
+            space_frames = []
+            for gid in time_gids:
+                frame = self.frames.load_region(
+                    image_id=gid, region=space_slice, channels=channels)
+                # Add a dimension for time
+                space_frames.append(frame[None, :])
+            data_clipped = np.concatenate(space_frames, axis=0)
 
+            # TODO: gids should be padded if it goes oob.
+            tr_['_data_gids'] = time_gids
         else:
+            ndim = 2  # number of space-time dimensions (ignore channel)
+            pad = tuple(_ensure_iterablen(pad, ndim))
             gid = tr_['gid']
             # Determine the image extent
             img = self.dset.imgs[gid]
             data_dims = (img['height'], img['width'])
 
-            data_slice, extra_padding, st_dims = self._rectify_tr(
-                tr_, data_dims, window_dims=window_dims, pad=pad)
+            data_slice, extra_padding = kwarray.embed_slice(
+                requested_slice, data_dims, pad)
 
             # Load the image data
             # frame = self.frames.load_image(gid)  # TODO: lazy load on slice
             # im = frame[data_slice]
 
-            channels = tr_.get('channels', ub.NoParam)
-            im = self.frames.load_region(
+            data_clipped = self.frames.load_region(
                 image_id=gid, region=data_slice, channels=channels)
-            if extra_padding:
-                if im.ndim != len(extra_padding):
-                    extra_padding = extra_padding + [(0, 0)]  # Handle channels
-                im = np.pad(im, extra_padding, **padkw)
 
-            # Translations for real sub-pixel center positions
-            if extra_padding:
-                pad_dims = extra_padding[0:ndim]
-                st_dims = [(s - pad[0], t + pad[1])
-                           for (s, t), pad in zip(st_dims, pad_dims)]
+        # Apply the padding
+        if sum(map(sum, extra_padding)) == 0:
+            # No padding was requested
+            data_sliced = data_clipped
+        else:
+            trailing_dims = len(data_clipped.shape) - len(extra_padding)
+            if trailing_dims > 0:
+                extra_padding = extra_padding + ([(0, 0)] * trailing_dims)
+            data_sliced = np.pad(data_clipped, extra_padding, **padkw)
 
-            (y_start, y_stop), (x_start, x_stop) = st_dims[-2:]
-            sample_tlbr = kwimage.Boxes([x_start, y_start, x_stop, y_stop], 'tlbr')
+        st_dims = [(sl.start - pad_[0], sl.stop + pad_[1])
+                   for sl, pad_ in zip(data_slice, extra_padding)]
 
-            offset = np.array([-x_start, -y_start])
+        (y_start, y_stop), (x_start, x_stop) = st_dims[-2:]
 
-            tf_rel_to_abs = skimage.transform.AffineTransform(
-                translation=-offset
-            ).params
+        sample_tlbr = kwimage.Boxes([x_start, y_start, x_stop, y_stop], 'ltrb')
+        offset = np.array([-x_start, -y_start])
+        tf_rel_to_abs = skimage.transform.AffineTransform(
+            translation=-offset
+        ).params
 
-            sample = {
-                'im': im,
-                'tr': tr_.copy(),
-                'params': {
-                    'offset': offset,
-                    'tf_rel_to_abs': tf_rel_to_abs,
-                    'sample_tlbr': sample_tlbr,
-                    'st_dims': st_dims,
-                    'data_dims': data_dims,
-                    'pad': pad,
-                },
-            }
-            return sample
+        sample = {
+            'im': data_sliced,
+            'tr': tr_,
+            'params': {
+                'offset': offset,
+                'tf_rel_to_abs': tf_rel_to_abs,
+                'sample_tlbr': sample_tlbr,
+                'st_dims': st_dims,
+                'data_dims': data_dims,
+                'pad': pad,
+            },
+        }
+        return sample
 
     @profile
     def _populate_overlap(self, sample, visible_thresh=0.1, with_annots=True):
@@ -828,91 +833,118 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 assert k in ['segmentation', 'keypoints', 'boxes'], 'k={!r}'.format(k)
 
         tr = sample['tr']
-        gid = tr['gid']
+
+        if '_data_gids' in tr:
+            gids = tr['_data_gids']
+        else:
+            gids = [tr['gid']]
+
+        # accumulate information over all frames
+        frame_accum = []
 
         params = sample['params']
         sample_tlbr = params['sample_tlbr']
         offset = params['offset']
         data_dims = params['data_dims']
-        # tlbr box in original image space around this sampled patch
+        space_dims = data_dims[-2:]
+        for rel_frame_idx, gid in enumerate(gids):
+            # ltrb box in original image space around this sampled patch
 
-        # Find which bounding boxes are visible in this region
-        overlap_aids = self.regions.overlapping_aids(
-            gid, sample_tlbr, visible_thresh=visible_thresh)
+            # Find which bounding boxes are visible in this region
+            overlap_aids = self.regions.overlapping_aids(
+                gid, sample_tlbr, visible_thresh=visible_thresh)
 
-        # Get info about all annotations inside this window
+            # Get info about all annotations inside this window
 
-        if 0:
-            overlap_annots = self.dset.annots(overlap_aids)
-            overlap_cids = overlap_annots.cids
-            abs_boxes = overlap_annots.boxes
-        else:
             overlap_anns = [self.dset.anns[aid] for aid in overlap_aids]
             overlap_cids = [ann['category_id'] for ann in overlap_anns]
             abs_boxes = kwimage.Boxes(
                 [ann['bbox'] for ann in overlap_anns], 'xywh')
 
-        # Transform spatial information to be relative to the sample
-        rel_boxes = abs_boxes.translate(offset)
+            # Transform spatial information to be relative to the sample
+            rel_boxes = abs_boxes.translate(offset)
 
-        # Handle segmentations and keypoints if they exist
-        sseg_list = []
-        kpts_list = []
+            # Handle segmentations and keypoints if they exist
+            sseg_list = []
+            kpts_list = []
 
-        coco_dset = self.dset
-        kp_classes = self.kp_classes
-        for ann in overlap_anns:
-            # TODO: it should probably be the regions's responsibilty to load
-            # and return these kwimage data structures.
-            rel_points = None
-            if 'keypoints' in with_annots:
-                coco_kpts = ann.get('keypoints', None)
-                if coco_kpts is not None and len(coco_kpts) > 0:
-                    if isinstance(ub.peek(coco_kpts), dict):
-                        # new style coco keypoint encoding
-                        abs_points = kwimage.Points.from_coco(
-                            coco_kpts, classes=kp_classes)
-                    else:
-                        # using old style coco keypoint encoding, we need look up
-                        # keypoint class from object classes and then pass in the
-                        # relevant info
-                        kpnames = coco_dset._lookup_kpnames(ann['category_id'])
-                        kp_class_idxs = np.array([kp_classes.index(n) for n in kpnames])
-                        abs_points = kwimage.Points.from_coco(
-                            coco_kpts, kp_class_idxs, kp_classes)
-                    rel_points = abs_points.translate(offset)
+            coco_dset = self.dset
+            kp_classes = self.kp_classes
+            for ann in overlap_anns:
+                # TODO: it should probably be the regions's responsibilty to load
+                # and return these kwimage data structures.
+                rel_points = None
+                if 'keypoints' in with_annots:
+                    coco_kpts = ann.get('keypoints', None)
+                    if coco_kpts is not None and len(coco_kpts) > 0:
+                        if isinstance(ub.peek(coco_kpts), dict):
+                            # new style coco keypoint encoding
+                            abs_points = kwimage.Points.from_coco(
+                                coco_kpts, classes=kp_classes)
+                        else:
+                            # using old style coco keypoint encoding, we need look up
+                            # keypoint class from object classes and then pass in the
+                            # relevant info
+                            kpnames = coco_dset._lookup_kpnames(ann['category_id'])
+                            kp_class_idxs = np.array([kp_classes.index(n) for n in kpnames])
+                            abs_points = kwimage.Points.from_coco(
+                                coco_kpts, kp_class_idxs, kp_classes)
+                        rel_points = abs_points.translate(offset)
 
-            rel_sseg = None
-            if 'segmentation' in with_annots:
-                coco_sseg = ann.get('segmentation', None)
-                if coco_sseg is not None:
-                    # x = _coerce_coco_segmentation(coco_sseg, data_dims)
-                    # abs_sseg = kwimage.Mask.coerce(coco_sseg, dims=data_dims)
-                    abs_sseg = kwimage.MultiPolygon.coerce(coco_sseg, dims=data_dims)
-                    if abs_sseg is None:
-                        rel_sseg = None
-                    else:
-                        # abs_sseg = abs_sseg.to_multi_polygon()
-                        rel_sseg = abs_sseg.translate(offset)
+                rel_sseg = None
+                if 'segmentation' in with_annots:
+                    coco_sseg = ann.get('segmentation', None)
+                    if coco_sseg is not None:
+                        # x = _coerce_coco_segmentation(coco_sseg, space_dims)
+                        # abs_sseg = kwimage.Mask.coerce(coco_sseg, dims=space_dims)
+                        abs_sseg = kwimage.MultiPolygon.coerce(coco_sseg, dims=space_dims)
+                        if abs_sseg is None:
+                            rel_sseg = None
+                        else:
+                            # abs_sseg = abs_sseg.to_multi_polygon()
+                            rel_sseg = abs_sseg.translate(offset)
 
-            kpts_list.append(rel_points)
-            sseg_list.append(rel_sseg)
+                kpts_list.append(rel_points)
+                sseg_list.append(rel_sseg)
 
-        rel_ssegs = kwimage.PolygonList(sseg_list)
-        rel_kpts = kwimage.PointsList(kpts_list)
-        rel_kpts.meta['classes'] = self.kp_classes
+            rel_ssegs = kwimage.PolygonList(sseg_list)
+            rel_kpts = kwimage.PointsList(kpts_list)
+            rel_kpts.meta['classes'] = self.kp_classes
 
-        annots = {
-            'aids': np.array(overlap_aids),
-            'cids': np.array(overlap_cids),
+            frame_annots = {
+                'aids': np.array(overlap_aids),
+                'cids': np.array(overlap_cids),
 
-            'rel_cxywh': rel_boxes.to_cxywh().data,
-            'abs_cxywh': abs_boxes.to_cxywh().data,
+                'rel_frame_index': np.array([rel_frame_idx] * len(overlap_aids)),
 
-            'rel_boxes': rel_boxes,
-            'rel_ssegs': rel_ssegs,
-            'rel_kpts': rel_kpts,
-        }
+                'rel_cxywh': rel_boxes.to_cxywh().data,
+                'abs_cxywh': abs_boxes.to_cxywh().data,
+
+                'rel_boxes': rel_boxes,
+                'rel_ssegs': rel_ssegs,
+                'rel_kpts': rel_kpts,
+            }
+
+            frame_accum.append(frame_annots)
+
+        if len(frame_accum) == 1:
+            annots = frame_accum[0]
+        else:
+            # Hack to get multi-frame annots without too much developer effort.
+            # Could be more efficient
+            annots = {
+                'aids': np.hstack([x['aids'] for x in frame_accum]),
+                'cids': np.hstack([x['cids'] for x in frame_accum]),
+                'rel_frame_index': np.hstack([x['rel_frame_index'] for x in frame_accum]),
+
+                'rel_cxywh': np.vstack([x['rel_cxywh'] for x in frame_accum]),
+                'abs_cxywh': np.vstack([x['abs_cxywh'] for x in frame_accum]),
+
+                'rel_boxes': kwimage.Boxes.concatenate([x['rel_boxes'] for x in frame_accum]),
+                'rel_ssegs': kwimage.PolygonList(list(ub.flatten([x['rel_ssegs'].data for x in frame_accum]))),
+                'rel_kpts': kwimage.PointsList(list(ub.flatten([x['rel_kpts'].data for x in frame_accum]))),
+            }
+            annots['rel_kpts'].meta['classes'] = self.kp_classes
 
         # Note the center coordinates in the padded sample reference frame
         tr_ = sample['tr']
@@ -935,145 +967,36 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         return sample
 
 
-def padded_slice(data, in_slice, ndim=None, pad_slice=None,
-                 pad_mode='constant', **padkw):
+def _center_extent_to_slice(center, window_dims):
     """
-    Allows slices with out-of-bound coordinates.  Any out of bounds coordinate
-    will be sampled via padding.
-
-    TODO:
-        - [ ] : Deprecate for version in kwimage
-
-    Note:
-        Negative slices have a different meaning here then they usually do.
-        Normally, they indicate a wrap-around or a reversed stride, but here
-        they index into out-of-bounds space (which depends on the pad mode).
-        For example a slice of -2:1 literally samples two pixels to the left of
-        the data and one pixel from the data, so you get two padded values and
-        one data value.
+    Transforms a center and window dimensions into a start/stop slice
 
     Args:
-        data (Sliceable[T]): data to slice into. Any channels must be the last dimension.
-        in_slice (Tuple[slice, ...]): slice for each dimensions
-        ndim (int): number of spatial dimensions
-        pad_slice (List[int|Tuple]): additional padding of the slice
-
-    Returns:
-        Tuple[Sliceable, Dict] :
-
-            data_sliced: subregion of the input data (possibly with padding,
-                depending on if the original slice went out of bounds)
-
-            transform : information on how to return to the original coordinates
-
-                Currently a dict containing:
-                    st_dims: a list indicating the low and high space-time
-                        coordinate values of the returned data slice.
-
-    Example:
-        >>> data = np.arange(5)
-        >>> in_slice = [slice(-2, 7)]
-
-        >>> data_sliced, transform = padded_slice(data, in_slice)
-        >>> print(ub.repr2(data_sliced, with_dtype=False))
-        np.array([0, 0, 0, 1, 2, 3, 4, 0, 0])
-
-        >>> data_sliced, transform = padded_slice(data, in_slice, pad_slice=(3, 3))
-        >>> print(ub.repr2(data_sliced, with_dtype=False))
-        np.array([0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 0, 0, 0, 0, 0])
-
-        >>> data_sliced, transform = padded_slice(data, slice(3, 4), pad_slice=[(1, 0)])
-        >>> print(ub.repr2(data_sliced, with_dtype=False))
-        np.array([2, 3])
-
-    """
-    if isinstance(in_slice, slice):
-        in_slice = [in_slice]
-
-    ndim = len(in_slice)
-
-    data_dims = data.shape[:ndim]
-
-    low_dims = [sl.start for sl in in_slice]
-    high_dims = [sl.stop for sl in in_slice]
-
-    data_slice, extra_padding = _rectify_slice(data_dims, low_dims, high_dims,
-                                               pad=pad_slice)
-
-    in_slice_clipped = tuple(slice(*d) for d in data_slice)
-    # Get the parts of the image that are in bounds
-    data_clipped = data[in_slice_clipped]
-
-    # Add any padding that is needed to behave like negative dims exist
-    if sum(map(sum, extra_padding)) == 0:
-        # The slice was completely in bounds
-        data_sliced = data_clipped
-    else:
-        if len(data.shape) != len(extra_padding):
-            extra_padding = extra_padding + [(0, 0)]
-        data_sliced = np.pad(data_clipped, extra_padding, mode=pad_mode,
-                             **padkw)
-
-    st_dims = data_slice[0:ndim]
-    pad_dims = extra_padding[0:ndim]
-
-    st_dims = [(s - pad[0], t + pad[1])
-               for (s, t), pad in zip(st_dims, pad_dims)]
-
-    # TODO: return a better transform back to the original space
-    transform = {
-        'st_dims': st_dims,
-        'st_offset': [d[0] for d in st_dims]
-    }
-    return data_sliced, transform
-
-
-def _get_slice(data_dims, center, window_dims, pad=None):
-    """
-    Finds the slice to sample data around a center in a particular image
-
-    Args:
-        data_dims (Tuple[int]): image size (height, width)
         center (Tuple[float]): center location (cy, cx)
         window_dims (Tuple[int]): window size (height, width)
-        pad (Tuple[int]): extra context to add to each size (height, width)
-            This helps prevent augmentation from producing boundary effects
 
     Returns:
-        Tuple:
-            data_slice - a fancy slice corresponding to the image. This
-                slice may not correspond to the full window size if the
-                requested bounding box goes out of bounds.
-            extra_padding - extra padding needed after slicing to achieve
-                the requested window size.
+        Tuple[slice, ...]: the slice corresponding to the centered window
 
     Example:
         >>> center = (2, 5)
         >>> window_dims = (6, 6)
-        >>> data_dims = (600, 600)
-        >>> data_slice, extra_padding = _get_slice(data_dims, center, window_dims)
-        >>> assert extra_padding == [(1, 0), (0, 0)]
-        >>> assert data_slice == (slice(0, 5), slice(2, 8))
+        >>> slices = _center_extent_to_slice(center, window_dims)
+        >>> assert slices == (slice(-1, 5), slice(2, 8))
 
      Example:
         >>> center = (2, 5)
         >>> window_dims = (64, 64)
-        >>> data_dims = (600, 600)
-        >>> data_slice, extra_padding = _get_slice(data_dims, center, window_dims)
-        >>> assert extra_padding == [(30, 0), (27, 0)]
-        >>> assert data_slice == (slice(0, 34, None), slice(0, 37, None))
+        >>> slices = _center_extent_to_slice(center, window_dims)
+        >>> assert slices == (slice(-30, 34, None), slice(-27, 37, None))
 
     Example:
         >>> # Test floating point error case
         >>> center = (500.5, 974.9999999999999)
         >>> window_dims  = (100, 100)
-        >>> data_dims = (2000, 2000)
-        >>> pad = (0, 0)
-        >>> _get_slice(data_dims, center, window_dims)
+        >>> slices = _center_extent_to_slice(center, window_dims)
+        >>> assert slices == (slice(450, 550, None), slice(924, 1024, None))
     """
-    if pad is None:
-        pad = (0, 0)
-
     # Compute lower and upper coordinates of the window bounding box
     low_dims = [int(np.floor(c - d_win / 2.0))
                 for c, d_win in zip(center, window_dims)]
@@ -1094,97 +1017,8 @@ def _get_slice(data_dims, center, window_dims, pad=None):
             d_win_got = d_high - d_low
             assert d_win_got == d_win, 'slice has incorrect window size'
 
-    # Find the lower and upper coordinates that corresponds to the
-    # requested window in the real image. If the window goes out of bounds,
-    # then use extra padding to achieve the requested window shape.
-    data_slice, extra_padding = _rectify_slice(data_dims, low_dims,
-                                               high_dims, pad)
-
-    data_slice = tuple(slice(low, high) for low, high in data_slice)
-    if sum(map(sum, extra_padding)) == 0:
-        extra_padding = None
-    return data_slice, extra_padding
-
-
-def _rectify_slice(data_dims, low_dims, high_dims, pad=None):
-    """
-    Given image dimensions, bounding box dimensions, and a padding get the
-    corresponding slice from the image and any extra padding needed to achieve
-    the requested window size.
-
-    Args:
-        data_dims (tuple): n-dimension data sizes (e.g. 2d height, width)
-        low_dims (tuple): bounding box low values (e.g. 2d ymin, xmin)
-        high_dims (tuple): bounding box high values (e.g. 2d ymax, xmax)
-        pad (tuple): (List[int|Tuple]):
-            pad applied to (left and right) / (both) sides of each slice dim
-
-    Returns:
-        Tuple:
-            data_slice - low and high values of a fancy slice corresponding to
-                the image with shape `data_dims`. This slice may not correspond
-                to the full window size if the requested bounding box goes out
-                of bounds.
-            extra_padding - extra padding needed after slicing to achieve
-                the requested window size.
-
-    Example:
-        >>> # Case where 2D-bbox is inside the data dims on left edge
-        >>> # Comprehensive 1D-cases are in the unit-test file
-        >>> from ndsampler.coco_sampler import *
-        >>> data_dims  = [300, 300]
-        >>> low_dims   = [0, 0]
-        >>> high_dims  = [10, 10]
-        >>> pad        = [10, 5]
-        >>> a, b = _rectify_slice(data_dims, low_dims, high_dims, pad)
-        >>> print('data_slice = {!r}'.format(a))
-        >>> print('extra_padding = {!r}'.format(b))
-        data_slice = [(0, 20), (0, 15)]
-        extra_padding = [(10, 0), (5, 0)]
-    """
-    # Determine the real part of the image that can be sliced out
-    data_slice = []
-    extra_padding = []
-    if pad is None:
-        pad = 0
-    if isinstance(pad, int):
-        pad = [pad] * len(data_dims)
-    # Normalize to left/right pad value for each dim
-    pad_slice = [p if ub.iterable(p) else [p, p] for p in pad]
-
-    # Determine the real part of the image that can be sliced out
-    for D_img, d_low, d_high, d_pad in zip(data_dims, low_dims, high_dims, pad_slice):
-        if d_low > d_high:
-            raise ValueError('d_low > d_high: {} > {}'.format(d_low, d_high))
-        # Determine where the bounds would be if the image size was inf
-        raw_low = d_low - d_pad[0]
-        raw_high = d_high + d_pad[1]
-        # Clip the slice positions to the real part of the image
-        sl_low = min(D_img, max(0, raw_low))
-        sl_high = min(D_img, max(0, raw_high))
-        data_slice.append((sl_low, sl_high))
-
-        # Add extra padding when the window extends past the real part
-        low_diff = sl_low - raw_low
-        high_diff = raw_high - sl_high
-
-        # Hand the case where both raw coordinates are out of bounds
-        extra_low = max(0, low_diff + min(0, high_diff))
-        extra_high = max(0, high_diff + min(0, low_diff))
-        extra = (extra_low, extra_high)
-        extra_padding.append(extra)
-    return data_slice, extra_padding
-
-
-def _rectify_slice2(requested_slice, data_dims, pad=None):
-    low_dims = [s.start for s in requested_slice]
-    high_dims = [s.stop for s in requested_slice]
-    data_slice, extra_padding = _rectify_slice(data_dims, low_dims,
-                                               high_dims, pad)
-    data_slice = tuple(slice(low, high) for low, high in data_slice)
-    if sum(map(sum, extra_padding)) == 0:
-        extra_padding = None
-    return data_slice, extra_padding
+    slices = tuple([slice(s, t) for s, t in zip(low_dims, high_dims)])
+    return slices
 
 
 def _ensure_iterablen(scalar, n):

@@ -5,8 +5,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Version 0.6.1 - Unreleased
 
+### Added
+* The target dictionary in `CocoSampler.load_sample` can now accept a `vidid`
+  and will return a 3D sample.
+
+
+### Changed 
+* New version will kwarray >= 0.5.16
 
 ## Version 0.6.0 - Released 2021-04-22
+
+
+### Added
+* The target dictionary in `CocoSampler.load_sample` can now accept a `channels`
+  to grab specified channels in multispectral images.
+
 
 ### Removed
 
