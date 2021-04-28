@@ -414,11 +414,11 @@ class Frames(object):
             ArrayLike: an indexable array like representation, possibly
                 memmapped.
         """
-        imgdata = self._load_alignable(image_id, cache=cache)
+        alignable = self._load_alignable(image_id, cache=cache)
 
         if channels is ub.NoParam:
             # chan_name = channels
-            default_chan = imgdata.pathinfo['default']
+            default_chan = alignable.pathinfo['default']
             chan_name = default_chan
         else:
             if ub.iterable(channels):
@@ -426,7 +426,8 @@ class Frames(object):
             else:
                 chan_name = channels
 
-        data = imgdata._load_native_channel(chan_name, cache=cache)
+        data = alignable._load_virtual_channel(chan_name, cache=cache)
+        # data = alignable._load_native_channel(chan_name, cache=cache)
 
         if noreturn:
             data = None
@@ -678,86 +679,16 @@ class AlignableImageData(object):
                 _channel_memcache[cache_key] = data
         return data
 
-    @profile
-    def _subregion_crop(self, img_region_corners, tf_img_to_aux):
-        if tf_img_to_aux is None:
-            aux_region_corners = img_region_corners
-        else:
-            # Warp the base coordinates into the target aux space
-            aux_region_corners = img_region_corners.warp(tf_img_to_aux)
-
-        aux_region_box = aux_region_corners.bounding_box().to_ltrb()
-
-        # Quantize to a region that is possible to sample from
-        aux_crop_box = aux_region_box.quantize()
-        lt_x, lt_y, rb_x, rb_y = aux_crop_box.data[0, 0:4]
-
-        chan_region = (slice(lt_y, rb_y), slice(lt_x, rb_x))
-
-        # Because we sampled a large quantized region, we need to modify the
-        # aux-to-img transform to nudge it a bit to the left, undoing the
-        # quantization, which has a bit of extra padding on the left, before
-        # applying the final transform.
-        crop_offset = aux_crop_box.data[0, 0:2]
-        corner_offset = aux_region_box.data[0, 0:2]
-        offset_xy =  crop_offset - corner_offset
-
-        if np.any(offset_xy != 0):
-            subpixel_offset = np.array([
-                [1, 0, offset_xy[0]],
-                [0, 1, offset_xy[1]],
-                [0, 0, 1],
-            ], dtype=np.float32)
-            # Resample the smaller region to align it with the base region
-            # Note: The right most transform is applied first
-            if tf_img_to_aux is None:
-                tf_crop_to_img = subpixel_offset
-            else:
-                tf_crop_to_img = np.linalg.inv(tf_img_to_aux) @ subpixel_offset
-        else:
-            if tf_img_to_aux is None:
-                tf_crop_to_img = None
-            else:
-                tf_crop_to_img = np.linalg.inv(tf_img_to_aux)
-
-        return chan_region, tf_crop_to_img
-
-    @profile
-    def _native_subregion(self, chan_name, img_region_corners):
-        """
-        Crop out relevant region in a particular channel. Return it in its
-        native pixel coordinates with subpixel alignment information.
-        """
+    def _load_virtual_channel(self, chan_name, cache=True):
+        height = self.pathinfo.get('height', None)
+        width = self.pathinfo.get('width', None)
+        img_dsize = (width, height)
         aux = self.pathinfo['channels'][chan_name]
-
-        # The kwcoco transformation goes from the "main" image space to the
-        # "auxiliary" image space.
         warp_aux_to_img = aux.get('warp_aux_to_img', None)
-        if warp_aux_to_img is not None:
-            tf_aux_to_img = np.array(warp_aux_to_img['matrix'])
-            tf_img_to_aux = np.linalg.inv(tf_aux_to_img)
-        else:
-            tf_aux_to_img = None
-            tf_img_to_aux = None
-
-        chan = self._load_native_channel(chan_name)
-
-        if img_region_corners is not None:
-            chan_region, tf_crop_to_img = self._subregion_crop(
-                img_region_corners, tf_img_to_aux)
-        else:
-            tf_crop_to_img = tf_aux_to_img
-            chan_crop = chan
-
-        # chan = self._frames.load_image(image_id, channels=chan_name)
-        chan_crop = chan[chan_region]
-
-        subregion = {
-            'im': chan_crop,
-            'channels': chan_name,
-            'tf_crop_to_img': tf_crop_to_img,
-        }
-        return subregion
+        data = self._load_native_channel(chan_name, cache=cache)
+        tf_aux_to_img = np.array(warp_aux_to_img['matrix'])
+        chan = VirtualTransform(data, tf_aux_to_img, dsize=img_dsize)
+        return chan
 
     @profile
     def _load_prefused_region(self, img_region, channels=ub.NoParam):
@@ -765,7 +696,6 @@ class AlignableImageData(object):
         Loads crops from multiple channels in their native coordinate system
         packaged with transformation info on how to align them.
         """
-        import kwimage
         if channels is ub.NoParam:
             default_chan = self.pathinfo.get('default', None)
             if default_chan not in self.pathinfo['channels']:
@@ -774,6 +704,9 @@ class AlignableImageData(object):
             channels = [default_chan]
             # TODO: special key for all channels
             # channels = self.pathinfo['channels'].keys()
+
+        height = self.pathinfo.get('height', None)
+        width = self.pathinfo.get('width', None)
 
         if img_region is not None:
             height = self.pathinfo.get('height', None)
@@ -791,47 +724,21 @@ class AlignableImageData(object):
                 if flag:
                     img_region = None
 
-        if img_region is not None:
-            # Find relevant points in the base-coordinate system
-            # TODO: we are forcing width / height, which can be inefficient
-            try:
-                img_region_box = _slice_to_box(img_region, width=width, height=height)
-            except NeedsShape:
-                default_chan = self.pathinfo['default']
-                default_gpath = self.pathinfo['channels'][default_chan]['path']
-                height, width = kwimage.load_image_shape(default_gpath)[0:2]
-                img_region_box = _slice_to_box(img_region, width=width, height=height)
+        subregions = []
+        for chan_name in channels:
+            # Load full image in "virtual" image space
+            im = self._load_virtual_channel(chan_name)
+            if img_region is not None:
+                im = im.virtual_crop(img_region)
 
-            base_dsize = tuple(map(int, img_region_box.to_xywh().data[0, 2:4].tolist()))
-            img_region_corners = img_region_box.to_polygons()[0]
-
-            subregions = []
-            for chan_name in channels:
-                subregion = self._native_subregion(
-                    chan_name, img_region_corners)
-                subregions.append(subregion)
-        else:
-            height = self.pathinfo.get('height', None)
-            width = self.pathinfo.get('width', None)
-            base_dsize = (width, height)
-            subregions = []
-            for chan_name in channels:
-                aux = self.pathinfo['channels'][chan_name]
-                warp_aux_to_img = aux.get('warp_aux_to_img', None)
-                if warp_aux_to_img is None:
-                    tf_aux_to_img = None
-                else:
-                    tf_aux_to_img = np.array(warp_aux_to_img['matrix'])
-                subregion = {
-                    'im': self._load_native_channel(chan_name),
-                    'channels': chan_name,
-                    'tf_crop_to_img': tf_aux_to_img,
-                }
-                subregions.append(subregion)
+            subregion = {
+                'im': im,
+                'channels': channels,
+            }
+            subregions.append(subregion)
 
         prefused = {
             'subregions': subregions,
-            'base_dsize': base_dsize,
         }
         return prefused
 
@@ -841,21 +748,12 @@ class AlignableImageData(object):
         Loads crops from multiple channels in aligned base coordinates.
         """
         import kwarray
-        from kwimage import im_cv2
-        import cv2
         prefused = self._load_prefused_region(img_region, channels)
         subregions = prefused['subregions']
-        base_dsize = prefused['base_dsize']
-        flags = im_cv2._coerce_interpolation('linear')
         parts = []
         for subregion in subregions:
             chan_crop = subregion['im']
-            tf_crop_to_img = subregion['tf_crop_to_img']
-            if tf_crop_to_img is not None:
-                M = tf_crop_to_img[0:2]
-                aligned_chan = cv2.warpAffine(chan_crop, M, dsize=base_dsize, flags=flags)
-            else:
-                aligned_chan = chan_crop
+            aligned_chan = chan_crop.finalize()
             aligned_chan = kwarray.atleast_nd(aligned_chan, 3, front=False)
             parts.append(aligned_chan)
 
@@ -878,44 +776,3 @@ class AlignableImageData(object):
 
     def __getitem__(self, img_region):
         return self._load_fused_region(img_region)
-
-
-class NeedsShape(Exception):
-    pass
-
-
-def _slice_to_box(slices, width=None, height=None):
-    import kwimage
-    y_sl, x_sl = slices[0:2]
-    tl_x = x_sl.start
-    tl_y = y_sl.start
-    rb_x = x_sl.stop
-    rb_y = y_sl.stop
-
-    if tl_x is None or tl_x < 0:
-        tl_x = 0
-
-    if tl_y is None or tl_y < 0:
-        tl_y = 0
-
-    if rb_x is None:
-        rb_x = width
-        if width is None:
-            raise NeedsShape
-    elif rb_x < 0:
-        if width is None:
-            raise NeedsShape
-        rb_x = width + rb_x
-
-    if rb_y is None:
-        rb_y = height
-        if height is None:
-            raise NeedsShape
-    elif rb_y < 0:
-        if height is None:
-            raise NeedsShape
-        rb_y = height + rb_y
-
-    ltrb = np.array([[tl_x, tl_y, rb_x, rb_y]])
-    box = kwimage.Boxes(ltrb, 'ltrb')
-    return box

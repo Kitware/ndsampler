@@ -618,6 +618,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
         if with_annots or ub.iterable(with_annots):
             self._populate_overlap(sample, visible_thresh, with_annots)
+
+        sample['classes'] = self.classes
+        sample['kp_classes'] = self.kp_classes
         return sample
 
     @profile
