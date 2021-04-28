@@ -2,6 +2,8 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 from ndsampler import abstract_frames
 from ndsampler.utils import util_misc
+import numpy as np
+import warnings
 import ubelt as ub
 
 
@@ -70,6 +72,7 @@ class CocoFrames(abstract_frames.Frames, util_misc.HashIdentifiable):
                                                    width=width, height=height,
                                                    channels=channels)
 
+    @profile
     def _build_pathinfo(self, image_id):
         """
         Returns:
@@ -109,10 +112,26 @@ class CocoFrames(abstract_frames.Frames, util_misc.HashIdentifiable):
 
         for aux in img.get('auxiliary', []):
             fname = aux['file_name']
+            warp_aux_to_img = aux.get('warp_aux_to_img', None)
+            if warp_aux_to_img is None:
+                # backwards compat for deprecated base_to_aux
+                warp_img_to_aux = aux.get('base_to_aux', None)
+                if warp_img_to_aux is not None:
+                    warnings.warn(
+                        'base_to_aux is deprecated, invert and use '
+                        'warp_aux_to_img', DeprecationWarning)
+                else:
+                    warp_img_to_aux = aux.get('warp_img_to_aux', None)
+                if warp_img_to_aux is not None:
+                    mat_aux_to_img = np.linalg.inv(warp_img_to_aux['matrix'])
+                    warp_aux_to_img = {
+                        'type': 'affine',
+                        'matrix': mat_aux_to_img.tolist(),
+                    }
             chan = {
                 'file_name': fname,
                 'channels': aux['channels'],
-                'base_to_aux': aux.get('base_to_aux', None),
+                'warp_aux_to_img': warp_aux_to_img,
             }
             channels[aux['channels']] = chan
 
