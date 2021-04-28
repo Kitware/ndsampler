@@ -21,6 +21,7 @@ import warnings
 from os.path import exists, join
 from ndsampler.utils import util_gdal
 from ndsampler.utils import util_lru
+from ndsampler.virtual import VirtualTransform
 from ndsampler.frame_cache import (_ensure_image_cog, _ensure_image_npy)
 
 
@@ -679,9 +680,6 @@ class AlignableImageData(object):
 
     @profile
     def _subregion_crop(self, img_region_corners, tf_img_to_aux):
-        """
-        Used by _native_subregion
-        """
         if tf_img_to_aux is None:
             aux_region_corners = img_region_corners
         else:
@@ -795,11 +793,6 @@ class AlignableImageData(object):
 
         if img_region is not None:
             # Find relevant points in the base-coordinate system
-            # y_sl, x_sl = img_region[0:2]
-            # img_region_box = kwimage.Boxes([[
-            #     x_sl.start, y_sl.start, x_sl.stop, y_sl.stop
-            # ]], 'ltrb')
-
             # TODO: we are forcing width / height, which can be inefficient
             try:
                 img_region_box = _slice_to_box(img_region, width=width, height=height)
