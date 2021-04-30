@@ -21,7 +21,7 @@ import warnings
 from os.path import exists, join
 from ndsampler.utils import util_gdal
 from ndsampler.utils import util_lru
-from ndsampler.virtual import VirtualTransform
+from ndsampler.virtual import VirtualImage
 from ndsampler.frame_cache import (_ensure_image_cog, _ensure_image_npy)
 
 
@@ -687,7 +687,7 @@ class AlignableImageData(object):
         warp_aux_to_img = aux.get('warp_aux_to_img', None)
         data = self._load_native_channel(chan_name, cache=cache)
         tf_aux_to_img = np.array(warp_aux_to_img['matrix'])
-        chan = VirtualTransform(data, tf_aux_to_img, dsize=img_dsize)
+        chan = VirtualImage(data, tf_aux_to_img, dsize=img_dsize)
         return chan
 
     @profile

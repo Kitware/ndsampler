@@ -56,7 +56,7 @@ def test_channel_alignment():
         channels = ['B1', 'B11', 'B8']
         gids = dset.index.vidid_to_gids[vidid]
 
-        from ndsampler.virtual import VirtualTransform, VirtualChannels
+        from ndsampler.virtual import VirtualImage, VirtualChannels
         vid_frames = []
         for gid in gids:
             import numpy as np
@@ -66,7 +66,7 @@ def test_channel_alignment():
             chans = []
             for chan_name in channels:
                 img_chan = frames.load_image(gid, channels=chan_name)
-                # vid_chan = VirtualTransform(img_chan, tf_img_to_vid, vid_dsize)
+                # vid_chan = VirtualImage(img_chan, tf_img_to_vid, vid_dsize)
                 vid_chan = img_chan.virtual_warp(tf_img_to_vid, vid_dsize)
                 chans.append(vid_chan)
             frame = VirtualChannels(chans)
