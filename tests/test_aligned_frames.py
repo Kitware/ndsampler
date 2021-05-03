@@ -44,10 +44,8 @@ def test_channel_alignment():
         'should have a small translation factor because img_region aligns to '
         'subpixels in the auxiliary channel')
 
-
     if 0:
         # TEST video component
-
         vidid = 1
         video = dset.index.videos[vidid]
 
@@ -56,19 +54,23 @@ def test_channel_alignment():
         channels = ['B1', 'B11', 'B8']
         gids = dset.index.vidid_to_gids[vidid]
 
-        from ndsampler.virtual import VirtualImage, VirtualChannels
-        vid_frames = []
+        from ndsampler.virtual import (
+            VirtualImage, VirtualChannels, VirtualVideo)
+        vid_frames_ = []
         for gid in gids:
             import numpy as np
             img = dset.index.imgs[gid]
             tf_img_to_vid = np.array(img['warp_img_to_vid']['matrix'])
 
-            chans = []
+            img_chans_ = []
             for chan_name in channels:
                 img_chan = frames.load_image(gid, channels=chan_name)
-                # vid_chan = VirtualImage(img_chan, tf_img_to_vid, vid_dsize)
-                vid_chan = img_chan.virtual_warp(tf_img_to_vid, vid_dsize)
-                chans.append(vid_chan)
-            frame = VirtualChannels(chans)
+                img_chans_.append(img_chan)
+            img_frame = VirtualChannels(img_chans_)
+            vid_frame = VirtualImage(img_frame, tf_img_to_vid, dsize=vid_dsize)
+            vid_frames_.append(vid_frame)
 
-            vid_frames.append(frame)
+        vid = VirtualVideo(vid_frames_)
+        final = vid.finalize()
+        print('final.shape = {!r}'.format(final.shape))
+        print(ub.repr2(vid.nesting(), nl=-1))
