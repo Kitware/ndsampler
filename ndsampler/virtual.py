@@ -169,6 +169,14 @@ class VirtualVideo(ub.NiceRepr):
         final = np.concatenate(stack, axis=0)
         return final
 
+    def leafs(self, transform=None, dsize=None, interpolation='linear'):
+        """
+        Iterate through the leaf nodes
+        """
+        for frame_x, frame in enumerate(self.frames):
+            yield from frame.leafs(transform=transform, dsize=dsize,
+                                   interpolation=interpolation)
+
     def nesting(self):
         return {
             'shape': self.shape,
@@ -244,10 +252,29 @@ class VirtualChannels(ub.NiceRepr):
         self.dsize = dsize
         self.num_bands = sum(comp.num_bands for comp in self.components)
 
-    # @classmethod
-    # def random(cls):
-    #     # VirtualChannels
-    #     pass
+    @classmethod
+    def random(cls, num_parts=3, rng=None):
+        """
+        CommandLine:
+            xdoctest -m ndsampler.virtual VirtualImage.random
+
+        Example:
+            >>> self = VirtualChannels.random()
+            >>> print('self = {!r}'.format(self))
+            >>> print(self.nesting())
+        """
+        import kwarray
+        rng = kwarray.ensure_rng(rng)
+        self_w = rng.randint(8, 64)
+        self_h = rng.randint(8, 64)
+        components = []
+        for _ in range(num_parts):
+            subcomp = VirtualImage.random(rng=rng)
+            tf = Affine.random(rng=rng).matrix
+            comp = subcomp.virtual_warp(tf, dsize=(self_w, self_h))
+            components.append(comp)
+        self = VirtualChannels(components)
+        return self
 
     @property
     def shape(self):
@@ -326,21 +353,9 @@ class VirtualImage(ub.NiceRepr):
         sub_data (VirtualImage | ArrayLike):
             array-like image data at a naitive resolution
 
-        sub_bounds (Coords):
-            coordinates of bounds in "sub"-image-space.
-
-        sub_dsize (Tuple):
-            width and height of the subdata canvas
-
         transform (Transform):
             transforms data from native "sub"-image-space to
             "self"-image-space.
-
-        dsize (Tuple[int, int]):
-            width and height of the canvas in "self"-space.
-
-        bounds (Coords):
-            coordinates of bounds of the sub-data in "self"-image-space.
 
     Example:
         >>> from ndsampler.virtual import *  # NOQA
@@ -348,9 +363,9 @@ class VirtualImage(ub.NiceRepr):
         >>> tf1 = np.array([[2, 0, 0], [0, 2, 0], [0, 0, 1]])
         >>> tf2 = np.array([[3, 0, 0], [0, 3, 0], [0, 0, 1]])
         >>> tf3 = np.array([[4, 0, 0], [0, 4, 0], [0, 0, 1]])
-        >>> band1 = VirtualImage(np.random.rand(6, 6)).set_transform(tf1, dsize)
-        >>> band2 = VirtualImage(np.random.rand(4, 4)).set_transform(tf2, dsize)
-        >>> band3 = VirtualImage(np.random.rand(3, 3)).set_transform(tf3, dsize)
+        >>> band1 = VirtualImage(np.random.rand(6, 6), tf1, dsize)
+        >>> band2 = VirtualImage(np.random.rand(4, 4), tf2, dsize)
+        >>> band3 = VirtualImage(np.random.rand(3, 3), tf3, dsize)
         >>> #
         >>> # Execute a crop in a one-level transformed space
         >>> region_slices = (slice(5, 10), slice(0, 12))
@@ -382,9 +397,11 @@ class VirtualImage(ub.NiceRepr):
         import kwimage
         self.sub_data = sub_data
 
+        # TODO: We probably don't need to track sub-bounds, size, shape
+        # or any of that anywhere except at the root and leaf.
+
         if hasattr(self.sub_data, 'bounds'):
             self.sub_shape = self.sub_data.shape
-            self.sub_dsize = self.sub_data.sub_dsize
             self.sub_bounds = self.sub_data.bounds
         else:
             self.sub_shape = self.sub_data.shape
@@ -393,12 +410,11 @@ class VirtualImage(ub.NiceRepr):
                 np.array([[0,     0], [sub_w, 0],
                           [0, sub_h], [sub_w, sub_h]])
             )
-            self.sub_dsize = (sub_w, sub_h)
         self.dsize = None
         self.transform = None
         self.bounds = None
 
-        self.set_transform(transform, dsize)
+        self._set_transform(transform, dsize)
 
         if len(self.sub_data.shape) == 2:
             num_bands = 1
@@ -417,7 +433,7 @@ class VirtualImage(ub.NiceRepr):
         w, h = self.dsize
         return (h, w, self.num_bands)
 
-    def set_transform(self, transform, dsize=ub.NoParam):
+    def _set_transform(self, transform, dsize=ub.NoParam):
         if transform is None:
             transform = np.eye(3)
         if isinstance(transform, Affine):
@@ -475,7 +491,7 @@ class VirtualImage(ub.NiceRepr):
         return warped
 
     def __nice__(self):
-        return '{} -> {}'.format(self.sub_shape, self.shape)
+        return '{}'.format(self.shape)
 
     def leafs(self, transform=None, dsize=None, interpolation='linear'):
         """
@@ -484,16 +500,9 @@ class VirtualImage(ub.NiceRepr):
         Example:
             >>> from ndsampler.virtual import *  # NOQA
             >>> import kwimage
-            >>> tf = np.array([[0.9, 0, 3.9], [0, 1.1, -.5], [0, 0, 1]])
-            >>> raw = kwimage.grab_test_image(dsize=(54, 65))
-            >>> raw = kwimage.ensure_float01(raw)
-            >>> # Test nested finalize
-            >>> layer1 = raw
-            >>> num = 10
-            >>> for _ in range(num):
-            ...     layer1  = VirtualImage(layer1, tf, dsize='auto')
-            >>> self = layer1
+            >>> self = VirtualImage.random()
             >>> leafs = list(self.leafs())
+            >>> print('leafs = {!r}'.format(leafs))
         """
         if dsize is None:
             dsize = self.dsize
@@ -509,15 +518,36 @@ class VirtualImage(ub.NiceRepr):
         else:
             leaf = {
                 'transform': transform,
-                'sub_data': sub_data,
+                'sub_data_shape': sub_data.shape,
                 'dsize': dsize,
             }
             yield leaf
 
-    # @classmethod
-    # def random(cls, ):
-    #     # VirtualChannels
-    #     pass
+    @classmethod
+    def random(cls, nesting=(2, 5), rng=None):
+        """
+        CommandLine:
+            xdoctest -m ndsampler.virtual VirtualImage.random
+
+        Example:
+            >>> from ndsampler.virtual import *  # NOQA
+            >>> self = VirtualImage.random()
+            >>> print('self = {!r}'.format(self))
+            >>> print(self.nesting())
+        """
+        import kwarray
+        rng = kwarray.ensure_rng(rng)
+        num_chan = rng.randint(1, 5)
+        leaf_w = rng.randint(8, 64)
+        leaf_h = rng.randint(8, 64)
+        raw = rng.rand(leaf_h, leaf_w, num_chan)
+        layer = raw
+        num = rng.randint(*nesting)
+        for _ in range(num):
+            tf = Affine.random(rng=rng).matrix
+            layer  = VirtualImage(layer, tf, dsize='auto')
+        self = layer
+        return self
 
     def finalize(self, transform=None, dsize=None, interpolation='linear'):
         """
@@ -589,8 +619,108 @@ class VirtualImage(ub.NiceRepr):
         final = kwarray.atleast_nd(final, 3, front=False)
         return final
 
-    def __getitem__(self, region_slices):
-        return self.virtual_crop(region_slices)
+    # def __getitem__(self, region_slices):
+    #     return self.virtual_crop(region_slices)
+
+    def virtual_corners(self):
+        """
+
+        self = VirtualImage.random(rng=0)
+        print(self.nesting())
+        region_slices = (slice(40, 90), slice(20, 62))
+        region_box = _slice_to_box(region_slices, *self.dsize)
+        region_bounds = region_box.to_polygons()[0]
+
+        for leaf in self.leafs():
+            pass
+
+        tf_leaf_to_root = leaf['transform']
+        tf_root_to_leaf = np.linalg.inv(tf_leaf_to_root)
+
+        leaf_region_bounds = region_bounds.warp(tf_root_to_leaf)
+        leaf_region_box = leaf_region_bounds.bounding_box().to_ltrb()
+        leaf_crop_box = leaf_region_box.quantize()
+        lt_x, lt_y, rb_x, rb_y = leaf_crop_box.data[0, 0:4]
+
+        root_crop_corners = leaf_crop_box.to_polygons()[0].warp(tf_leaf_to_root)
+
+        leaf_crop_slices = (slice(lt_y, rb_y), slice(lt_x, rb_x))
+
+        crop_offset = leaf_crop_box.data[0, 0:2]
+        corner_offset = leaf_region_box.data[0, 0:2]
+        offset_xy = crop_offset - corner_offset
+
+        tf_root_to_leaf
+
+
+        # NOTE:
+
+        # Cropping applies a translation in whatever space we do it in
+        # We need to save the bounds of the crop.
+        # But now we need to adjust the transform so it points to the
+        # cropped-leaf-space not just the leaf-space, so we invert the implicit
+        # crop
+
+        tf_crop_to_leaf = Affine.affine(offset=crop_offset)
+
+        tf_newroot_to_root = Affine.affine(offset=region_box.data[0, 0:2])
+        tf_root_to_newroot = Affine.affine(offset=region_box.data[0, 0:2]).inv()
+
+        tf_crop_to_leaf = Affine.affine(offset=crop_offset)
+        tf_crop_to_newroot = tf_root_to_newroot @ tf_leaf_to_root @ tf_crop_to_leaf
+        tf_newroot_to_crop = tf_crop_to_newroot.inv()
+
+        tf_leaf_to_crop
+
+        tf_corner_offset = Affine.affine(offset=offset_xy)
+
+        subpixel_offset = Affine.affine(offset=offset_xy).matrix
+        tf_crop_to_leaf = subpixel_offset
+        tf_crop_to_root = tf_leaf_to_root @ tf_crop_to_leaf
+        tf_root_to_crop = np.linalg.inv(tf_crop_to_root)
+
+        if 1:
+            import kwplot
+            kwplot.autoplt()
+
+            import kwimage
+            lw, lh = leaf['sub_data_shape'][0:2]
+            leaf_box = kwimage.Boxes([[0, 0, lw, lh]], 'xywh')
+            root_box = kwimage.Boxes([[0, 0, self.dsize[0], self.dsize[1]]], 'xywh')
+
+            ax1 = kwplot.figure(fnum=1, pnum=(2, 2, 1), doclf=1).gca()
+            ax2 = kwplot.figure(fnum=1, pnum=(2, 2, 2)).gca()
+            ax3 = kwplot.figure(fnum=1, pnum=(2, 2, 3)).gca()
+            ax4 = kwplot.figure(fnum=1, pnum=(2, 2, 4)).gca()
+            root_box.draw(setlim=True, ax=ax1)
+            leaf_box.draw(setlim=True, ax=ax2)
+
+            region_bounds.draw(ax=ax1, color='green', alpha=.4)
+            leaf_region_bounds.draw(ax=ax2, color='green', alpha=.4)
+            leaf_crop_box.draw(ax=ax2, color='purple')
+            root_crop_corners.draw(ax=ax1, color='purple', alpha=.4)
+
+            new_w = region_box.to_xywh().data[0, 2]
+            new_h = region_box.to_xywh().data[0, 3]
+            ax3.set_xlim(0, new_w)
+            ax3.set_ylim(0, new_h)
+
+            crop_w = leaf_crop_box.to_xywh().data[0, 2]
+            crop_h = leaf_crop_box.to_xywh().data[0, 3]
+            ax4.set_xlim(0, crop_w)
+            ax4.set_ylim(0, crop_h)
+
+            pts3_ = kwimage.Points.random(3).scale((new_w, new_h))
+            pts3 = kwimage.Points(xy=np.vstack([[[0, 0], [5, 5], [0, 49], [40, 45]], pts3_.xy]))
+            pts4 = pts3.warp(tf_newroot_to_crop.matrix)
+            pts3.draw(ax=ax3)
+            pts4.draw(ax=ax4)
+
+
+
+        virtual_crop = band2.virtual_crop(region_slices)
+        final_crop = virtual_crop.finalize()
+        """
 
     def virtual_crop(self, region_slices):
         """
@@ -604,6 +734,14 @@ class VirtualImage(ub.NiceRepr):
             VirtualImage: lazy executed virtual transform
 
                The slice is currently not lazy
+
+        Example:
+            >>> from ndsampler.virtual import *  # NOQA
+            >>> dsize = (12, 12)
+            >>> tf2 = np.array([[3, 0, 0], [0, 3, 0], [0, 0, 1]])
+            >>> self = VirtualImage(np.random.rand(4, 4), tf2, dsize)
+            >>> region_slices = (slice(5, 10), slice(1, 12))
+            >>> virtual_crop = self.virtual_crop(region_slices)
         """
         # todo: this could be done as a virtual layer
         region_box = _slice_to_box(region_slices, *self.dsize)
@@ -627,26 +765,35 @@ class VirtualImage(ub.NiceRepr):
         # which has a bit of extra padding on the left, before applying the
         # final transform.
         crop_offset = sub_crop_box.data[0, 0:2]
-        corner_offset = sub_region_box.data[0, 0:2]
-        offset_xy = crop_offset - corner_offset
-        offset_x, offset_y = offset_xy
-        subpixel_offset = np.array([
-            [1., 0., offset_x],
-            [0., 1., offset_y],
-            [0., 0., 1.],
-        ], dtype=np.float32)
+
+        tf_self_to_new = Affine.affine(offset=region_box.data[0, 0:2]).inv().matrix
+        tf_sub_to_crop = Affine.affine(offset=crop_offset).inv().matrix
+
+        # corner_offset = sub_region_box.data[0, 0:2]
+        # offset_xy = crop_offset - corner_offset
+        # offset_x, offset_y = offset_xy
+        # subpixel_offset = np.array([
+        #     [1., 0., offset_x],
+        #     [0., 1., offset_y],
+        #     [0., 0., 1.],
+        # ], dtype=np.float32)
+
         # Resample the smaller region to align it with the self region
         # Note: The right most transform is applied first
-        tf_crop_to_self = tf_sub_to_self @ subpixel_offset
+        # tf_crop_to_self = tf_sub_to_self @ subpixel_offset
+
+        tf_crop_to_new = tf_self_to_new @ tf_sub_to_self @ tf_sub_to_crop
+        # np.linalg.inv(tf_crop_to_new)
+        # tf_new_to_crop
 
         if hasattr(self.sub_data, 'virtual_crop'):
             sub_crop = self.sub_data.virtual_crop(sub_crop_slices)
             new = sub_crop.virtual_warp(
-                tf_crop_to_self, dsize=region_dsize)
+                tf_crop_to_new, dsize=region_dsize)
         else:
             crop_sub_data = self.sub_data[sub_crop_slices]
             new = VirtualImage(
-                crop_sub_data, tf_crop_to_self, dsize=region_dsize)
+                crop_sub_data, tf_crop_to_new, dsize=region_dsize)
         return new
 
 
@@ -710,6 +857,43 @@ class Affine(ub.NiceRepr):
     @classmethod
     def scale(cls, scale):
         return cls.affine(scale=scale)
+
+    @classmethod
+    def random(cls, rng=None, **kw):
+        params = cls.random_params(rng=rng, **kw)
+        self = cls.affine(**params)
+        return self
+
+    @classmethod
+    def random_params(cls, rng=None, **kw):
+        from kwarray import distributions
+        import kwarray
+        TN = distributions.TruncNormal
+        rng = kwarray.ensure_rng(rng)
+
+        # scale_kw = dict(mean=1, std=1, low=0, high=2)
+        # offset_kw = dict(mean=0, std=1, low=-1, high=1)
+        # theta_kw = dict(mean=0, std=1, low=-6.28, high=6.28)
+        scale_kw = dict(mean=1, std=1, low=1, high=2)
+        offset_kw = dict(mean=0, std=1, low=-1, high=1)
+        theta_kw = dict(mean=0, std=1, low=-np.pi / 8, high=np.pi / 8)
+
+        scale_dist = TN(**scale_kw, rng=rng)
+        offset_dist = TN(**offset_kw, rng=rng)
+        theta_dist = TN(**theta_kw, rng=rng)
+
+        # offset_dist = distributions.Constant(0)
+        # theta_dist = distributions.Constant(0)
+
+        # todo better parametarization
+        params = dict(
+            scale=scale_dist.sample(2),
+            offset=offset_dist.sample(2),
+            theta=theta_dist.sample(),
+            shear=0,
+            about=0,
+        )
+        return params
 
     @classmethod
     def affine(cls, scale=None, offset=None, theta=None, shear=None,
