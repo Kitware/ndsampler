@@ -1,4 +1,6 @@
 """
+The classes in this file represent a tree of virtual operations.
+
 Proof of concept for virtual chainable transforms in Python.
 
 There are several optimizations that could be applied.
@@ -28,17 +30,179 @@ Conventions:
         time dimension to the shape. dsize is still width, height, but shape
         is now: (time, height, width, chan)
 
+Example:
+    >>> # Example demonstrating the modivating use case
+    >>> # We have multiple aligned frames for a video, but each of
+    >>> # those frames is in a different resolution. Furthermore,
+    >>> # each of the frames consists of channels in different resolutions.
+    >>> from ndsampler.virtual import *  # NOQA
+    >>> rng = kwarray.ensure_rng(None)
+    >>> def demo_chan(key, dsize, chan):
+    ...     return kwimage.grab_test_image(key, dsize=dsize)[..., chan]
+    >>> # Create raw channels in some "native" resolution for frame 1
+    >>> f1_chan1 = VirtualWarp(demo_chan('astro', (300, 300), 0))
+    >>> f1_chan2 = VirtualWarp(demo_chan('astro', (200, 200), 1))
+    >>> f1_chan3 = VirtualWarp(demo_chan('astro', (10, 10), 2))
+    >>> # Create raw channels in some "native" resolution for frame 2
+    >>> f2_chan1 = VirtualWarp(demo_chan('carl', (64, 64), 0))
+    >>> f2_chan2 = VirtualWarp(demo_chan('carl', (260, 260), 1))
+    >>> f2_chan3 = VirtualWarp(demo_chan('carl', (10, 10), 2))
+    >>> #
+    >>> # Virtual warp each channel into its "image" space
+    >>> # Note: the images never actually enter this space we transform through it
+    >>> f1_dsize = np.array((3, 3))
+    >>> f2_dsize = np.array((2, 2))
+    >>> f1_img = VirtualChannelConcat([
+    >>>     f1_chan1.virtual_warp(Affine.scale(f1_dsize / f1_chan1.dsize), dsize=f1_dsize),
+    >>>     f1_chan2.virtual_warp(Affine.scale(f1_dsize / f1_chan2.dsize), dsize=f1_dsize),
+    >>>     f1_chan3.virtual_warp(Affine.scale(f1_dsize / f1_chan3.dsize), dsize=f1_dsize),
+    >>> ])
+    >>> f2_img = VirtualChannelConcat([
+    >>>     f2_chan1.virtual_warp(Affine.scale(f2_dsize / f2_chan1.dsize), dsize=f2_dsize),
+    >>>     f2_chan2.virtual_warp(Affine.scale(f2_dsize / f2_chan2.dsize), dsize=f2_dsize),
+    >>>     f2_chan3.virtual_warp(Affine.scale(f2_dsize / f2_chan3.dsize), dsize=f2_dsize),
+    >>> ])
+    >>> # Combine frames into a video
+    >>> vid_dsize = np.array((280, 280))
+    >>> vid = VirtualFrameConcat([
+    >>>     f1_img.virtual_warp(Affine.scale(vid_dsize / f1_img.dsize), dsize=vid_dsize),
+    >>>     f2_img.virtual_warp(Affine.scale(vid_dsize / f2_img.dsize), dsize=vid_dsize),
+    >>> ])
+    >>> vid.nesting
+    >>> print('vid.nesting = {}'.format(ub.repr2(vid.nesting(), nl=-1)))
+    >>> final = vid.finalize(interpolation='nearest')
+    >>> # xdoctest: +REQUIRES(--show)
+    >>> import kwplot
+    >>> kwplot.autompl()
+    >>> kwplot.imshow(final[0], pnum=(1, 2, 1), fnum=1)
+    >>> kwplot.imshow(final[1], pnum=(1, 2, 2), fnum=1)
 """
 import ubelt as ub
 import numpy as np
+import kwimage
+import kwarray
+from ndsampler._transform import Affine
 
 
-class VirtualVideo(ub.NiceRepr):
+class VirtualOperation(ub.NiceRepr):
+    """
+    Base class for nodes in a tree of virtual operations
+    """
+    def __nice__(self):
+        return '{}'.format(self.shape)
+
+    def children(self):
+        """
+        Abstract method, which should generate all of the direct children of a
+        node in the operation tree.
+        """
+        raise NotImplementedError
+
+    def virtual_leafs(self, **kwargs):
+        """
+        Iterate through the leaf nodes, which are virtually transformed into
+        the root space.
+        """
+        for child in self.children:
+            yield from child.virtual_leafs(**kwargs)
+
+    def nesting(self):
+        # # for child in self.children()
+        # if isinstance(self.sub_data, np.ndarray):
+        #     return {
+        #         'shape': self.shape,
+        #         'sub_data': {'shape': self.sub_data.shape},
+        #     }
+        # else:
+        #     return {
+        #         'shape': self.shape,
+        #         'sub_data': self.sub_data.nesting(),
+        #     }
+        return {
+            'type': self.__class__.__name__,
+            'shape': self.shape,
+            'children': [child.nesting() for child in self.children()],
+        }
+
+
+class VirtualVideoOperation(VirtualOperation):
+    pass
+
+
+class VirtualImageOperation(VirtualOperation):
+    """
+    Operations that pertain only to images
+    """
+
+    def virtual_crop(self, region_slices):
+        """
+        Create a new virtual image that performs a crop in the transformed
+        "self" space.
+
+        Args:
+            region_slices (Tuple[slice, slice]): y-slice and x-slice.
+
+        Returns:
+            VirtualWarp: lazy executed virtual transform
+
+               The slice is currently not lazy
+
+        Example:
+            >>> from ndsampler.virtual import *  # NOQA
+            >>> dsize = (100, 100)
+            >>> tf2 = Affine.affine(scale=3).matrix
+            >>> self = VirtualWarp(np.random.rand(33, 33), tf2, dsize)
+            >>> region_slices = (slice(5, 10), slice(1, 12))
+            >>> virtual_crop = self.virtual_crop(region_slices)
+            >>> virtual_crop.finalize()
+        """
+        components = []
+        for virtual_leaf in self.virtual_leafs():
+            # Compute, sub_crop_slices, and new tf_newleaf_to_newroot
+            tf_leaf_to_root = virtual_leaf.transform
+
+            root_region_box = kwimage.Boxes.from_slice(
+                region_slices, shape=virtual_leaf.shape)
+            root_region_bounds = root_region_box.to_polygons()[0]
+
+            leaf_crop_slices, tf_newleaf_to_newroot = _compute_leaf_subcrop(
+                root_region_bounds, tf_leaf_to_root)
+
+            crop = VirtualCrop(virtual_leaf.sub_data, leaf_crop_slices)
+            warp = VirtualWarp(crop, tf_newleaf_to_newroot)
+            components.append(warp)
+
+        if len(components) == 1:
+            return components[0]
+        else:
+            return VirtualChannelConcat(components)
+
+    def virtual_warp(self, transform, dsize=None):
+        """
+        Virtually transform the underlying data.
+
+        Note:
+            this deviates from kwimage warp functions because instead of
+            "output_dims" (specified in c-style shape) we specify dsize (w, h).
+
+        Returns:
+            VirtualWarp : new virtual transform a chained transform
+        """
+        # if 0:
+        #     # note, we are modifying the transform, but we could
+        #     # just add a new virtual transform layer on top of this.
+        #     sub_data = self.sub_data
+        #     new_transform = transform @ self.transform
+        #     warped = VirtualWarp(sub_data, new_transform, dsize)
+        warped = VirtualWarp(self, transform=transform, dsize=dsize)
+        return warped
+
+
+class VirtualFrameConcat(VirtualVideoOperation):
     """
     Represents multiple frames in a video
 
     Notes:
-
 
         Video[0]:
             Frame[0]:
@@ -50,78 +214,22 @@ class VirtualVideo(ub.NiceRepr):
                 Chan[1]: (14) +--------------+
                 Chan[2]: ( 6) +------+
 
-
-        Crop:
-                         +              +
-
-            (32) +--------------------------------+
-
-
     TODO:
         - [ ] Support computing the transforms when none of the data is loaded
 
     Example:
-        >>> # Example demonstrating the modivating use case
-        >>> # We have multiple aligned frames for a video, but each of
-        >>> # those frames is in a different resolution. Furthermore,
-        >>> # each of the frames consists of channels in different resolutions.
-        >>> from ndsampler.virtual import *  # NOQA
-        >>> import kwimage
-        >>> import kwarray
-        >>> rng = kwarray.ensure_rng(None)
-        >>> def demo_chan(key, dsize, chan):
-        ...     return kwimage.grab_test_image(key, dsize=dsize)[..., chan]
-        >>> # Create raw channels in some "native" resolution for frame 1
-        >>> f1_chan1 = VirtualImage(demo_chan('astro', (300, 300), 0))
-        >>> f1_chan2 = VirtualImage(demo_chan('astro', (200, 200), 1))
-        >>> f1_chan3 = VirtualImage(demo_chan('astro', (10, 10), 2))
-        >>> # Create raw channels in some "native" resolution for frame 2
-        >>> f2_chan1 = VirtualImage(demo_chan('carl', (64, 64), 0))
-        >>> f2_chan2 = VirtualImage(demo_chan('carl', (260, 260), 1))
-        >>> f2_chan3 = VirtualImage(demo_chan('carl', (10, 10), 2))
-        >>> #
-        >>> # Virtual warp each channel into its "image" space
-        >>> # Note: the images never actually enter this space we transform through it
-        >>> f1_dsize = np.array((3, 3))
-        >>> f2_dsize = np.array((2, 2))
-        >>> f1_img = VirtualChannels([
-        >>>     f1_chan1.virtual_warp(Affine.scale(f1_dsize / f1_chan1.dsize), dsize=f1_dsize),
-        >>>     f1_chan2.virtual_warp(Affine.scale(f1_dsize / f1_chan2.dsize), dsize=f1_dsize),
-        >>>     f1_chan3.virtual_warp(Affine.scale(f1_dsize / f1_chan3.dsize), dsize=f1_dsize),
-        >>> ])
-        >>> f2_img = VirtualChannels([
-        >>>     f2_chan1.virtual_warp(Affine.scale(f2_dsize / f2_chan1.dsize), dsize=f2_dsize),
-        >>>     f2_chan2.virtual_warp(Affine.scale(f2_dsize / f2_chan2.dsize), dsize=f2_dsize),
-        >>>     f2_chan3.virtual_warp(Affine.scale(f2_dsize / f2_chan3.dsize), dsize=f2_dsize),
-        >>> ])
-        >>> # Combine frames into a video
-        >>> vid_dsize = np.array((280, 280))
-        >>> vid = VirtualVideo([
-        >>>     f1_img.virtual_warp(Affine.scale(vid_dsize / f1_img.dsize), dsize=vid_dsize),
-        >>>     f2_img.virtual_warp(Affine.scale(vid_dsize / f2_img.dsize), dsize=vid_dsize),
-        >>> ])
-        >>> final = vid.finalize(interpolation='nearest')
-        >>> # xdoctest: +REQUIRES(--show)
-        >>> import kwplot
-        >>> kwplot.autompl()
-        >>> kwplot.imshow(final[0], pnum=(1, 2, 1), fnum=1)
-        >>> kwplot.imshow(final[1], pnum=(1, 2, 2), fnum=1)
-
-    Example:
         >>> # Simpler case with fewer nesting levels
         >>> from ndsampler.virtual import *  # NOQA
-        >>> import kwimage
-        >>> import kwarray
         >>> rng = kwarray.ensure_rng(None)
         >>> def demo_img(key, dsize):
         ...     return kwimage.grab_test_image(key, dsize=dsize)
         >>> # Virtual warp each channel into its "image" space
         >>> # Note: the images never actually enter this space we transform through it
-        >>> f1_img = VirtualImage(demo_img('astro', (300, 300)))
-        >>> f2_img = VirtualImage(demo_img('carl', (256, 256)))
+        >>> f1_img = VirtualWarp(demo_img('astro', (300, 300)))
+        >>> f2_img = VirtualWarp(demo_img('carl', (256, 256)))
         >>> # Combine frames into a video
         >>> vid_dsize = np.array((100, 100))
-        >>> self = vid = VirtualVideo([
+        >>> self = vid = VirtualFrameConcat([
         >>>     f1_img.virtual_warp(Affine.scale(vid_dsize / f1_img.dsize), dsize=vid_dsize),
         >>>     f2_img.virtual_warp(Affine.scale(vid_dsize / f2_img.dsize), dsize=vid_dsize),
         >>> ])
@@ -150,13 +258,13 @@ class VirtualVideo(ub.NiceRepr):
         self.num_bands = nband_cands[0]
         self.num_frames = len(self.frames)
 
+    def children(self):
+        yield from self.frames
+
     @property
     def shape(self):
         w, h = self.dsize
         return (self.num_frames, h, w, self.num_bands)
-
-    def __nice__(self):
-        return '{}'.format(self.shape)
 
     def finalize(self, transform=None, dsize=None, interpolation='linear'):
         """
@@ -169,44 +277,35 @@ class VirtualVideo(ub.NiceRepr):
         final = np.concatenate(stack, axis=0)
         return final
 
-    def leafs(self, transform=None, dsize=None, interpolation='linear'):
-        """
-        Iterate through the leaf nodes
-        """
-        for frame_x, frame in enumerate(self.frames):
-            yield from frame.leafs(transform=transform, dsize=dsize,
-                                   interpolation=interpolation)
+    # def nesting(self):
+    #     return {
+    #         'shape': self.shape,
+    #         'frames': [frame.nesting() for frame in self.frames],
+    #     }
 
-    def nesting(self):
-        return {
-            'shape': self.shape,
-            'frames': [frame.nesting() for frame in self.frames],
-        }
+    # def virtual_crop(self, region_slices):
+    #     """
+    #     Create a new virtual image that performs a crop in the transformed
+    #     "self" space.
 
-    def virtual_crop(self, region_slices):
-        """
-        Create a new virtual image that performs a crop in the transformed
-        "self" space.
+    #     Args:
+    #         region_slices (Tuple[slice, slice]): y-slice and x-slice.
 
-        Args:
-            region_slices (Tuple[slice, slice]): y-slice and x-slice.
-
-        Returns:
-            VirtualImage: lazy executed virtual transform
-
-               The slice is currently not lazy
-        """
-        # todo: this could be done as a virtual layer
-        region_box = _slice_to_box(region_slices, *self.dsize)
-        raise NotImplementedError
+    #     Returns:
+    #         VirtualWarp: lazy executed virtual transform
+    #            The slice is currently not lazy
+    #     """
+    #     # todo: this could be done as a virtual layer
+    #     region_box = kwimage.Boxes.from_slice(region_slices, shape=self.shape)
+    #     raise NotImplementedError
 
 
-class VirtualChannels(ub.NiceRepr):
+class VirtualChannelConcat(VirtualImageOperation):
     """
     Represents multiple channels in an image that could be concatenated
 
     Attributes:
-        components (List[VirtualImage]): a list of stackable channels. Each
+        components (List[VirtualWarp]): a list of stackable channels. Each
             component may be comprised of multiple channels.
 
     TODO:
@@ -214,31 +313,31 @@ class VirtualChannels(ub.NiceRepr):
         - [ ] can all concats be delayed until the very end?
 
     Example:
-        >>> comp1 = VirtualImage(np.random.rand(11, 7))
-        >>> comp2 = VirtualImage(np.random.rand(11, 7, 3))
-        >>> comp3 = VirtualImage(
+        >>> comp1 = VirtualWarp(np.random.rand(11, 7))
+        >>> comp2 = VirtualWarp(np.random.rand(11, 7, 3))
+        >>> comp3 = VirtualWarp(
         >>>     np.random.rand(3, 5, 2),
         >>>     transform=Affine.affine(scale=(7/5, 11/3)).matrix,
         >>>     dsize=(7, 11)
         >>> )
         >>> components = [comp1, comp2, comp3]
-        >>> chans = VirtualChannels(components)
+        >>> chans = VirtualChannelConcat(components)
         >>> final = chans.finalize()
         >>> assert final.shape == chans.shape
         >>> assert final.shape == (11, 7, 6)
 
-        >>> # We should be able to nest VirtualChannels inside virutal images
-        >>> frame1 = VirtualImage(
+        >>> # We should be able to nest VirtualChannelConcat inside virutal images
+        >>> frame1 = VirtualWarp(
         >>>     chans, transform=Affine.affine(scale=2.2).matrix,
         >>>     dsize=(20, 26))
-        >>> frame2 = VirtualImage(
+        >>> frame2 = VirtualWarp(
         >>>     np.random.rand(3, 3, 6), dsize=(20, 26))
-        >>> frame3 = VirtualImage(
+        >>> frame3 = VirtualWarp(
         >>>     np.random.rand(3, 3, 6), dsize=(20, 26))
 
         >>> print(ub.repr2(frame1.nesting(), nl=-1, sort=False))
         >>> frame1.finalize()
-        >>> vid = VirtualVideo([frame1, frame2, frame3])
+        >>> vid = VirtualFrameConcat([frame1, frame2, frame3])
         >>> print(ub.repr2(vid.nesting(), nl=-1, sort=False))
     """
     def __init__(self, components, dsize=None):
@@ -252,37 +351,36 @@ class VirtualChannels(ub.NiceRepr):
         self.dsize = dsize
         self.num_bands = sum(comp.num_bands for comp in self.components)
 
+    def children(self):
+        yield from self.components
+
     @classmethod
     def random(cls, num_parts=3, rng=None):
         """
         CommandLine:
-            xdoctest -m ndsampler.virtual VirtualImage.random
+            xdoctest -m ndsampler.virtual VirtualWarp.random
 
         Example:
-            >>> self = VirtualChannels.random()
+            >>> self = VirtualChannelConcat.random()
             >>> print('self = {!r}'.format(self))
             >>> print(self.nesting())
         """
-        import kwarray
         rng = kwarray.ensure_rng(rng)
         self_w = rng.randint(8, 64)
         self_h = rng.randint(8, 64)
         components = []
         for _ in range(num_parts):
-            subcomp = VirtualImage.random(rng=rng)
+            subcomp = VirtualWarp.random(rng=rng)
             tf = Affine.random(rng=rng).matrix
             comp = subcomp.virtual_warp(tf, dsize=(self_w, self_h))
             components.append(comp)
-        self = VirtualChannels(components)
+        self = VirtualChannelConcat(components)
         return self
 
     @property
     def shape(self):
         w, h = self.dsize
         return (h, w, self.num_bands)
-
-    def __nice__(self):
-        return '{}'.format(self.shape)
 
     def finalize(self, transform=None, dsize=None, interpolation='linear'):
         """
@@ -294,50 +392,33 @@ class VirtualChannels(ub.NiceRepr):
         final = np.concatenate(stack, axis=2)
         return final
 
-    def leafs(self, transform=None, dsize=None, interpolation='linear'):
-        """
-        Iterate through the leaf nodes
+    # def virtual_leafs(self, **kwargs):
+    #     """
+    #     Iterate through the leaf nodes
 
-        Example:
-            >>> from ndsampler.virtual import *  # NOQA
-            >>> import kwimage
-            >>> tf = np.array([[0.9, 0, 3.9], [0, 1.1, -.5], [0, 0, 1]])
-            >>> raw = kwimage.grab_test_image(dsize=(54, 65))
-            >>> raw = kwimage.ensure_float01(raw)
-            >>> # Test nested finalize
-            >>> layer1 = raw
-            >>> num = 10
-            >>> for _ in range(num):
-            ...     layer1  = VirtualImage(layer1, tf, dsize='auto')
-            >>> self = layer1
-            >>> leafs = list(self.leafs())
-        """
-        for comp in self.components:
-            yield from comp.leafs(transform=transform, dsize=dsize,
-                                  interpolation=interpolation)
+    #     Flattens the operation tree into a separate node for each leaf.
 
-    def nesting(self):
-        return {
-            'shape': self.shape,
-            'components': [comp.nesting() for comp in self.components],
-        }
+    #     Concatenation information information is lost because operations
+    #     (but this is ok when operations are communative)
 
-    def virtual_warp(self, transform, dsize=None):
-        """
-        Virtually transform the underlying data.
+    #     Example:
+    #         >>> from ndsampler.virtual import *  # NOQA
+    #         >>> self  = VirtualChannelConcat.random()
+    #         >>> leafs = list(self.virtual_leafs())
+    #         >>> print('leafs = {!r}'.format(leafs))
+    #     """
+    #     for comp in self.components:
+    #         yield from comp.virtual_leafs(transform=transform, dsize=dsize,
+    #                                       interpolation=interpolation)
 
-        Note:
-            this deviates from kwimage warp functions because instead of
-            "output_dims" (specified in c-style shape) we specify dsize (w, h).
-
-        Returns:
-            VirtualImage : new virtual transform a chained transform
-        """
-        warped = VirtualImage(self, transform=transform, dsize=dsize)
-        return warped
+    # def nesting(self):
+    #     return {
+    #         'shape': self.shape,
+    #         'components': [comp.nesting() for comp in self.components],
+    #     }
 
 
-class VirtualImage(ub.NiceRepr):
+class VirtualWarp(VirtualImageOperation):
     """
     POC for chainable transforms
 
@@ -350,7 +431,7 @@ class VirtualImage(ub.NiceRepr):
 
     Attributes:
 
-        sub_data (VirtualImage | ArrayLike):
+        sub_data (VirtualWarp | ArrayLike):
             array-like image data at a naitive resolution
 
         transform (Transform):
@@ -363,9 +444,9 @@ class VirtualImage(ub.NiceRepr):
         >>> tf1 = np.array([[2, 0, 0], [0, 2, 0], [0, 0, 1]])
         >>> tf2 = np.array([[3, 0, 0], [0, 3, 0], [0, 0, 1]])
         >>> tf3 = np.array([[4, 0, 0], [0, 4, 0], [0, 0, 1]])
-        >>> band1 = VirtualImage(np.random.rand(6, 6), tf1, dsize)
-        >>> band2 = VirtualImage(np.random.rand(4, 4), tf2, dsize)
-        >>> band3 = VirtualImage(np.random.rand(3, 3), tf3, dsize)
+        >>> band1 = VirtualWarp(np.random.rand(6, 6), tf1, dsize)
+        >>> band2 = VirtualWarp(np.random.rand(4, 4), tf2, dsize)
+        >>> band3 = VirtualWarp(np.random.rand(3, 3), tf3, dsize)
         >>> #
         >>> # Execute a crop in a one-level transformed space
         >>> region_slices = (slice(5, 10), slice(0, 12))
@@ -374,12 +455,12 @@ class VirtualImage(ub.NiceRepr):
         >>> #
         >>> # Execute a crop in a nested transformed space
         >>> tf4 = np.array([[1.5, 0, 0], [0, 1.5, 0], [0, 0, 1]])
-        >>> chained = VirtualImage(band2, tf4, (18, 18))
+        >>> chained = VirtualWarp(band2, tf4, (18, 18))
         >>> virtual_crop = chained.virtual_crop(region_slices)
         >>> final_crop = virtual_crop.finalize()
         >>> #
         >>> tf4 = np.array([[.5, 0, 0], [0, .5, 0], [0, 0, 1]])
-        >>> chained = VirtualImage(band2, tf4, (6, 6))
+        >>> chained = VirtualWarp(band2, tf4, (6, 6))
         >>> virtual_crop = chained.virtual_crop(region_slices)
         >>> final_crop = virtual_crop.finalize()
         >>> #
@@ -390,11 +471,10 @@ class VirtualImage(ub.NiceRepr):
     Example:
         >>> dsize = (17, 12)
         >>> tf = np.array([[5.2, 0, 1.1], [0, 3.1, 2.2], [0, 0, 1]])
-        >>> self = VirtualImage(np.random.rand(3, 5, 13), tf, dsize=dsize)
+        >>> self = VirtualWarp(np.random.rand(3, 5, 13), tf, dsize=dsize)
         >>> self.finalize().shape
     """
     def __init__(self, sub_data, transform=None, dsize=None):
-        import kwimage
         self.sub_data = sub_data
 
         # TODO: We probably don't need to track sub-bounds, size, shape
@@ -414,26 +494,6 @@ class VirtualImage(ub.NiceRepr):
         self.transform = None
         self.bounds = None
 
-        self._set_transform(transform, dsize)
-
-        if len(self.sub_data.shape) == 2:
-            num_bands = 1
-        elif len(self.sub_data.shape) == 3:
-            num_bands = self.sub_data.shape[2]
-        else:
-            raise ValueError(
-                'Data may only have 2 space dimensions and 1 channel '
-                'dimension')
-        self.num_bands = num_bands
-
-    @property
-    def shape(self):
-        # trailing_shape = self.sub_data.shape[2:]
-        # trailing shape should only be allowed to have 0 or 1 dimension
-        w, h = self.dsize
-        return (h, w, self.num_bands)
-
-    def _set_transform(self, transform, dsize=ub.NoParam):
         if transform is None:
             transform = np.eye(3)
         if isinstance(transform, Affine):
@@ -458,13 +518,32 @@ class VirtualImage(ub.NiceRepr):
             if isinstance(dsize, np.ndarray):
                 dsize = tuple(map(int, dsize))
             self.dsize = dsize
-        return self
+
+        if len(self.sub_data.shape) == 2:
+            num_bands = 1
+        elif len(self.sub_data.shape) == 3:
+            num_bands = self.sub_data.shape[2]
+        else:
+            raise ValueError(
+                'Data may only have 2 space dimensions and 1 channel '
+                'dimension')
+        self.num_bands = num_bands
+
+    def children(self):
+        yield self.sub_data
+
+    @property
+    def shape(self):
+        # trailing_shape = self.sub_data.shape[2:]
+        # trailing shape should only be allowed to have 0 or 1 dimension
+        w, h = self.dsize
+        return (h, w, self.num_bands)
 
     def nesting(self):
         if isinstance(self.sub_data, np.ndarray):
             return {
                 'shape': self.shape,
-                'sub_data': {'shape': self.sub_data.shape},
+                'sub_data': {'shape': self.sub_data.shape, 'type': 'ndarray'},
             }
         else:
             return {
@@ -472,70 +551,46 @@ class VirtualImage(ub.NiceRepr):
                 'sub_data': self.sub_data.nesting(),
             }
 
-    def virtual_warp(self, transform, dsize=None):
+    def virtual_leafs(self, **kwargs):
         """
-        Virtually transform the underlying data.
-
-        Note:
-            this deviates from kwimage warp functions because instead of
-            "output_dims" (specified in c-style shape) we specify dsize (w, h).
-
-        Returns:
-            VirtualImage : new virtual transform a chained transform
-        """
-        # note, we are modifying the transform, but we could
-        # just add a new virtual transform layer on top of this.
-        sub_data = self.sub_data
-        new_transform = transform @ self.transform
-        warped = VirtualImage(sub_data, new_transform, dsize)
-        return warped
-
-    def __nice__(self):
-        return '{}'.format(self.shape)
-
-    def leafs(self, transform=None, dsize=None, interpolation='linear'):
-        """
-        Iterate through the leaf nodes
 
         Example:
             >>> from ndsampler.virtual import *  # NOQA
-            >>> import kwimage
-            >>> self = VirtualImage.random()
-            >>> leafs = list(self.leafs())
+            >>> self = VirtualWarp.random()
+            >>> leafs = list(self.virtual_leafs())
             >>> print('leafs = {!r}'.format(leafs))
         """
+        dsize = kwargs.get('dsize', None)
+        transform = kwargs.get('transform', None)
         if dsize is None:
             dsize = self.dsize
         if transform is None:
             transform = self.transform
         else:
-            transform = transform @ self.transform
+            transform = kwargs.get('transform', None) @ self.transform
+        kwargs['dsize'] = dsize
+        kwargs['transform'] = transform
         sub_data = self.sub_data
-        if hasattr(sub_data, 'leafs'):
+        if hasattr(sub_data, 'virtual_leafs'):
             # Branch finalize
-            yield from sub_data.leafs(
-                transform=transform, dsize=dsize, interpolation=interpolation)
+            yield from sub_data.virtual_leafs(
+                transform=transform, dsize=dsize)
         else:
-            leaf = {
-                'transform': transform,
-                'sub_data_shape': sub_data.shape,
-                'dsize': dsize,
-            }
+            leaf = VirtualWarp(sub_data, transform, dsize=dsize)
             yield leaf
 
     @classmethod
     def random(cls, nesting=(2, 5), rng=None):
         """
         CommandLine:
-            xdoctest -m ndsampler.virtual VirtualImage.random
+            xdoctest -m ndsampler.virtual VirtualWarp.random
 
         Example:
             >>> from ndsampler.virtual import *  # NOQA
-            >>> self = VirtualImage.random()
+            >>> self = VirtualWarp.random()
             >>> print('self = {!r}'.format(self))
             >>> print(self.nesting())
         """
-        import kwarray
         rng = kwarray.ensure_rng(rng)
         num_chan = rng.randint(1, 5)
         leaf_w = rng.randint(8, 64)
@@ -545,7 +600,7 @@ class VirtualImage(ub.NiceRepr):
         num = rng.randint(*nesting)
         for _ in range(num):
             tf = Affine.random(rng=rng).matrix
-            layer  = VirtualImage(layer, tf, dsize='auto')
+            layer  = VirtualWarp(layer, tf, dsize='auto')
         self = layer
         return self
 
@@ -561,7 +616,6 @@ class VirtualImage(ub.NiceRepr):
 
         Example:
             >>> from ndsampler.virtual import *  # NOQA
-            >>> import kwimage
             >>> tf = np.array([[0.9, 0, 3.9], [0, 1.1, -.5], [0, 0, 1]])
             >>> raw = kwimage.grab_test_image(dsize=(54, 65))
             >>> raw = kwimage.ensure_float01(raw)
@@ -569,10 +623,10 @@ class VirtualImage(ub.NiceRepr):
             >>> layer1 = raw
             >>> num = 10
             >>> for _ in range(num):
-            ...     layer1  = VirtualImage(layer1, tf, dsize='auto')
+            ...     layer1  = VirtualWarp(layer1, tf, dsize='auto')
             >>> final1 = layer1.finalize()
             >>> # Test non-nested finalize
-            >>> layer2 = VirtualImage(raw, np.eye(3))
+            >>> layer2 = VirtualWarp(raw, np.eye(3))
             >>> for _ in range(num):
             ...     layer2 = layer2.virtual_warp(tf, dsize='auto')
             >>> final2 = layer2.finalize()
@@ -594,7 +648,6 @@ class VirtualImage(ub.NiceRepr):
         # todo: needs to be extended for the case where the sub_data is a
         # nested chain of transforms.
         import cv2
-        import kwarray
         from kwimage import im_cv2
         if dsize is None:
             dsize = self.dsize
@@ -619,439 +672,191 @@ class VirtualImage(ub.NiceRepr):
         final = kwarray.atleast_nd(final, 3, front=False)
         return final
 
-    # def __getitem__(self, region_slices):
-    #     return self.virtual_crop(region_slices)
 
-    def virtual_corners(self):
-        """
-
-        self = VirtualImage.random(rng=0)
-        print(self.nesting())
-        region_slices = (slice(40, 90), slice(20, 62))
-        region_box = _slice_to_box(region_slices, *self.dsize)
-        region_bounds = region_box.to_polygons()[0]
-
-        for leaf in self.leafs():
-            pass
-
-        tf_leaf_to_root = leaf['transform']
-        tf_root_to_leaf = np.linalg.inv(tf_leaf_to_root)
-
-        leaf_region_bounds = region_bounds.warp(tf_root_to_leaf)
-        leaf_region_box = leaf_region_bounds.bounding_box().to_ltrb()
-        leaf_crop_box = leaf_region_box.quantize()
-        lt_x, lt_y, rb_x, rb_y = leaf_crop_box.data[0, 0:4]
-
-        root_crop_corners = leaf_crop_box.to_polygons()[0].warp(tf_leaf_to_root)
-
-        leaf_crop_slices = (slice(lt_y, rb_y), slice(lt_x, rb_x))
-
-        crop_offset = leaf_crop_box.data[0, 0:2]
-        corner_offset = leaf_region_box.data[0, 0:2]
-        offset_xy = crop_offset - corner_offset
-
-        tf_root_to_leaf
-
-
-        # NOTE:
-
-        # Cropping applies a translation in whatever space we do it in
-        # We need to save the bounds of the crop.
-        # But now we need to adjust the transform so it points to the
-        # cropped-leaf-space not just the leaf-space, so we invert the implicit
-        # crop
-
-        tf_crop_to_leaf = Affine.affine(offset=crop_offset)
-
-        tf_newroot_to_root = Affine.affine(offset=region_box.data[0, 0:2])
-        tf_root_to_newroot = Affine.affine(offset=region_box.data[0, 0:2]).inv()
-
-        tf_crop_to_leaf = Affine.affine(offset=crop_offset)
-        tf_crop_to_newroot = tf_root_to_newroot @ tf_leaf_to_root @ tf_crop_to_leaf
-        tf_newroot_to_crop = tf_crop_to_newroot.inv()
-
-        tf_leaf_to_crop
-
-        tf_corner_offset = Affine.affine(offset=offset_xy)
-
-        subpixel_offset = Affine.affine(offset=offset_xy).matrix
-        tf_crop_to_leaf = subpixel_offset
-        tf_crop_to_root = tf_leaf_to_root @ tf_crop_to_leaf
-        tf_root_to_crop = np.linalg.inv(tf_crop_to_root)
-
-        if 1:
-            import kwplot
-            kwplot.autoplt()
-
-            import kwimage
-            lw, lh = leaf['sub_data_shape'][0:2]
-            leaf_box = kwimage.Boxes([[0, 0, lw, lh]], 'xywh')
-            root_box = kwimage.Boxes([[0, 0, self.dsize[0], self.dsize[1]]], 'xywh')
-
-            ax1 = kwplot.figure(fnum=1, pnum=(2, 2, 1), doclf=1).gca()
-            ax2 = kwplot.figure(fnum=1, pnum=(2, 2, 2)).gca()
-            ax3 = kwplot.figure(fnum=1, pnum=(2, 2, 3)).gca()
-            ax4 = kwplot.figure(fnum=1, pnum=(2, 2, 4)).gca()
-            root_box.draw(setlim=True, ax=ax1)
-            leaf_box.draw(setlim=True, ax=ax2)
-
-            region_bounds.draw(ax=ax1, color='green', alpha=.4)
-            leaf_region_bounds.draw(ax=ax2, color='green', alpha=.4)
-            leaf_crop_box.draw(ax=ax2, color='purple')
-            root_crop_corners.draw(ax=ax1, color='purple', alpha=.4)
-
-            new_w = region_box.to_xywh().data[0, 2]
-            new_h = region_box.to_xywh().data[0, 3]
-            ax3.set_xlim(0, new_w)
-            ax3.set_ylim(0, new_h)
-
-            crop_w = leaf_crop_box.to_xywh().data[0, 2]
-            crop_h = leaf_crop_box.to_xywh().data[0, 3]
-            ax4.set_xlim(0, crop_w)
-            ax4.set_ylim(0, crop_h)
-
-            pts3_ = kwimage.Points.random(3).scale((new_w, new_h))
-            pts3 = kwimage.Points(xy=np.vstack([[[0, 0], [5, 5], [0, 49], [40, 45]], pts3_.xy]))
-            pts4 = pts3.warp(tf_newroot_to_crop.matrix)
-            pts3.draw(ax=ax3)
-            pts4.draw(ax=ax4)
-
-
-
-        virtual_crop = band2.virtual_crop(region_slices)
-        final_crop = virtual_crop.finalize()
-        """
-
-    def virtual_crop(self, region_slices):
-        """
-        Create a new virtual image that performs a crop in the transformed
-        "self" space.
-
-        Args:
-            region_slices (Tuple[slice, slice]): y-slice and x-slice.
-
-        Returns:
-            VirtualImage: lazy executed virtual transform
-
-               The slice is currently not lazy
-
-        Example:
-            >>> from ndsampler.virtual import *  # NOQA
-            >>> dsize = (12, 12)
-            >>> tf2 = np.array([[3, 0, 0], [0, 3, 0], [0, 0, 1]])
-            >>> self = VirtualImage(np.random.rand(4, 4), tf2, dsize)
-            >>> region_slices = (slice(5, 10), slice(1, 12))
-            >>> virtual_crop = self.virtual_crop(region_slices)
-        """
-        # todo: this could be done as a virtual layer
-        region_box = _slice_to_box(region_slices, *self.dsize)
-        region_dsize = tuple(map(int, region_box.to_xywh().data[0, 2:4].tolist()))
-        region_bounds = region_box.to_polygons()[0]
-
-        # Transform the region bounds into the sub-image space
-        tf_sub_to_self = self.transform
-        tf_self_to_sub = np.linalg.inv(tf_sub_to_self)
-        sub_region_bounds = region_bounds.warp(tf_self_to_sub)
-        sub_region_box = sub_region_bounds.bounding_box().to_ltrb()
-
-        # Quantize to a region that is possible to sample from
-        sub_crop_box = sub_region_box.quantize()
-        lt_x, lt_y, rb_x, rb_y = sub_crop_box.data[0, 0:4]
-
-        sub_crop_slices = (slice(lt_y, rb_y), slice(lt_x, rb_x))
-
-        # Because we sampled a large quantized region, we need to modify the
-        # transform to nudge it a bit to the left, undoing the quantization,
-        # which has a bit of extra padding on the left, before applying the
-        # final transform.
-        crop_offset = sub_crop_box.data[0, 0:2]
-
-        tf_self_to_new = Affine.affine(offset=region_box.data[0, 0:2]).inv().matrix
-        tf_sub_to_crop = Affine.affine(offset=crop_offset).inv().matrix
-
-        # corner_offset = sub_region_box.data[0, 0:2]
-        # offset_xy = crop_offset - corner_offset
-        # offset_x, offset_y = offset_xy
-        # subpixel_offset = np.array([
-        #     [1., 0., offset_x],
-        #     [0., 1., offset_y],
-        #     [0., 0., 1.],
-        # ], dtype=np.float32)
-
-        # Resample the smaller region to align it with the self region
-        # Note: The right most transform is applied first
-        # tf_crop_to_self = tf_sub_to_self @ subpixel_offset
-
-        tf_crop_to_new = tf_self_to_new @ tf_sub_to_self @ tf_sub_to_crop
-        # np.linalg.inv(tf_crop_to_new)
-        # tf_new_to_crop
-
-        if hasattr(self.sub_data, 'virtual_crop'):
-            sub_crop = self.sub_data.virtual_crop(sub_crop_slices)
-            new = sub_crop.virtual_warp(
-                tf_crop_to_new, dsize=region_dsize)
-        else:
-            crop_sub_data = self.sub_data[sub_crop_slices]
-            new = VirtualImage(
-                crop_sub_data, tf_crop_to_new, dsize=region_dsize)
-        return new
-
-
-class Affine(ub.NiceRepr):
+class VirtualCrop(VirtualImageOperation):
     """
-    Helper for making affine transform matrices.
+    Represent a delayed crop operation
+    """
+    def __init__(self, sub_data, sub_slices):
+        self.sub_data = sub_data
+        self.sub_slices = sub_slices
 
-    Notes:
-        Might make sense to move to kwimage
+        sl_x, sl_y = sub_slices[0:2]
+        width = sl_x.stop - sl_x.start
+        height = sl_y.stop - sl_y.start
+        num_bands = kwimage.num_channels(self.sub_data)
+        self.num_bands = num_bands
+        self.shape = (height, width, num_bands)
+
+    def children(self):
+        yield self.sub_data
+
+    def nesting(self):
+        if isinstance(self.sub_data, np.ndarray):
+            return {
+                'shape': self.shape,
+                'sub_slices': self.sub_slices,
+                'sub_data': {'shape': self.sub_data.shape},
+            }
+        else:
+            return {
+                'shape': self.shape,
+                'sub_slices': self.sub_slices,
+                'sub_data': self.sub_data.nesting(),
+            }
+
+    def finalize(self, **kwargs):
+        if hasattr(self.sub_data, 'finalize'):
+            return self.sub_data.finalize(**kwargs)[self.sub_slices]
+        else:
+            return self.sub_data[self.sub_slices]
+
+
+# def _compute_subcrop(root_region_slices, root_shape):
+#     tf_leaf_to_root = self.transform
+#     root_region_box = kwimage.Boxes.from_slice(root_region_slices, shape=self.shape)
+#     region_dsize = tuple(map(int, region_box.to_xywh().data[0, 2:4].tolist()))
+#     root_region_bounds = root_region_box.to_polygons()[0]
+
+
+def _compute_leaf_subcrop(root_region_bounds, tf_leaf_to_root):
+    r"""
+    Given a region in a "root" image and a trasnform between that "root" and
+    some "leaf" image, compute the appropriate quantized region in the "leaf"
+    image and the adjusted transformation between that root and leaf.
 
     Example:
-        >>> self = Affine(np.eye(3))
-        >>> m1 = np.eye(3) @ self
-        >>> m2 = self @ np.eye(3)
+        >>> region_slices = (slice(33, 100), slice(22, 62))
+        >>> region_shape = (100, 100, 1)
+        >>> root_region_box = kwimage.Boxes.from_slice(region_slices, shape=region_shape)
+        >>> root_region_bounds = root_region_box.to_polygons()[0]
+        >>> tf_leaf_to_root = Affine.affine(scale=7).matrix
+        >>> slices, tf_new = _compute_leaf_subcrop(root_region_bounds, tf_leaf_to_root)
+        >>> print('tf_new =\n{!r}'.format(tf_new))
+        >>> print('slices = {!r}'.format(slices))
+
     """
-    def __init__(self, matrix):
-        self.matrix = matrix
+    # Transform the region bounds into the sub-image space
+    tf_root_to_leaf = np.linalg.inv(tf_leaf_to_root)
+    leaf_region_bounds = root_region_bounds.warp(tf_root_to_leaf)
+    leaf_region_box = leaf_region_bounds.bounding_box().to_ltrb()
 
-    def __nice__(self):
-        return repr(self.matrix)
+    # Quantize to a region that is possible to sample from
+    leaf_crop_box = leaf_region_box.quantize()
 
-    def __array__(self):
-        """
-        Allow this object to be passed to np.asarray
+    # Because we sampled a large quantized region, we need to modify the
+    # transform to nudge it a bit to the left, undoing the quantization,
+    # which has a bit of extra padding on the left, before applying the
+    # final transform.
+    # subpixel_offset = leaf_region_box.data[0, 0:2]
+    crop_offset = leaf_crop_box.data[0, 0:2]
+    root_offset = root_region_bounds.exterior.data.min(axis=0)
 
-        References:
-            https://numpy.org/doc/stable/user/basics.dispatch.html
-        """
-        return self.matrix
+    tf_root_to_newroot = Affine.affine(offset=root_offset).inv().matrix
+    tf_newleaf_to_leaf = Affine.affine(offset=crop_offset).matrix
 
-    @classmethod
-    def coerce(cls, data=None, **kwargs):
-        if data is None:
-            data = kwargs
-        if isinstance(data, np.ndarray):
-            self = cls(matrix=data)
-        elif isinstance(data, dict):
-            keys = set(data.keys())
-            if 'matrix' in keys:
-                self = cls(matrix=np.array(data['matrix']))
-            elif len({'scale', 'shear', 'offset', 'theta'} & keys):
-                self = cls.affine(**data)
-            else:
-                raise NotImplementedError
-        else:
-            raise NotImplementedError
-        return self
+    # Resample the smaller region to align it with the root region
+    # Note: The right most transform is applied first
+    tf_newleaf_to_newroot = (
+        tf_root_to_newroot @
+        tf_leaf_to_root @
+        tf_newleaf_to_leaf
+    )
 
-    def decompose(self):
-        raise NotImplementedError
+    lt_x, lt_y, rb_x, rb_y = leaf_crop_box.data[0, 0:4]
+    leaf_crop_slices = (slice(lt_y, rb_y), slice(lt_x, rb_x))
 
-    def __matmul__(self, other):
-        if isinstance(other, np.ndarray):
-            return Affine(self.matrix @ other)
-        else:
-            return Affine(self.matrix @ other.matrix)
-
-    def inv(self):
-        return Affine(np.linalg.inv(self.matrix))
-
-    @classmethod
-    def scale(cls, scale):
-        return cls.affine(scale=scale)
-
-    @classmethod
-    def random(cls, rng=None, **kw):
-        params = cls.random_params(rng=rng, **kw)
-        self = cls.affine(**params)
-        return self
-
-    @classmethod
-    def random_params(cls, rng=None, **kw):
-        from kwarray import distributions
-        import kwarray
-        TN = distributions.TruncNormal
-        rng = kwarray.ensure_rng(rng)
-
-        # scale_kw = dict(mean=1, std=1, low=0, high=2)
-        # offset_kw = dict(mean=0, std=1, low=-1, high=1)
-        # theta_kw = dict(mean=0, std=1, low=-6.28, high=6.28)
-        scale_kw = dict(mean=1, std=1, low=1, high=2)
-        offset_kw = dict(mean=0, std=1, low=-1, high=1)
-        theta_kw = dict(mean=0, std=1, low=-np.pi / 8, high=np.pi / 8)
-
-        scale_dist = TN(**scale_kw, rng=rng)
-        offset_dist = TN(**offset_kw, rng=rng)
-        theta_dist = TN(**theta_kw, rng=rng)
-
-        # offset_dist = distributions.Constant(0)
-        # theta_dist = distributions.Constant(0)
-
-        # todo better parametarization
-        params = dict(
-            scale=scale_dist.sample(2),
-            offset=offset_dist.sample(2),
-            theta=theta_dist.sample(),
-            shear=0,
-            about=0,
-        )
-        return params
-
-    @classmethod
-    def affine(cls, scale=None, offset=None, theta=None, shear=None,
-               about=None):
-        """
-        Create an affine matrix from high-level parameters
-
-        Args:
-            scale (float | Tuple[float, float]): x, y scale factor
-            offset (float | Tuple[float, float]): x, y translation factor
-            theta (float): counter-clockwise rotation angle in radians
-            shear (float): counter-clockwise shear angle in radians
-            about (float | Tuple[float, float]): x, y location of the origin
-
-        Example:
-            >>> from ndsampler.virtual import *  # NOQA
-            >>> import kwarray
-            >>> rng = kwarray.ensure_rng(None)
-            >>> scale = rng.randn(2) * 10
-            >>> offset = rng.randn(2) * 10
-            >>> about = rng.randn(2) * 10
-            >>> theta = rng.randn() * 10
-            >>> shear = rng.randn() * 10
-            >>> # Create combined matrix from all params
-            >>> F = Affine.affine(
-            >>>     scale=scale, offset=offset, theta=theta, shear=shear,
-            >>>     about=about)
-            >>> # Test that combining components matches
-            >>> S = Affine.affine(scale=scale)
-            >>> T = Affine.affine(offset=offset)
-            >>> R = Affine.affine(theta=theta)
-            >>> H = Affine.affine(shear=shear)
-            >>> O = Affine.affine(offset=about)
-            >>> # combine (note shear must be on the RHS of rotation)
-            >>> alt  = O @ T @ R @ H @ S @ O.inv()
-            >>> print('F    = {}'.format(ub.repr2(F.matrix.tolist(), nl=1)))
-            >>> print('alt  = {}'.format(ub.repr2(alt.matrix.tolist(), nl=1)))
-            >>> assert np.all(np.isclose(alt.matrix, F.matrix))
-            >>> pt = np.vstack([np.random.rand(2, 1), [[1]]])
-            >>> warp_pt1 = (F.matrix @ pt)
-            >>> warp_pt2 = (alt.matrix @ pt)
-            >>> assert np.allclose(warp_pt2, warp_pt1)
-
-        Sympy:
-            >>> # xdoctest: +SKIP
-            >>> import sympy
-            >>> # Shows the symbolic construction of the code
-            >>> # https://groups.google.com/forum/#!topic/sympy/k1HnZK_bNNA
-            >>> from sympy.abc import theta
-            >>> x0, y0, sx, sy, theta, shear, tx, ty = sympy.symbols(
-            >>>     'x0, y0, sx, sy, theta, shear, tx, ty')
-            >>> # move the center to 0, 0
-            >>> tr1_ = np.array([[1, 0,  -x0],
-            >>>                  [0, 1,  -y0],
-            >>>                  [0, 0,    1]])
-            >>> # Define core components of the affine transform
-            >>> # scale
-            >>> S = np.array([
-            >>>     [sx,  0, 0],
-            >>>     [ 0, sy, 0],
-            >>>     [ 0,  0, 1],
-            >>> ])
-            >>> # shear
-            >>> H = np.array([
-            >>>     [1, -sympy.sin(shear), 0],
-            >>>     [0,  sympy.cos(shear), 0],
-            >>>     [0,                 0, 1],
-            >>> ])
-            >>> # rotation
-            >>> R = np.array([
-            >>>     [sympy.cos(theta), -sympy.sin(theta), 0],
-            >>>     [sympy.sin(theta),  sympy.cos(theta), 0],
-            >>>     [               0,                 0, 1],
-            >>> ])
-            >>> # translation
-            >>> T = np.array([
-            >>>     [ 1,  0, tx],
-            >>>     [ 0,  1, ty],
-            >>>     [ 0,  0,  1],
-            >>> ])
-            >>> # Contruct the affine 3x3 about the origin
-            >>> aff0 = np.array(sympy.simplify(T @ R @ H @ S))
-            >>> # move 0, 0 back to the specified origin
-            >>> tr2_ = np.array([[1, 0,  x0],
-            >>>                  [0, 1,  y0],
-            >>>                  [0, 0,   1]])
-            >>> # combine transformations
-            >>> aff = tr2_ @ aff0 @ tr1_
-            >>> print('aff = {}'.format(ub.repr2(aff.tolist(), nl=1)))
-        """
-        scale = 1 if scale is None else scale
-        offset = 0 if offset is None else offset
-        shear = 0 if shear is None else shear
-        theta = 0 if theta is None else theta
-        about = 0 if about is None else about
-        sx, sy = _ensure_iterablen(scale, 2)
-        tx, ty = _ensure_iterablen(offset, 2)
-        x0, y0 = _ensure_iterablen(about, 2)
-
-        # Make auxially varables to reduce the number of sin/cos calls
-        cos_theta = np.cos(theta)
-        sin_theta = np.sin(theta)
-        cos_shear_p_theta = np.cos(shear + theta)
-        sin_shear_p_theta = np.sin(shear + theta)
-        sx_cos_theta = sx * cos_theta
-        sx_sin_theta = sx * sin_theta
-        sy_sin_shear_p_theta = sy * sin_shear_p_theta
-        sy_cos_shear_p_theta = sy * cos_shear_p_theta
-        tx_ = tx + x0 - (x0 * sx_cos_theta) + (y0 * sy_sin_shear_p_theta)
-        ty_ = ty + y0 - (x0 * sx_sin_theta) - (y0 * sy_cos_shear_p_theta)
-        # Sympy simplified expression
-        mat = np.array([[sx_cos_theta, -sy_sin_shear_p_theta, tx_],
-                        [sx_sin_theta,  sy_cos_shear_p_theta, ty_],
-                        [           0,                     0,  1]])
-        self = cls(mat)
-        return self
+    return leaf_crop_slices, tf_newleaf_to_newroot
 
 
-def _slice_to_box(slices, width=None, height=None):
-    import kwimage
-    y_sl, x_sl = slices[0:2]
-    tl_x = x_sl.start
-    tl_y = y_sl.start
-    rb_x = x_sl.stop
-    rb_y = y_sl.stop
+def _devcheck_corner():
+    self = VirtualWarp.random(rng=0)
+    print(self.nesting())
+    region_slices = (slice(40, 90), slice(20, 62))
+    region_box = kwimage.Boxes.from_slice(region_slices, shape=self.shape)
+    region_bounds = region_box.to_polygons()[0]
 
-    if tl_x is None or tl_x < 0:
-        tl_x = 0
+    for leaf in self.virtual_leafs():
+        pass
 
-    if tl_y is None or tl_y < 0:
-        tl_y = 0
+    tf_leaf_to_root = leaf['transform']
+    tf_root_to_leaf = np.linalg.inv(tf_leaf_to_root)
 
-    if rb_x is None:
-        rb_x = width
-        if width is None:
-            raise Exception
-    elif rb_x < 0:
-        if width is None:
-            raise Exception
-        rb_x = width + rb_x
+    leaf_region_bounds = region_bounds.warp(tf_root_to_leaf)
+    leaf_region_box = leaf_region_bounds.bounding_box().to_ltrb()
+    leaf_crop_box = leaf_region_box.quantize()
+    lt_x, lt_y, rb_x, rb_y = leaf_crop_box.data[0, 0:4]
 
-    if rb_y is None:
-        rb_y = height
-        if height is None:
-            raise Exception
-    elif rb_y < 0:
-        if height is None:
-            raise Exception
-        rb_y = height + rb_y
+    root_crop_corners = leaf_crop_box.to_polygons()[0].warp(tf_leaf_to_root)
 
-    ltrb = np.array([[tl_x, tl_y, rb_x, rb_y]])
-    box = kwimage.Boxes(ltrb, 'ltrb')
-    return box
+    # leaf_crop_slices = (slice(lt_y, rb_y), slice(lt_x, rb_x))
 
+    crop_offset = leaf_crop_box.data[0, 0:2]
+    corner_offset = leaf_region_box.data[0, 0:2]
+    offset_xy = crop_offset - corner_offset
 
-def _ensure_iterablen(scalar, n):
-    try:
-        iter(scalar)
-    except TypeError:
-        return [scalar] * n
-    return scalar
+    tf_root_to_leaf
+
+    # NOTE:
+
+    # Cropping applies a translation in whatever space we do it in
+    # We need to save the bounds of the crop.
+    # But now we need to adjust the transform so it points to the
+    # cropped-leaf-space not just the leaf-space, so we invert the implicit
+    # crop
+
+    tf_crop_to_leaf = Affine.affine(offset=crop_offset)
+
+    # tf_newroot_to_root = Affine.affine(offset=region_box.data[0, 0:2])
+    tf_root_to_newroot = Affine.affine(offset=region_box.data[0, 0:2]).inv()
+
+    tf_crop_to_leaf = Affine.affine(offset=crop_offset)
+    tf_crop_to_newroot = tf_root_to_newroot @ tf_leaf_to_root @ tf_crop_to_leaf
+    tf_newroot_to_crop = tf_crop_to_newroot.inv()
+
+    # tf_leaf_to_crop
+    # tf_corner_offset = Affine.affine(offset=offset_xy)
+
+    subpixel_offset = Affine.affine(offset=offset_xy).matrix
+    tf_crop_to_leaf = subpixel_offset
+    # tf_crop_to_root = tf_leaf_to_root @ tf_crop_to_leaf
+    # tf_root_to_crop = np.linalg.inv(tf_crop_to_root)
+
+    if 1:
+        import kwplot
+        kwplot.autoplt()
+
+        lw, lh = leaf['sub_data_shape'][0:2]
+        leaf_box = kwimage.Boxes([[0, 0, lw, lh]], 'xywh')
+        root_box = kwimage.Boxes([[0, 0, self.dsize[0], self.dsize[1]]], 'xywh')
+
+        ax1 = kwplot.figure(fnum=1, pnum=(2, 2, 1), doclf=1).gca()
+        ax2 = kwplot.figure(fnum=1, pnum=(2, 2, 2)).gca()
+        ax3 = kwplot.figure(fnum=1, pnum=(2, 2, 3)).gca()
+        ax4 = kwplot.figure(fnum=1, pnum=(2, 2, 4)).gca()
+        root_box.draw(setlim=True, ax=ax1)
+        leaf_box.draw(setlim=True, ax=ax2)
+
+        region_bounds.draw(ax=ax1, color='green', alpha=.4)
+        leaf_region_bounds.draw(ax=ax2, color='green', alpha=.4)
+        leaf_crop_box.draw(ax=ax2, color='purple')
+        root_crop_corners.draw(ax=ax1, color='purple', alpha=.4)
+
+        new_w = region_box.to_xywh().data[0, 2]
+        new_h = region_box.to_xywh().data[0, 3]
+        ax3.set_xlim(0, new_w)
+        ax3.set_ylim(0, new_h)
+
+        crop_w = leaf_crop_box.to_xywh().data[0, 2]
+        crop_h = leaf_crop_box.to_xywh().data[0, 3]
+        ax4.set_xlim(0, crop_w)
+        ax4.set_ylim(0, crop_h)
+
+        pts3_ = kwimage.Points.random(3).scale((new_w, new_h))
+        pts3 = kwimage.Points(xy=np.vstack([[[0, 0], [5, 5], [0, 49], [40, 45]], pts3_.xy]))
+        pts4 = pts3.warp(tf_newroot_to_crop.matrix)
+        pts3.draw(ax=ax3)
+        pts4.draw(ax=ax4)
+
+    # virtual_crop = band2.virtual_crop(region_slices)
+    # final_crop = virtual_crop.finalize()
