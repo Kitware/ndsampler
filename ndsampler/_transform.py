@@ -167,7 +167,6 @@ class Affine(Projective):
             about (float | Tuple[float, float]): x, y location of the origin
 
         Example:
-            >>> from ndsampler.virtual import *  # NOQA
             >>> rng = kwarray.ensure_rng(None)
             >>> scale = rng.randn(2) * 10
             >>> offset = rng.randn(2) * 10

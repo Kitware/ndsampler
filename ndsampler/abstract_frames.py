@@ -21,7 +21,7 @@ import warnings
 from os.path import exists, join
 from ndsampler.utils import util_gdal
 from ndsampler.utils import util_lru
-from ndsampler.virtual import VirtualWarp
+from ndsampler.delayed import DelayedWarp
 from ndsampler.frame_cache import (_ensure_image_cog, _ensure_image_npy)
 
 
@@ -426,7 +426,7 @@ class Frames(object):
             else:
                 chan_name = channels
 
-        data = alignable._load_virtual_channel(chan_name, cache=cache)
+        data = alignable._load_delayed_channel(chan_name, cache=cache)
         # data = alignable._load_native_channel(chan_name, cache=cache)
 
         if noreturn:
@@ -679,7 +679,7 @@ class AlignableImageData(object):
                 _channel_memcache[cache_key] = data
         return data
 
-    def _load_virtual_channel(self, chan_name, cache=True):
+    def _load_delayed_channel(self, chan_name, cache=True):
         height = self.pathinfo.get('height', None)
         width = self.pathinfo.get('width', None)
         img_dsize = (width, height)
@@ -687,7 +687,7 @@ class AlignableImageData(object):
         warp_aux_to_img = aux.get('warp_aux_to_img', None)
         data = self._load_native_channel(chan_name, cache=cache)
         tf_aux_to_img = np.array(warp_aux_to_img['matrix'])
-        chan = VirtualWarp(data, tf_aux_to_img, dsize=img_dsize)
+        chan = DelayedWarp(data, tf_aux_to_img, dsize=img_dsize)
         return chan
 
     @profile
@@ -727,9 +727,9 @@ class AlignableImageData(object):
         subregions = []
         for chan_name in channels:
             # Load full image in "virtual" image space
-            im = self._load_virtual_channel(chan_name)
+            im = self._load_delayed_channel(chan_name)
             if img_region is not None:
-                im = im.virtual_crop(img_region)
+                im = im.delayed_crop(img_region)
 
             subregion = {
                 'im': im,

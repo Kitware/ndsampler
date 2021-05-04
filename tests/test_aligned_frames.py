@@ -54,8 +54,8 @@ def test_channel_alignment():
         channels = ['B1', 'B11', 'B8']
         gids = dset.index.vidid_to_gids[vidid]
 
-        from ndsampler.virtual import (
-            VirtualWarp, VirtualChannelConcat, VirtualFrameConcat)
+        from ndsampler.delayed import (
+            DelayedWarp, DelayedChannelConcat, DelayedFrameConcat)
         vid_frames_ = []
         for gid in gids:
             import numpy as np
@@ -66,19 +66,19 @@ def test_channel_alignment():
             for chan_name in channels:
                 img_chan = frames.load_image(gid, channels=chan_name)
                 img_chans_.append(img_chan)
-            img_frame = VirtualChannelConcat(img_chans_)
-            vid_frame = VirtualWarp(img_frame, tf_img_to_vid, dsize=vid_dsize)
+            img_frame = DelayedChannelConcat(img_chans_)
+            vid_frame = DelayedWarp(img_frame, tf_img_to_vid, dsize=vid_dsize)
             vid_frames_.append(vid_frame)
 
         space_region = (slice(10, 40), slice(10, 20))
-        for f in vid_frames_:
-            # f.virtual_crop(space_region)
-            for leaf in vid.leafs():
-                pass
-            print(list(vid.leafs()))
-            pass
+        # for f in vid_frames_:
+        #     # f.virtual_crop(space_region)
+        #     for leaf in vid.leafs():
+        #         pass
+        #     print(list(vid.leafs()))
+        #     pass
 
-        vid = VirtualFrameConcat(vid_frames_)
+        vid = DelayedFrameConcat(vid_frames_)
         final = vid.finalize()
         print('final.shape = {!r}'.format(final.shape))
         print(ub.repr2(vid.nesting(), nl=-1))

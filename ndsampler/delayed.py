@@ -1,7 +1,7 @@
 """
-The classes in this file represent a tree of virtual operations.
+The classes in this file represent a tree of delayed operations.
 
-Proof of concept for virtual chainable transforms in Python.
+Proof of concept for delayed chainable transforms in Python.
 
 There are several optimizations that could be applied.
 
@@ -35,38 +35,38 @@ Example:
     >>> # We have multiple aligned frames for a video, but each of
     >>> # those frames is in a different resolution. Furthermore,
     >>> # each of the frames consists of channels in different resolutions.
-    >>> from ndsampler.virtual import *  # NOQA
+    >>> from ndsampler.delayed import *  # NOQA
     >>> rng = kwarray.ensure_rng(None)
     >>> def demo_chan(key, dsize, chan):
     ...     return kwimage.grab_test_image(key, dsize=dsize)[..., chan]
     >>> # Create raw channels in some "native" resolution for frame 1
-    >>> f1_chan1 = VirtualWarp(demo_chan('astro', (300, 300), 0))
-    >>> f1_chan2 = VirtualWarp(demo_chan('astro', (200, 200), 1))
-    >>> f1_chan3 = VirtualWarp(demo_chan('astro', (10, 10), 2))
+    >>> f1_chan1 = DelayedWarp(demo_chan('astro', (300, 300), 0))
+    >>> f1_chan2 = DelayedWarp(demo_chan('astro', (200, 200), 1))
+    >>> f1_chan3 = DelayedWarp(demo_chan('astro', (10, 10), 2))
     >>> # Create raw channels in some "native" resolution for frame 2
-    >>> f2_chan1 = VirtualWarp(demo_chan('carl', (64, 64), 0))
-    >>> f2_chan2 = VirtualWarp(demo_chan('carl', (260, 260), 1))
-    >>> f2_chan3 = VirtualWarp(demo_chan('carl', (10, 10), 2))
+    >>> f2_chan1 = DelayedWarp(demo_chan('carl', (64, 64), 0))
+    >>> f2_chan2 = DelayedWarp(demo_chan('carl', (260, 260), 1))
+    >>> f2_chan3 = DelayedWarp(demo_chan('carl', (10, 10), 2))
     >>> #
-    >>> # Virtual warp each channel into its "image" space
+    >>> # Delayed warp each channel into its "image" space
     >>> # Note: the images never actually enter this space we transform through it
     >>> f1_dsize = np.array((3, 3))
     >>> f2_dsize = np.array((2, 2))
-    >>> f1_img = VirtualChannelConcat([
-    >>>     f1_chan1.virtual_warp(Affine.scale(f1_dsize / f1_chan1.dsize), dsize=f1_dsize),
-    >>>     f1_chan2.virtual_warp(Affine.scale(f1_dsize / f1_chan2.dsize), dsize=f1_dsize),
-    >>>     f1_chan3.virtual_warp(Affine.scale(f1_dsize / f1_chan3.dsize), dsize=f1_dsize),
+    >>> f1_img = DelayedChannelConcat([
+    >>>     f1_chan1.delayed_warp(Affine.scale(f1_dsize / f1_chan1.dsize), dsize=f1_dsize),
+    >>>     f1_chan2.delayed_warp(Affine.scale(f1_dsize / f1_chan2.dsize), dsize=f1_dsize),
+    >>>     f1_chan3.delayed_warp(Affine.scale(f1_dsize / f1_chan3.dsize), dsize=f1_dsize),
     >>> ])
-    >>> f2_img = VirtualChannelConcat([
-    >>>     f2_chan1.virtual_warp(Affine.scale(f2_dsize / f2_chan1.dsize), dsize=f2_dsize),
-    >>>     f2_chan2.virtual_warp(Affine.scale(f2_dsize / f2_chan2.dsize), dsize=f2_dsize),
-    >>>     f2_chan3.virtual_warp(Affine.scale(f2_dsize / f2_chan3.dsize), dsize=f2_dsize),
+    >>> f2_img = DelayedChannelConcat([
+    >>>     f2_chan1.delayed_warp(Affine.scale(f2_dsize / f2_chan1.dsize), dsize=f2_dsize),
+    >>>     f2_chan2.delayed_warp(Affine.scale(f2_dsize / f2_chan2.dsize), dsize=f2_dsize),
+    >>>     f2_chan3.delayed_warp(Affine.scale(f2_dsize / f2_chan3.dsize), dsize=f2_dsize),
     >>> ])
     >>> # Combine frames into a video
     >>> vid_dsize = np.array((280, 280))
-    >>> vid = VirtualFrameConcat([
-    >>>     f1_img.virtual_warp(Affine.scale(vid_dsize / f1_img.dsize), dsize=vid_dsize),
-    >>>     f2_img.virtual_warp(Affine.scale(vid_dsize / f2_img.dsize), dsize=vid_dsize),
+    >>> vid = DelayedFrameConcat([
+    >>>     f1_img.delayed_warp(Affine.scale(vid_dsize / f1_img.dsize), dsize=vid_dsize),
+    >>>     f2_img.delayed_warp(Affine.scale(vid_dsize / f2_img.dsize), dsize=vid_dsize),
     >>> ])
     >>> vid.nesting
     >>> print('vid.nesting = {}'.format(ub.repr2(vid.nesting(), nl=-1)))
@@ -84,9 +84,9 @@ import kwarray
 from ndsampler._transform import Affine
 
 
-class VirtualOperation(ub.NiceRepr):
+class DelayedOperation(ub.NiceRepr):
     """
-    Base class for nodes in a tree of virtual operations
+    Base class for nodes in a tree of delayed operations
     """
     def __nice__(self):
         return '{}'.format(self.shape)
@@ -98,107 +98,192 @@ class VirtualOperation(ub.NiceRepr):
         """
         raise NotImplementedError
 
-    def virtual_leafs(self, **kwargs):
+    def delayed_leafs(self, **kwargs):
         """
         Iterate through the leaf nodes, which are virtually transformed into
         the root space.
         """
         for child in self.children:
-            yield from child.virtual_leafs(**kwargs)
+            yield from child.delayed_leafs(**kwargs)
 
     def nesting(self):
-        # # for child in self.children()
-        # if isinstance(self.sub_data, np.ndarray):
-        #     return {
-        #         'shape': self.shape,
-        #         'sub_data': {'shape': self.sub_data.shape},
-        #     }
-        # else:
-        #     return {
-        #         'shape': self.shape,
-        #         'sub_data': self.sub_data.nesting(),
-        #     }
-        return {
+        def _child_nesting(child):
+            if hasattr(child, 'nesting'):
+                return child.nesting()
+            elif isinstance(child, np.ndarray):
+                return {
+                    'type': 'ndarray',
+                    'shape': self.sub_data.shape,
+                }
+        children = [_child_nesting(child) for child in self.children()]
+        item = {
             'type': self.__class__.__name__,
             'shape': self.shape,
-            'children': [child.nesting() for child in self.children()],
         }
+        if children:
+            item['children'] = children
+        return item
 
 
-class VirtualVideoOperation(VirtualOperation):
+class DelayedVideoOperation(DelayedOperation):
     pass
 
 
-class VirtualImageOperation(VirtualOperation):
+class DelayedImageOperation(DelayedOperation):
     """
     Operations that pertain only to images
     """
 
-    def virtual_crop(self, region_slices):
+    def delayed_crop(self, region_slices):
         """
-        Create a new virtual image that performs a crop in the transformed
+        Create a new delayed image that performs a crop in the transformed
         "self" space.
 
         Args:
             region_slices (Tuple[slice, slice]): y-slice and x-slice.
 
         Returns:
-            VirtualWarp: lazy executed virtual transform
+            DelayedWarp: lazy executed delayed transform
 
                The slice is currently not lazy
 
         Example:
-            >>> from ndsampler.virtual import *  # NOQA
+            >>> from ndsampler.delayed import *  # NOQA
             >>> dsize = (100, 100)
             >>> tf2 = Affine.affine(scale=3).matrix
-            >>> self = VirtualWarp(np.random.rand(33, 33), tf2, dsize)
+            >>> self = DelayedWarp(np.random.rand(33, 33), tf2, dsize)
             >>> region_slices = (slice(5, 10), slice(1, 12))
-            >>> virtual_crop = self.virtual_crop(region_slices)
-            >>> virtual_crop.finalize()
+            >>> delayed_crop = self.delayed_crop(region_slices)
+            >>> delayed_crop.finalize()
         """
         components = []
-        for virtual_leaf in self.virtual_leafs():
+        for delayed_leaf in self.delayed_leafs():
             # Compute, sub_crop_slices, and new tf_newleaf_to_newroot
-            tf_leaf_to_root = virtual_leaf.transform
+            tf_leaf_to_root = delayed_leaf.transform
 
             root_region_box = kwimage.Boxes.from_slice(
-                region_slices, shape=virtual_leaf.shape)
+                region_slices, shape=delayed_leaf.shape)
             root_region_bounds = root_region_box.to_polygons()[0]
 
             leaf_crop_slices, tf_newleaf_to_newroot = _compute_leaf_subcrop(
                 root_region_bounds, tf_leaf_to_root)
 
-            crop = VirtualCrop(virtual_leaf.sub_data, leaf_crop_slices)
-            warp = VirtualWarp(crop, tf_newleaf_to_newroot)
+            crop = DelayedCrop(delayed_leaf.sub_data, leaf_crop_slices)
+            warp = DelayedWarp(crop, tf_newleaf_to_newroot)
             components.append(warp)
 
         if len(components) == 1:
             return components[0]
         else:
-            return VirtualChannelConcat(components)
+            return DelayedChannelConcat(components)
 
-    def virtual_warp(self, transform, dsize=None):
+    def delayed_warp(self, transform, dsize=None):
         """
-        Virtually transform the underlying data.
+        Delayedly transform the underlying data.
 
         Note:
             this deviates from kwimage warp functions because instead of
             "output_dims" (specified in c-style shape) we specify dsize (w, h).
 
         Returns:
-            VirtualWarp : new virtual transform a chained transform
+            DelayedWarp : new delayed transform a chained transform
         """
         # if 0:
         #     # note, we are modifying the transform, but we could
-        #     # just add a new virtual transform layer on top of this.
+        #     # just add a new delayed transform layer on top of this.
         #     sub_data = self.sub_data
         #     new_transform = transform @ self.transform
-        #     warped = VirtualWarp(sub_data, new_transform, dsize)
-        warped = VirtualWarp(self, transform=transform, dsize=dsize)
+        #     warped = DelayedWarp(sub_data, new_transform, dsize)
+        warped = DelayedWarp(self, transform=transform, dsize=dsize)
         return warped
 
 
-class VirtualFrameConcat(VirtualVideoOperation):
+class DelayedLoad(DelayedImageOperation):
+    """
+    Example:
+        >>> fpath = kwimage.grab_test_image_fpath()
+        >>> self = DelayedLoad(fpath)
+        >>> print('self = {!r}'.format(self))
+        >>> self.load_shape()
+        >>> print('self = {!r}'.format(self))
+
+        >>> f1_img = DelayedLoad.demo('astro', dsize=(300, 300))
+        >>> f2_img = DelayedLoad.demo('carl', dsize=(256, 320))
+        >>> print('f1_img = {!r}'.format(f1_img))
+        >>> print('f2_img = {!r}'.format(f2_img))
+        >>> print(f2_img.finalize().shape)
+        >>> print(f1_img.finalize().shape)
+    """
+    def __init__(self, fpath, dsize=None):
+        self.data = {}
+        self.meta = {}
+        self.cache = {}
+        self.data['fpath'] = fpath
+        self.meta['dsize'] = dsize
+
+    def children(self):
+        yield from []
+
+    def load_shape(self):
+        disk_shape = kwimage.load_image_shape(self.fpath)
+        num_bands = disk_shape[2] if len(disk_shape) == 2 else 1
+        self.meta['num_bands'] = num_bands
+        if self.meta.get('dsize', None) is None:
+            h, w = disk_shape[0:2]
+            self.meta['dsize'] = (w, h)
+
+    @property
+    def shape(self):
+        dsize = self.dsize
+        if dsize is None:
+            w, h = None, None
+        else:
+            w, h = dsize
+        c = self.num_bands
+        return (h, w, c)
+
+    @property
+    def num_bands(self):
+        return self.meta.get('num_bands', None)
+
+    @property
+    def dsize(self):
+        dsize = self.meta.get('dsize', None)
+        return dsize
+
+    @property
+    def fpath(self):
+        return self.data.get('fpath', None)
+
+    @classmethod
+    def demo(DelayedLoad, key='astro', dsize=None):
+        fpath = kwimage.grab_test_image_fpath(key)
+        self = DelayedLoad(fpath, dsize=dsize)
+        return self
+        # raise NotImplementedError
+
+    @classmethod
+    def coerce(cls, data):
+        raise NotImplementedError
+
+    def finalize(self, **kwargs):
+        import kwimage
+        final = self.cache.get('final', None)
+        if final is None:
+            final = kwimage.imread(self.fpath)
+            self.cache['final'] = final
+        dsize = self.meta.get('dsize', None)
+        if dsize is not None:
+            # TODO: delay even further
+            final = kwimage.imresize(final, dsize=dsize)
+        # else:
+        #     self.meta['dsize'] = (w, h)
+
+        final = kwarray.atleast_nd(final, 3)
+        return final
+
+
+class DelayedFrameConcat(DelayedVideoOperation):
     """
     Represents multiple frames in a video
 
@@ -219,43 +304,59 @@ class VirtualFrameConcat(VirtualVideoOperation):
 
     Example:
         >>> # Simpler case with fewer nesting levels
-        >>> from ndsampler.virtual import *  # NOQA
+        >>> from ndsampler.delayed import *  # NOQA
         >>> rng = kwarray.ensure_rng(None)
-        >>> def demo_img(key, dsize):
-        ...     return kwimage.grab_test_image(key, dsize=dsize)
-        >>> # Virtual warp each channel into its "image" space
-        >>> # Note: the images never actually enter this space we transform through it
-        >>> f1_img = VirtualWarp(demo_img('astro', (300, 300)))
-        >>> f2_img = VirtualWarp(demo_img('carl', (256, 256)))
+        >>> # Delayed warp each channel into its "image" space
+        >>> # Note: the images never enter the space we transform through
+        >>> f1_img = DelayedLoad.demo('astro', (300, 300))
+        >>> f2_img = DelayedLoad.demo('carl', (256, 256))
         >>> # Combine frames into a video
         >>> vid_dsize = np.array((100, 100))
-        >>> self = vid = VirtualFrameConcat([
-        >>>     f1_img.virtual_warp(Affine.scale(vid_dsize / f1_img.dsize), dsize=vid_dsize),
-        >>>     f2_img.virtual_warp(Affine.scale(vid_dsize / f2_img.dsize), dsize=vid_dsize),
-        >>> ])
-        >>> final = vid.finalize(interpolation='nearest')
+        >>> self = vid = DelayedFrameConcat([
+        >>>     f1_img.delayed_warp(Affine.scale(vid_dsize / f1_img.dsize)),
+        >>>     f2_img.delayed_warp(Affine.scale(vid_dsize / f2_img.dsize)),
+        >>> ], dsize=vid_dsize)
+        >>> print(ub.repr2(vid.nesting(), nl=-1, sort=0))
+        >>> final = vid.finalize(interpolation='nearest', dsize=(32, 32))
         >>> # xdoctest: +REQUIRES(--show)
         >>> import kwplot
         >>> kwplot.autompl()
         >>> kwplot.imshow(final[0], pnum=(1, 2, 1), fnum=1)
         >>> kwplot.imshow(final[1], pnum=(1, 2, 2), fnum=1)
-
         >>> region_slices = (slice(0, 90), slice(30, 60))
     """
     def __init__(self, frames, dsize=None):
         self.frames = frames
         if dsize is None:
             dsize_cands = [frame.dsize for frame in self.frames]
-            if not ub.allsame(dsize_cands):
-                raise ValueError(
-                    'components must all have the same virtual size')
-            dsize = dsize_cands[0]
+            if all(dsize is None for dsize in dsize_cands):
+                # Can also just take the biggest size
+                dsize = None
+            elif ub.allsame(dsize_cands):
+                dsize = dsize_cands[0]
+            else:
+                w = -np.inf
+                h = -np.inf
+                for dsize in dsize_cands:
+                    if dsize is not None:
+                        _w, _h = dsize
+                        w = max(w, _w)
+                        h = max(h, _h)
+                dsize = (w, h)
+
+            # else:
+            #     raise ValueError(
+            #         'components must all have the same delayed size')
         self.dsize = dsize
         nband_cands = [frame.num_bands for frame in self.frames]
-        if not ub.allsame(nband_cands):
+        if any(c is None for c in nband_cands):
+            num_bands = None
+        if ub.allsame(nband_cands):
+            num_bands = nband_cands[0]
+        else:
             raise ValueError(
-                'components must all have the same virtual size')
-        self.num_bands = nband_cands[0]
+                'components must all have the same delayed size')
+        self.num_bands = num_bands
         self.num_frames = len(self.frames)
 
     def children(self):
@@ -266,78 +367,67 @@ class VirtualFrameConcat(VirtualVideoOperation):
         w, h = self.dsize
         return (self.num_frames, h, w, self.num_bands)
 
-    def finalize(self, transform=None, dsize=None, interpolation='linear'):
+    def finalize(self, **kwargs):
         """
         Execute the final transform
         """
         # Add in the video axis
-        stack = [frame.finalize(transform=transform, dsize=dsize,
-                                interpolation=interpolation)[None, :]
+        stack = [frame.finalize(**kwargs)[None, :]
                  for frame in self.frames]
-        final = np.concatenate(stack, axis=0)
+        stack_shapes = np.array([s.shape for s in stack])
+
+        stack_whc = stack_shapes[:, 1:4]
+        max_whc = stack_whc.max(axis=0)
+        delta_whc = max_whc - stack_whc
+
+        stack2 = []
+        for delta, item in zip(delta_whc, stack):
+            pad_width = [(0, 0)] + list(zip([0] * len(delta), delta))
+            item = np.pad(item, pad_width=pad_width,)
+            stack2.append(item)
+
+        final = np.concatenate(stack2, axis=0)
         return final
 
-    # def nesting(self):
-    #     return {
-    #         'shape': self.shape,
-    #         'frames': [frame.nesting() for frame in self.frames],
-    #     }
 
-    # def virtual_crop(self, region_slices):
-    #     """
-    #     Create a new virtual image that performs a crop in the transformed
-    #     "self" space.
-
-    #     Args:
-    #         region_slices (Tuple[slice, slice]): y-slice and x-slice.
-
-    #     Returns:
-    #         VirtualWarp: lazy executed virtual transform
-    #            The slice is currently not lazy
-    #     """
-    #     # todo: this could be done as a virtual layer
-    #     region_box = kwimage.Boxes.from_slice(region_slices, shape=self.shape)
-    #     raise NotImplementedError
-
-
-class VirtualChannelConcat(VirtualImageOperation):
+class DelayedChannelConcat(DelayedImageOperation):
     """
     Represents multiple channels in an image that could be concatenated
 
     Attributes:
-        components (List[VirtualWarp]): a list of stackable channels. Each
+        components (List[DelayedWarp]): a list of stackable channels. Each
             component may be comprised of multiple channels.
 
     TODO:
-        - [ ] can this be generalized into a virtual concat?
+        - [ ] can this be generalized into a delayed concat?
         - [ ] can all concats be delayed until the very end?
 
     Example:
-        >>> comp1 = VirtualWarp(np.random.rand(11, 7))
-        >>> comp2 = VirtualWarp(np.random.rand(11, 7, 3))
-        >>> comp3 = VirtualWarp(
+        >>> comp1 = DelayedWarp(np.random.rand(11, 7))
+        >>> comp2 = DelayedWarp(np.random.rand(11, 7, 3))
+        >>> comp3 = DelayedWarp(
         >>>     np.random.rand(3, 5, 2),
         >>>     transform=Affine.affine(scale=(7/5, 11/3)).matrix,
         >>>     dsize=(7, 11)
         >>> )
         >>> components = [comp1, comp2, comp3]
-        >>> chans = VirtualChannelConcat(components)
+        >>> chans = DelayedChannelConcat(components)
         >>> final = chans.finalize()
         >>> assert final.shape == chans.shape
         >>> assert final.shape == (11, 7, 6)
 
-        >>> # We should be able to nest VirtualChannelConcat inside virutal images
-        >>> frame1 = VirtualWarp(
+        >>> # We should be able to nest DelayedChannelConcat inside virutal images
+        >>> frame1 = DelayedWarp(
         >>>     chans, transform=Affine.affine(scale=2.2).matrix,
         >>>     dsize=(20, 26))
-        >>> frame2 = VirtualWarp(
+        >>> frame2 = DelayedWarp(
         >>>     np.random.rand(3, 3, 6), dsize=(20, 26))
-        >>> frame3 = VirtualWarp(
+        >>> frame3 = DelayedWarp(
         >>>     np.random.rand(3, 3, 6), dsize=(20, 26))
 
         >>> print(ub.repr2(frame1.nesting(), nl=-1, sort=False))
         >>> frame1.finalize()
-        >>> vid = VirtualFrameConcat([frame1, frame2, frame3])
+        >>> vid = DelayedFrameConcat([frame1, frame2, frame3])
         >>> print(ub.repr2(vid.nesting(), nl=-1, sort=False))
     """
     def __init__(self, components, dsize=None):
@@ -346,7 +436,7 @@ class VirtualChannelConcat(VirtualImageOperation):
             dsize_cands = [comp.dsize for comp in self.components]
             if not ub.allsame(dsize_cands):
                 raise ValueError(
-                    'components must all have the same virtual size')
+                    'components must all have the same delayed size')
             dsize = dsize_cands[0]
         self.dsize = dsize
         self.num_bands = sum(comp.num_bands for comp in self.components)
@@ -358,10 +448,10 @@ class VirtualChannelConcat(VirtualImageOperation):
     def random(cls, num_parts=3, rng=None):
         """
         CommandLine:
-            xdoctest -m ndsampler.virtual VirtualWarp.random
+            xdoctest -m ndsampler.delayed DelayedWarp.random
 
         Example:
-            >>> self = VirtualChannelConcat.random()
+            >>> self = DelayedChannelConcat.random()
             >>> print('self = {!r}'.format(self))
             >>> print(self.nesting())
         """
@@ -370,11 +460,11 @@ class VirtualChannelConcat(VirtualImageOperation):
         self_h = rng.randint(8, 64)
         components = []
         for _ in range(num_parts):
-            subcomp = VirtualWarp.random(rng=rng)
+            subcomp = DelayedWarp.random(rng=rng)
             tf = Affine.random(rng=rng).matrix
-            comp = subcomp.virtual_warp(tf, dsize=(self_w, self_h))
+            comp = subcomp.delayed_warp(tf, dsize=(self_w, self_h))
             components.append(comp)
-        self = VirtualChannelConcat(components)
+        self = DelayedChannelConcat(components)
         return self
 
     @property
@@ -392,33 +482,8 @@ class VirtualChannelConcat(VirtualImageOperation):
         final = np.concatenate(stack, axis=2)
         return final
 
-    # def virtual_leafs(self, **kwargs):
-    #     """
-    #     Iterate through the leaf nodes
 
-    #     Flattens the operation tree into a separate node for each leaf.
-
-    #     Concatenation information information is lost because operations
-    #     (but this is ok when operations are communative)
-
-    #     Example:
-    #         >>> from ndsampler.virtual import *  # NOQA
-    #         >>> self  = VirtualChannelConcat.random()
-    #         >>> leafs = list(self.virtual_leafs())
-    #         >>> print('leafs = {!r}'.format(leafs))
-    #     """
-    #     for comp in self.components:
-    #         yield from comp.virtual_leafs(transform=transform, dsize=dsize,
-    #                                       interpolation=interpolation)
-
-    # def nesting(self):
-    #     return {
-    #         'shape': self.shape,
-    #         'components': [comp.nesting() for comp in self.components],
-    #     }
-
-
-class VirtualWarp(VirtualImageOperation):
+class DelayedWarp(DelayedImageOperation):
     """
     POC for chainable transforms
 
@@ -431,7 +496,7 @@ class VirtualWarp(VirtualImageOperation):
 
     Attributes:
 
-        sub_data (VirtualWarp | ArrayLike):
+        sub_data (DelayedWarp | ArrayLike):
             array-like image data at a naitive resolution
 
         transform (Transform):
@@ -439,39 +504,39 @@ class VirtualWarp(VirtualImageOperation):
             "self"-image-space.
 
     Example:
-        >>> from ndsampler.virtual import *  # NOQA
+        >>> from ndsampler.delayed import *  # NOQA
         >>> dsize = (12, 12)
         >>> tf1 = np.array([[2, 0, 0], [0, 2, 0], [0, 0, 1]])
         >>> tf2 = np.array([[3, 0, 0], [0, 3, 0], [0, 0, 1]])
         >>> tf3 = np.array([[4, 0, 0], [0, 4, 0], [0, 0, 1]])
-        >>> band1 = VirtualWarp(np.random.rand(6, 6), tf1, dsize)
-        >>> band2 = VirtualWarp(np.random.rand(4, 4), tf2, dsize)
-        >>> band3 = VirtualWarp(np.random.rand(3, 3), tf3, dsize)
+        >>> band1 = DelayedWarp(np.random.rand(6, 6), tf1, dsize)
+        >>> band2 = DelayedWarp(np.random.rand(4, 4), tf2, dsize)
+        >>> band3 = DelayedWarp(np.random.rand(3, 3), tf3, dsize)
         >>> #
         >>> # Execute a crop in a one-level transformed space
         >>> region_slices = (slice(5, 10), slice(0, 12))
-        >>> virtual_crop = band2.virtual_crop(region_slices)
-        >>> final_crop = virtual_crop.finalize()
+        >>> delayed_crop = band2.delayed_crop(region_slices)
+        >>> final_crop = delayed_crop.finalize()
         >>> #
         >>> # Execute a crop in a nested transformed space
         >>> tf4 = np.array([[1.5, 0, 0], [0, 1.5, 0], [0, 0, 1]])
-        >>> chained = VirtualWarp(band2, tf4, (18, 18))
-        >>> virtual_crop = chained.virtual_crop(region_slices)
-        >>> final_crop = virtual_crop.finalize()
+        >>> chained = DelayedWarp(band2, tf4, (18, 18))
+        >>> delayed_crop = chained.delayed_crop(region_slices)
+        >>> final_crop = delayed_crop.finalize()
         >>> #
         >>> tf4 = np.array([[.5, 0, 0], [0, .5, 0], [0, 0, 1]])
-        >>> chained = VirtualWarp(band2, tf4, (6, 6))
-        >>> virtual_crop = chained.virtual_crop(region_slices)
-        >>> final_crop = virtual_crop.finalize()
+        >>> chained = DelayedWarp(band2, tf4, (6, 6))
+        >>> delayed_crop = chained.delayed_crop(region_slices)
+        >>> final_crop = delayed_crop.finalize()
         >>> #
         >>> region_slices = (slice(1, 5), slice(2, 4))
-        >>> virtual_crop = chained.virtual_crop(region_slices)
-        >>> final_crop = virtual_crop.finalize()
+        >>> delayed_crop = chained.delayed_crop(region_slices)
+        >>> final_crop = delayed_crop.finalize()
 
     Example:
         >>> dsize = (17, 12)
         >>> tf = np.array([[5.2, 0, 1.1], [0, 3.1, 2.2], [0, 0, 1]])
-        >>> self = VirtualWarp(np.random.rand(3, 5, 13), tf, dsize=dsize)
+        >>> self = DelayedWarp(np.random.rand(3, 5, 13), tf, dsize=dsize)
         >>> self.finalize().shape
     """
     def __init__(self, sub_data, transform=None, dsize=None):
@@ -539,25 +604,13 @@ class VirtualWarp(VirtualImageOperation):
         w, h = self.dsize
         return (h, w, self.num_bands)
 
-    def nesting(self):
-        if isinstance(self.sub_data, np.ndarray):
-            return {
-                'shape': self.shape,
-                'sub_data': {'shape': self.sub_data.shape, 'type': 'ndarray'},
-            }
-        else:
-            return {
-                'shape': self.shape,
-                'sub_data': self.sub_data.nesting(),
-            }
-
-    def virtual_leafs(self, **kwargs):
+    def delayed_leafs(self, **kwargs):
         """
 
         Example:
-            >>> from ndsampler.virtual import *  # NOQA
-            >>> self = VirtualWarp.random()
-            >>> leafs = list(self.virtual_leafs())
+            >>> from ndsampler.delayed import *  # NOQA
+            >>> self = DelayedWarp.random()
+            >>> leafs = list(self.delayed_leafs())
             >>> print('leafs = {!r}'.format(leafs))
         """
         dsize = kwargs.get('dsize', None)
@@ -571,23 +624,23 @@ class VirtualWarp(VirtualImageOperation):
         kwargs['dsize'] = dsize
         kwargs['transform'] = transform
         sub_data = self.sub_data
-        if hasattr(sub_data, 'virtual_leafs'):
+        if hasattr(sub_data, 'delayed_leafs'):
             # Branch finalize
-            yield from sub_data.virtual_leafs(
+            yield from sub_data.delayed_leafs(
                 transform=transform, dsize=dsize)
         else:
-            leaf = VirtualWarp(sub_data, transform, dsize=dsize)
+            leaf = DelayedWarp(sub_data, transform, dsize=dsize)
             yield leaf
 
     @classmethod
     def random(cls, nesting=(2, 5), rng=None):
         """
         CommandLine:
-            xdoctest -m ndsampler.virtual VirtualWarp.random
+            xdoctest -m ndsampler.delayed DelayedWarp.random
 
         Example:
-            >>> from ndsampler.virtual import *  # NOQA
-            >>> self = VirtualWarp.random()
+            >>> from ndsampler.delayed import *  # NOQA
+            >>> self = DelayedWarp.random()
             >>> print('self = {!r}'.format(self))
             >>> print(self.nesting())
         """
@@ -600,7 +653,7 @@ class VirtualWarp(VirtualImageOperation):
         num = rng.randint(*nesting)
         for _ in range(num):
             tf = Affine.random(rng=rng).matrix
-            layer  = VirtualWarp(layer, tf, dsize='auto')
+            layer  = DelayedWarp(layer, tf, dsize='auto')
         self = layer
         return self
 
@@ -615,7 +668,7 @@ class VirtualWarp(VirtualImageOperation):
             dsize (Tuple[int, int]): overrides destination canvas size
 
         Example:
-            >>> from ndsampler.virtual import *  # NOQA
+            >>> from ndsampler.delayed import *  # NOQA
             >>> tf = np.array([[0.9, 0, 3.9], [0, 1.1, -.5], [0, 0, 1]])
             >>> raw = kwimage.grab_test_image(dsize=(54, 65))
             >>> raw = kwimage.ensure_float01(raw)
@@ -623,12 +676,12 @@ class VirtualWarp(VirtualImageOperation):
             >>> layer1 = raw
             >>> num = 10
             >>> for _ in range(num):
-            ...     layer1  = VirtualWarp(layer1, tf, dsize='auto')
+            ...     layer1  = DelayedWarp(layer1, tf, dsize='auto')
             >>> final1 = layer1.finalize()
             >>> # Test non-nested finalize
-            >>> layer2 = VirtualWarp(raw, np.eye(3))
+            >>> layer2 = DelayedWarp(raw, np.eye(3))
             >>> for _ in range(num):
-            ...     layer2 = layer2.virtual_warp(tf, dsize='auto')
+            ...     layer2 = layer2.delayed_warp(tf, dsize='auto')
             >>> final2 = layer2.finalize()
             >>> #
             >>> print('final1 = {!r}'.format(final1))
@@ -673,7 +726,7 @@ class VirtualWarp(VirtualImageOperation):
         return final
 
 
-class VirtualCrop(VirtualImageOperation):
+class DelayedCrop(DelayedImageOperation):
     """
     Represent a delayed crop operation
     """
@@ -710,13 +763,6 @@ class VirtualCrop(VirtualImageOperation):
             return self.sub_data.finalize(**kwargs)[self.sub_slices]
         else:
             return self.sub_data[self.sub_slices]
-
-
-# def _compute_subcrop(root_region_slices, root_shape):
-#     tf_leaf_to_root = self.transform
-#     root_region_box = kwimage.Boxes.from_slice(root_region_slices, shape=self.shape)
-#     region_dsize = tuple(map(int, region_box.to_xywh().data[0, 2:4].tolist()))
-#     root_region_bounds = root_region_box.to_polygons()[0]
 
 
 def _compute_leaf_subcrop(root_region_bounds, tf_leaf_to_root):
@@ -770,13 +816,13 @@ def _compute_leaf_subcrop(root_region_bounds, tf_leaf_to_root):
 
 
 def _devcheck_corner():
-    self = VirtualWarp.random(rng=0)
+    self = DelayedWarp.random(rng=0)
     print(self.nesting())
     region_slices = (slice(40, 90), slice(20, 62))
     region_box = kwimage.Boxes.from_slice(region_slices, shape=self.shape)
     region_bounds = region_box.to_polygons()[0]
 
-    for leaf in self.virtual_leafs():
+    for leaf in self.delayed_leafs():
         pass
 
     tf_leaf_to_root = leaf['transform']
@@ -858,5 +904,13 @@ def _devcheck_corner():
         pts3.draw(ax=ax3)
         pts4.draw(ax=ax4)
 
-    # virtual_crop = band2.virtual_crop(region_slices)
-    # final_crop = virtual_crop.finalize()
+    # delayed_crop = band2.delayed_crop(region_slices)
+    # final_crop = delayed_crop.finalize()
+
+if __name__ == '__main__':
+    """
+    CommandLine:
+        xdoctest ~/code/ndsampler/ndsampler/delayed.py all
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)
