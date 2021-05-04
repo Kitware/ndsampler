@@ -142,17 +142,14 @@ Example:
     >>> # those frames is in a different resolution. Furthermore,
     >>> # each of the frames consists of channels in different resolutions.
     >>> from ndsampler.delayed import *  # NOQA
-    >>> rng = kwarray.ensure_rng(None)
-    >>> def demo_chan(key, dsize, chan):
-    ...     return kwimage.grab_test_image(key, dsize=dsize)[..., chan]
     >>> # Create raw channels in some "native" resolution for frame 1
-    >>> f1_chan1 = DelayedWarp(demo_chan('astro', (300, 300), 0))
-    >>> f1_chan2 = DelayedWarp(demo_chan('astro', (200, 200), 1))
-    >>> f1_chan3 = DelayedWarp(demo_chan('astro', (10, 10), 2))
+    >>> f1_chan1 = DelayedIdentity.demo('astro', chan=0, dsize=(300, 300))
+    >>> f1_chan2 = DelayedIdentity.demo('astro', chan=1, dsize=(200, 200))
+    >>> f1_chan3 = DelayedIdentity.demo('astro', chan=2, dsize=(10, 10))
     >>> # Create raw channels in some "native" resolution for frame 2
-    >>> f2_chan1 = DelayedWarp(demo_chan('carl', (64, 64), 0))
-    >>> f2_chan2 = DelayedWarp(demo_chan('carl', (260, 260), 1))
-    >>> f2_chan3 = DelayedWarp(demo_chan('carl', (10, 10), 2))
+    >>> f2_chan1 = DelayedIdentity.demo('carl', dsize=(64, 64), chan=0)
+    >>> f2_chan2 = DelayedIdentity.demo('carl', dsize=(260, 260), chan=1)
+    >>> f2_chan3 = DelayedIdentity.demo('carl', dsize=(10, 10), chan=2)
     >>> #
     >>> # Delayed warp each channel into its "image" space
     >>> # Note: the images never actually enter this space we transform through it
@@ -309,11 +306,15 @@ class DelayedImageOperation(DelayedOperation):
                 region_slices, shape=delayed_leaf.shape)
             root_region_bounds = root_region_box.to_polygons()[0]
 
+            w = root_region_box.width.ravel()[0]
+            h = root_region_box.height.ravel()[0]
+            root_dsize = (w, h)
+
             leaf_crop_slices, tf_newleaf_to_newroot = _compute_leaf_subcrop(
                 root_region_bounds, tf_leaf_to_root)
 
             crop = DelayedCrop(delayed_leaf.sub_data, leaf_crop_slices)
-            warp = DelayedWarp(crop, tf_newleaf_to_newroot)
+            warp = DelayedWarp(crop, tf_newleaf_to_newroot, dsize=root_dsize)
             components.append(warp)
 
         if len(components) == 1:
@@ -334,6 +335,50 @@ class DelayedImageOperation(DelayedOperation):
         """
         warped = DelayedWarp(self, transform=transform, dsize=dsize)
         return warped
+
+
+class DelayedIdentity(DelayedImageOperation):
+    """
+    Noop leaf that does nothing. Mostly used in tests atm
+
+    DelayedIdentity.demo('astro', chan=0, dsize=(32, 32))
+    """
+    __hack_dont_optimize__ = True
+
+    def __init__(self, sub_data):
+        self.sub_data = sub_data
+        self.meta = {}
+        self.cache = {}
+        h, w = self.sub_data.shape[0:2]
+        self.dsize = (w, h)
+        if len(self.sub_data.shape) == 2:
+            num_bands = 1
+        elif len(self.sub_data.shape) == 3:
+            num_bands = self.sub_data.shape[2]
+        else:
+            raise ValueError(
+                'Data may only have 2 space dimensions and 1 channel '
+                'dimension')
+        self.num_bands = num_bands
+        self.shape = (h, w, self.num_bands)
+        self.meta['dsize'] = self.dsize
+        self.meta['shape'] = self.shape
+
+    @classmethod
+    def demo(cls, key='astro', chan=None, dsize=None):
+        sub_data = kwimage.grab_test_image(key, dsize=dsize)
+        if chan is not None:
+            sub_data = sub_data[..., chan]
+        self = cls(sub_data)
+        return self
+
+    def children(self):
+        yield from []
+
+    def finalize(self):
+        final = self.sub_data
+        final = kwarray.atleast_nd(final, 3)
+        return final
 
 
 class DelayedLoad(DelayedImageOperation):
@@ -521,6 +566,57 @@ class DelayedFrameConcat(DelayedVideoOperation):
 
         final = np.concatenate(stack2, axis=0)
         return final
+
+    def delayed_crop(self, region_slices):
+        """
+        Example:
+            >>> from ndsampler.delayed import *  # NOQA
+            >>> # Create raw channels in some "native" resolution for frame 1
+            >>> f1_chan1 = DelayedIdentity.demo('astro', chan=(1, 0), dsize=(300, 300))
+            >>> f1_chan2 = DelayedIdentity.demo('astro', chan=2, dsize=(10, 10))
+            >>> # Create raw channels in some "native" resolution for frame 2
+            >>> f2_chan1 = DelayedIdentity.demo('carl', dsize=(64, 64), chan=(1, 0))
+            >>> f2_chan2 = DelayedIdentity.demo('carl', dsize=(10, 10), chan=2)
+            >>> #
+            >>> f1_dsize = np.array(f1_chan1.dsize)
+            >>> f2_dsize = np.array(f2_chan1.dsize)
+            >>> f1_img = DelayedChannelConcat([
+            >>>     f1_chan1.delayed_warp(Affine.scale(f1_dsize / f1_chan1.dsize), dsize=f1_dsize),
+            >>>     f1_chan2.delayed_warp(Affine.scale(f1_dsize / f1_chan2.dsize), dsize=f1_dsize),
+            >>> ])
+            >>> f2_img = DelayedChannelConcat([
+            >>>     f2_chan1.delayed_warp(Affine.scale(f2_dsize / f2_chan1.dsize), dsize=f2_dsize),
+            >>>     f2_chan2.delayed_warp(Affine.scale(f2_dsize / f2_chan2.dsize), dsize=f2_dsize),
+            >>> ])
+            >>> vid_dsize = np.array((280, 280))
+            >>> full_vid = DelayedFrameConcat([
+            >>>     f1_img.delayed_warp(Affine.scale(vid_dsize / f1_img.dsize), dsize=vid_dsize),
+            >>>     f2_img.delayed_warp(Affine.scale(vid_dsize / f2_img.dsize), dsize=vid_dsize),
+            >>> ])
+            >>> region_slices = (slice(80, 200), slice(80, 200))
+            >>> crop_vid = full_vid.delayed_crop(region_slices)
+            >>> print(ub.repr2(full_vid.nesting(), nl=-1, sort=0))
+            >>> final_full = full_vid.finalize(interpolation='nearest')
+            >>> final_crop = crop_vid.finalize(interpolation='nearest')
+            >>> import pytest
+            >>> with pytest.raises(ValueError):
+            >>>     # should not be able to crop a crop yet
+            >>>     crop_vid.delayed_crop(region_slices)
+            >>> # xdoctest: +REQUIRES(--show)
+            >>> import kwplot
+            >>> kwplot.autompl()
+            >>> kwplot.imshow(final_full[0], pnum=(2, 2, 1), fnum=1)
+            >>> kwplot.imshow(final_full[1], pnum=(2, 2, 2), fnum=1)
+            >>> kwplot.imshow(final_crop[0], pnum=(2, 2, 3), fnum=1)
+            >>> kwplot.imshow(final_crop[1], pnum=(2, 2, 4), fnum=1)
+        """
+        new_frames = []
+        for frame in self.frames:
+            new_frame = frame.delayed_crop(region_slices)
+            print('new_frame = {!r}'.format(new_frame))
+            new_frames.append(new_frame)
+        new = DelayedFrameConcat(new_frames)
+        return new
 
 
 class DelayedChannelConcat(DelayedImageOperation):
@@ -882,6 +978,16 @@ class DelayedCrop(DelayedImageOperation):
         >>> print(ub.repr2(self.nesting(), nl=-1, sort=0))
         >>> final = self.finalize()
         >>> print('final.shape = {!r}'.format(final.shape))
+
+    Example:
+        >>> from ndsampler.delayed import *  # NOQA
+        >>> sub_data = DelayedLoad.demo()
+        >>> sub_slices = (slice(5, 10), slice(1, 12))
+        >>> crop1 = DelayedCrop(sub_data, sub_slices)
+        >>> import pytest
+        >>> # Should only error while huristics are in use.
+        >>> with pytest.raises(ValueError):
+        >>>     crop2 = DelayedCrop(crop1, sub_slices)
     """
 
     __hack_dont_optimize__ = True
