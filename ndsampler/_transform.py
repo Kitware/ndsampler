@@ -41,15 +41,24 @@ class Affine(Projective):
         """
         return self.matrix
 
+    def __getitem__(self, index):
+        return self.matrix[index]
+
     @classmethod
     def coerce(cls, data=None, **kwargs):
         """
         TODO:
         """
+        if data is None and not kwargs:
+            return cls.eye()
         if data is None:
             data = kwargs
         if isinstance(data, np.ndarray):
             self = cls(matrix=data)
+        elif isinstance(data, cls):
+            self = data
+        elif data.__class__.__name__ == cls.__name__:
+            self = data
         elif isinstance(data, dict):
             keys = set(data.keys())
             if 'matrix' in keys:
@@ -57,9 +66,9 @@ class Affine(Projective):
             elif len({'scale', 'shear', 'offset', 'theta'} & keys):
                 self = cls.affine(**data)
             else:
-                raise NotImplementedError
+                raise KeyError(', '.join(list(data.keys())))
         else:
-            raise NotImplementedError
+            raise TypeError(type(data))
         return self
 
     def decompose(self):

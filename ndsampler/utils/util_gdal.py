@@ -710,6 +710,15 @@ class LazyGDalFrameFile(ub.NiceRepr):
             img_part = np.dstack(channels)
         return img_part
 
+    def __array__(self):
+        """
+        Allow this object to be passed to np.asarray
+
+        References:
+            https://numpy.org/doc/stable/user/basics.dispatch.html
+        """
+        return self[:]
+
     def validate(self, orig_fpath=None, orig_data=None):
         """
         Check for any corruption issues
