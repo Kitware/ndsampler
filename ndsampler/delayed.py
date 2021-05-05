@@ -959,6 +959,9 @@ class DelayedWarp(DelayedImageOperation):
             # Leaf finalize
             flags = im_cv2._coerce_interpolation(interpolation)
             M = transform[0:2]  # todo allow projective
+            if dsize == (None, None):
+                dsize = None
+            sub_data = np.asarray(sub_data)
             final = cv2.warpAffine(sub_data, M, dsize=dsize, flags=flags)
 
         # Ensure that the last dimension is channels
@@ -1045,7 +1048,7 @@ def _compute_leaf_subcrop(root_region_bounds, tf_leaf_to_root):
 
     """
     # Transform the region bounds into the sub-image space
-    tf_root_to_leaf = np.linalg.inv(tf_leaf_to_root)
+    tf_root_to_leaf = np.asarray(Affine.coerce(tf_leaf_to_root).inv())
     leaf_region_bounds = root_region_bounds.warp(tf_root_to_leaf)
     leaf_region_box = leaf_region_bounds.bounding_box().to_ltrb()
 

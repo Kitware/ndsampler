@@ -39,18 +39,28 @@ class Affine(Projective):
         References:
             https://numpy.org/doc/stable/user/basics.dispatch.html
         """
+        if self.matrix is None:
+            return np.eye(3)
         return self.matrix
 
     def __getitem__(self, index):
+        if self.matrix is None:
+            return np.eye(3)[index]
         return self.matrix[index]
 
     @classmethod
     def coerce(cls, data=None, **kwargs):
         """
-        TODO:
+        Example:
+            >>> from ndsampler._transform import *  # NOQA
+            >>> Affine.coerce({'type': 'affine', 'matrix': [[1, 0, 0], [0, 1, 0]]})
+            >>> Affine.coerce({'scale': 2})
+            >>> Affine.coerce({'offset': 3})
+            >>> Affine.coerce(np.eye(3))
+            >>> Affine.coerce(None)
         """
         if data is None and not kwargs:
-            return cls.eye()
+            return cls(matrix=None)
         if data is None:
             data = kwargs
         if isinstance(data, np.ndarray):
@@ -61,10 +71,13 @@ class Affine(Projective):
             self = data
         elif isinstance(data, dict):
             keys = set(data.keys())
+            known_params = {'scale', 'shear', 'offset', 'theta'}
+            params = ub.dict_isect(data, known_params)
             if 'matrix' in keys:
                 self = cls(matrix=np.array(data['matrix']))
-            elif len({'scale', 'shear', 'offset', 'theta'} & keys):
-                self = cls.affine(**data)
+            elif len(known_params & keys):
+                # data.pop('type', None)
+                self = cls.affine(**params)
             else:
                 raise KeyError(', '.join(list(data.keys())))
         else:
@@ -104,11 +117,16 @@ class Affine(Projective):
             return Affine.coerce(other)
         if isinstance(other, np.ndarray):
             return Affine(self.matrix @ other)
+        elif other.matrix is None:
+            return self
         else:
             return Affine(self.matrix @ other.matrix)
 
     def inv(self):
-        return Affine(np.linalg.inv(self.matrix))
+        if self.matrix is None:
+            return Affine(None)
+        else:
+            return Affine(np.linalg.inv(self.matrix))
 
     @classmethod
     def eye(cls):

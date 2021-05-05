@@ -427,6 +427,9 @@ class Frames(object):
                 chan_name = channels
 
         data = alignable._load_delayed_channel(chan_name, cache=cache)
+
+        if hasattr(data, 'finalize'):
+            data = data.finalize()
         # data = alignable._load_native_channel(chan_name, cache=cache)
 
         if noreturn:
@@ -682,12 +685,15 @@ class AlignableImageData(object):
     def _load_delayed_channel(self, chan_name, cache=True):
         height = self.pathinfo.get('height', None)
         width = self.pathinfo.get('width', None)
-        img_dsize = (width, height)
         aux = self.pathinfo['channels'][chan_name]
         warp_aux_to_img = aux.get('warp_aux_to_img', None)
         data = self._load_native_channel(chan_name, cache=cache)
-        tf_aux_to_img = np.array(warp_aux_to_img['matrix'])
-        chan = DelayedWarp(data, tf_aux_to_img, dsize=img_dsize)
+        if width is None:
+            width = data.shape[1]
+        if height is None:
+            height = data.shape[0]
+        img_dsize = (width, height)
+        chan = DelayedWarp(data, warp_aux_to_img, dsize=img_dsize)
         return chan
 
     @profile

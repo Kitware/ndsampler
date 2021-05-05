@@ -33,8 +33,9 @@ Example:
     >>> # The sample contains the image data, any visible annotations, a reference
     >>> # to the original target, and params of the transform used to sample this
     >>> # patch
+    ...
     >>> print(sorted(sample.keys()))
-    ['annots', 'im', 'params', 'tr']
+    ['annots', 'classes', 'im', 'kp_classes', 'params', 'tr']
     >>> im = sample['im']
     >>> print(im.shape)
     (100, 100, 3)
