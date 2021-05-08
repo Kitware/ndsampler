@@ -59,7 +59,7 @@ class Matrix(Transform):
             https://numpy.org/doc/stable/user/basics.dispatch.html
         """
         if self.matrix is None:
-            return np.eye(self.shape)
+            return np.eye(*self.shape)
         return self.matrix
 
     def __imatmul__(self, other):
