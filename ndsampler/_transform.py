@@ -10,7 +10,134 @@ class Transform(ub.NiceRepr):
     pass
 
 
-class Projective(Transform):
+class Matrix(Transform):
+    """
+    Wrapper for matrix-based transforms
+
+    Example:
+        >>> ms = {}
+        >>> ms['random()'] = Matrix.random()
+        >>> ms['eye()'] = Matrix.eye()
+        >>> ms['random(3)'] = Matrix.random(3)
+        >>> ms['random(4, 4)'] = Matrix.random(4, 4)
+        >>> ms['eye(3)'] = Matrix.eye(3)
+        >>> ms['explicit'] = Matrix(np.array([[1.618]]))
+        >>> for k, m in ms.items():
+        >>>     print('----')
+        >>>     print(f'{k} = {m}')
+        >>>     print(f'{k}.inv() = {m.inv()}')
+        >>>     print(f'{k}.T = {m.T}')
+        >>>     print(f'{k}.det() = {m.det()}')
+    """
+    def __init__(self, matrix):
+        self.matrix = matrix
+
+    def __nice__(self):
+        return repr(self.matrix)
+
+    def __repr__(self):
+        return self.__str__()
+
+    @property
+    def shape(self):
+        if self.matrix is None:
+            # Default shape is hard coded here, can be overrided (e.g. Affine)
+            return (2, 2)
+        return self.matrix.shape
+
+    def __array__(self):
+        """
+        Allow this object to be passed to np.asarray
+
+        References:
+            https://numpy.org/doc/stable/user/basics.dispatch.html
+        """
+        if self.matrix is None:
+            return np.eye(self.shape)
+        return self.matrix
+
+    def __imatmul__(self, other):
+        if isinstance(other, np.ndarray):
+            other_matrix = other
+        else:
+            other_matrix = other.matrix
+        if self.matrix is None:
+            self.matrix = other_matrix
+        else:
+            self.matrix @= other_matrix
+
+    def __matmul__(self, other):
+        """
+        Example:
+            >>> m = {}
+            >>> # Works, and returns an Affine
+            >>> m[len(m)] = Matrix.random() @ np.eye(2)
+            >>> m[len(m)] = Matrix.random() @ None
+            >>> # Works, and returns an ndarray
+            >>> m[len(m)] = np.eye(3) @ Affine.random()
+            >>> # These do not work
+            >>> # m[len(m)] = None @ Affine.random()
+            >>> # m[len(m)] = np.eye(3) @ None
+            >>> print('m = {}'.format(ub.repr2(m)))
+        """
+        if other is None:
+            return self
+        if self.matrix is None:
+            return Affine.coerce(other)
+        if isinstance(other, np.ndarray):
+            return Affine(self.matrix @ other)
+        elif other.matrix is None:
+            return self
+        else:
+            return Affine(self.matrix @ other.matrix)
+
+    def inv(self):
+        if self.matrix is None:
+            return Affine(None)
+        else:
+            return Affine(np.linalg.inv(self.matrix))
+
+    @property
+    def T(self):
+        if self.matrix is None:
+            return self
+        else:
+            return Affine(self.matrix.T)
+
+    def det(self):
+        if self.matrix is None:
+            return 1
+        else:
+            return np.linalg.det(self.matrix)
+
+    @classmethod
+    def eye(cls, shape=None, rng=None):
+        self = cls(None)
+        if isinstance(shape, int):
+            shape = (shape, shape)
+        if shape is None:
+            shape = self.shape
+        self.matrix = np.eye(*shape)
+        return self
+
+    @classmethod
+    def random(cls, shape=None, rng=None):
+        import kwarray
+        rng = kwarray.ensure_rng(rng)
+        self = cls(None)
+        if isinstance(shape, int):
+            shape = (shape, shape)
+        if shape is None:
+            shape = self.shape
+        self.matrix = rng.rand(*shape)
+        return self
+
+
+class Linear(Matrix):
+    pass
+
+
+class Projective(Linear):
     pass
 
 
@@ -26,26 +153,13 @@ class Affine(Projective):
         >>> m1 = np.eye(3) @ self
         >>> m2 = self @ np.eye(3)
     """
-    def __init__(self, matrix):
-        self.matrix = matrix
-
-    def __nice__(self):
-        return repr(self.matrix)
-
-    def __array__(self):
-        """
-        Allow this object to be passed to np.asarray
-
-        References:
-            https://numpy.org/doc/stable/user/basics.dispatch.html
-        """
-        if self.matrix is None:
-            return np.eye(3)
-        return self.matrix
+    @property
+    def shape(self):
+        return (3, 3)
 
     def __getitem__(self, index):
         if self.matrix is None:
-            return np.eye(3)[index]
+            return np.asarray(self)[index]
         return self.matrix[index]
 
     @classmethod
@@ -87,51 +201,6 @@ class Affine(Projective):
     def decompose(self):
         raise NotImplementedError
 
-    def __imatmul__(self, other):
-        if isinstance(other, np.ndarray):
-            other_matrix = other
-        else:
-            other_matrix = other.matrix
-        if self.matrix is None:
-            self.matrix = other_matrix
-        else:
-            self.matrix @= other_matrix
-
-    def __matmul__(self, other):
-        """
-        Example:
-            >>> m = {}
-            >>> # Works, and returns an Affine
-            >>> m[len(m)] = Affine.random() @ np.eye(3)
-            >>> m[len(m)] = Affine.random() @ None
-            >>> # Works, and returns an ndarray
-            >>> m[len(m)] = np.eye(3) @ Affine.random()
-            >>> # These do not work
-            >>> # m[len(m)] = None @ Affine.random()
-            >>> # m[len(m)] = np.eye(3) @ None
-            >>> print('m = {}'.format(ub.repr2(m)))
-        """
-        if other is None:
-            return self
-        if self.matrix is None:
-            return Affine.coerce(other)
-        if isinstance(other, np.ndarray):
-            return Affine(self.matrix @ other)
-        elif other.matrix is None:
-            return self
-        else:
-            return Affine(self.matrix @ other.matrix)
-
-    def inv(self):
-        if self.matrix is None:
-            return Affine(None)
-        else:
-            return Affine(np.linalg.inv(self.matrix))
-
-    @classmethod
-    def eye(cls):
-        return cls.affine()
-
     @classmethod
     def scale(cls, scale):
         return cls.affine(scale=scale)
@@ -166,6 +235,8 @@ class Affine(Projective):
         scale_dist = TN(**scale_kw, rng=rng)
         offset_dist = TN(**offset_kw, rng=rng)
         theta_dist = TN(**theta_kw, rng=rng)
+
+        # TODO: distributions.Distribution.coerce()
 
         # offset_dist = distributions.Constant(0)
         # theta_dist = distributions.Constant(0)
