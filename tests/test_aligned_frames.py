@@ -1,4 +1,4 @@
-def test_channel_alignment():
+def test_video_channel_alignment_parts():
     import ndsampler
     import ubelt as ub
     sampler = ndsampler.CocoSampler.demo('vidshapes5-multispectral', num_frames=5, backend=None)
@@ -82,3 +82,34 @@ def test_channel_alignment():
         final = vid.finalize()
         print('final.shape = {!r}'.format(final.shape))
         print(ub.repr2(vid.nesting(), nl=-1))
+
+
+def test_image_channel_alignment_api():
+    import ndsampler
+    sampler = ndsampler.CocoSampler.demo('vidshapes5-multispectral', num_frames=5, backend=None)
+
+    sample = sampler.load_sample({'gid': 1, 'channels': '<all>'})
+    assert sample['im'].shape == (600, 600, 5)
+
+    sample = sampler.load_sample({'gid': 1, 'slices': (slice(0, 10), slice(0, 10)), 'channels': '<all>'})
+    assert sample['im'].shape == (10, 10, 5)
+
+    sample = sampler.load_sample({'gid': 1, 'slices': (slice(-10, 700), slice(0, 10)), 'channels': '<all>'})
+    assert sample['im'].shape == (710, 10, 5)
+
+
+def test_vid_channel_alignment_api():
+    import ndsampler
+    sampler = ndsampler.CocoSampler.demo('vidshapes5-multispectral', num_frames=5, backend=None)
+
+    sample = sampler.load_sample({'vidid': 1, 'channels': '<all>'})
+    assert sample['im'].shape == (5, 600, 600, 5)
+
+    sample = sampler.load_sample({'vidid': 1, 'slices': (slice(None), slice(0, 10), slice(0, 10)), 'channels': '<all>'})
+    assert sample['im'].shape == (5, 10, 10, 5)
+
+    sample = sampler.load_sample({'vidid': 1, 'slices': (slice(0, 3), slice(0, 10), slice(0, 10)), 'channels': '<all>'})
+    assert sample['im'].shape == (3, 10, 10, 5)
+
+    sample = sampler.load_sample({'vidid': 1, 'slices': (slice(0, 8), slice(0, 10), slice(0, 10)), 'channels': '<all>'})
+    assert sample['im'].shape == (8, 10, 10, 5)

@@ -8,110 +8,8 @@ There are several optimizations that could be applied.
 This is similar to GDAL's virtual raster table, but it works in memory and I
 think it is easier to chain operations.
 
-
-Notes:
-
-    https://github.com/inducer/pymbolic/issues/45
-
-    The idea is to represent some operation (or computation) tree.
-
-    +- Crop
-    |
-    +- Cat
-       |
-       +- Warp
-       |  |
-       |  +- Cat
-       |     |
-       |     +- Crop
-       |     |  |
-       |     |  +- Array
-       |     |
-       |     +- Warp
-       |        |
-       |        +- Array
-       |
-       +- Warp
-           |
-           +- Load
-
-    C(A(W(A(C(L), W(L))), W(L)))
-
-
-    A simplified version of this tree
-
-    +- Cat
-       |
-       +- Warp
-       |  |
-       |  +- Crop
-       |     |
-       |      +- Array
-       |
-       +- Warp
-       |  |
-       |  +- Crop
-       |     |
-       |     + Array
-       |
-       +- Warp
-           |
-           +- Crop
-              |
-              +- Load
-
-    Let C = crop
-    Let W = warp
-    Let A = warp
-    Let L = load or data source
-
-    A(W(C(L)), W(C(L)), W(C(L)))
-
-    C(A(W(A(C(L), W(L))), W(L)))
-
-
-    operations should be able to be optimized. We can:
-
-        * Combine neighboring warp operations
-
-        * Move all cats towards the top (associative)
-
-        * Move all crops towards the leafs (not-communative, but we can
-          compute how a crop changes as it move through a warp )
-
-        * Data sources should always be leafs
-
-          C * W * S = W * C' * S
-
-          where C' is the adjusted crop in the warped space.
-          Not sure how to represent it in this notation yet.
-          Maybe:
-
-              C'.corners = C.corners.warp(W.inv()) ?
-
-    Idealized Rules: (none of these are impemented)
-
-        * If the child of a crop is a warp, compute the equivalent warp with a
-          crop child.
-
-        * If the child of an op is a cat, for every child duplicate it and
-          apply the op, these are the args for a new top-level cat.
-
-
-    Goal:
-        * The finalize implementation shouldn't need to pass operation
-          information from layer to layer. Instead it should execute eagerly at
-          each node.
-
-        * The way this is mitigated is instead of optimizing the operation tree
-          at finalize time, we have a explicit method to optimize the tree.
-          Then calling finalize on this optimized tree guarentees the minimal
-          computation.
-
-TODO:
-    - [ ] Algorithm to optimize an arbitrary tree
-
-         https://www.researchgate.net/publication/314641363_A_new_algorithm_of_symbolic_expression_simplification_based_on_right-threaded_binary_tree/
+SeeAlso:
+    ../dev/symbolic_delayed.py
 
 
 Concepts:
@@ -297,6 +195,8 @@ class DelayedImageOperation(DelayedOperation):
             >>> kwplot.imshow(frame2, pnum=(1, 2, 2), fnum=1)
 
         """
+        if region_slices is None:
+            return self
         components = []
         for delayed_leaf in self._optimize_paths():
             # Compute, sub_crop_slices, and new tf_newleaf_to_newroot

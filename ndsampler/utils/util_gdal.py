@@ -541,7 +541,7 @@ def _api_convert_cloud_optimized_geotiff2(src_fpath, dst_fpath,
 
     translate_opts = gdal.TranslateOptions(format='GTiff', creationOptions=options)
     data_set2 = gdal.Translate(dst_fpath, data_set, options=translate_opts)
-    data_set2 = None
+    data_set2 = None  # NOQA
 
     # # Copy the in-memory dataset to an on-disk GeoTiff
     # driver2 = gdal.GetDriverByName(str('GTiff'))

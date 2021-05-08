@@ -50,6 +50,7 @@ import numpy as np
 import kwimage
 import six
 import kwcoco
+import warnings
 from ndsampler import coco_regions
 from ndsampler import coco_frames
 from ndsampler import abstract_sampler
@@ -612,8 +613,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> tr = sample_grid['positives'][0]
             >>> tr['channels'] = ['B1', 'B8']
             >>> sample = self.load_sample(tr)
-
-            xdoctest -m ndsampler.coco_sampler CocoSampler.load_sample:5
+            >>> assert sample['im'].shape == (3, 128, 128, 2)
         """
         sample = self._load_slice(tr, window_dims, pad, padkw)
 
@@ -664,14 +664,21 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 if 'category_id' not in tr_:
                     tr_['category_id'] = ann['category_id']
 
+        # other spatial specifiers allowed if slices is not given
+        alternate_keys = {'cx', 'cy', 'height', 'width'}
+        has_alternate = bool(set(tr_) & alternate_keys)
+
         if 'slices' in tr_:
             # Slice was explicitly specified
-            import warnings
-            if bool(set(tr_) & {'cx', 'cy', 'height', 'width'}) or window_dims:
-                warnings.warn('data_slice was specified, but ignored keys are present')
+            if has_alternate or window_dims:
+                warnings.warn(ub.paragraph(
+                    '''
+                    data_slice was specified, but ignored keys are present
+                    '''))
+        elif not has_alternate:
+            # No region specified. load everything.
+            tr_['slices'] = (slice(0, None), slice(0, None))
         else:
-            # if ndim != 2:
-            #     raise NotImplementedError('only slices support 3d sampling for now')
             # A center / width / height was specified
             center = (tr_['cy'], tr_['cx'])
             # Determine the requested window size
@@ -752,6 +759,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     image_id=gid, region=space_slice, channels=channels)
                 # Add a dimension for time
                 space_frames.append(frame[None, :])
+
+            # TODO: handle frames with different bands
             data_clipped = np.concatenate(space_frames, axis=0)
 
             # TODO: gids should be padded if it goes oob.

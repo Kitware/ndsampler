@@ -32,6 +32,12 @@ class Affine(Projective):
     def __nice__(self):
         return repr(self.matrix)
 
+    def __json__(self):
+        if self.matrix is None:
+            return {'type': 'affine', 'matrix': None}
+        else:
+            return {'type': 'affine', 'matrix': self.matrix.tolist()}
+
     def __array__(self):
         """
         Allow this object to be passed to np.asarray

@@ -428,6 +428,7 @@ class Frames(object):
 
         data = alignable._load_delayed_channel(chan_name, cache=cache)
 
+        # this probably breaks things that want the delayed data
         if hasattr(data, 'finalize'):
             data = data.finalize()
         # data = alignable._load_native_channel(chan_name, cache=cache)
@@ -629,6 +630,8 @@ class AlignableImageData(object):
         however, there is a lot more logic that hasn't been profiled, so we
         may be able to find meaningful optimizations.
 
+        - [ ] Make sure adding this didnt significantly hurt performance
+
     Example:
         >>> from ndsampler.abstract_frames import *
         >>> frames = SimpleFrames.demo(backend='npy')
@@ -636,8 +639,12 @@ class AlignableImageData(object):
         >>> cache_backend = frames._backend
         >>> print('pathinfo = {}'.format(ub.repr2(pathinfo, nl=3)))
         >>> self = AlignableImageData(pathinfo, cache_backend)
-
-        AlignableImageData(pathinfo)
+        >>> img_region = None
+        >>> prefused = self._load_prefused_region(img_region)
+        >>> print('prefused = {!r}'.format(prefused))
+        >>> img_region = (slice(0, 10), slice(0, 10))
+        >>> prefused = self._load_prefused_region(img_region)
+        >>> print('prefused = {!r}'.format(prefused))
     """
     def __init__(self, pathinfo, cache_backend):
         self.pathinfo = pathinfo
@@ -702,40 +709,42 @@ class AlignableImageData(object):
         Loads crops from multiple channels in their native coordinate system
         packaged with transformation info on how to align them.
         """
+
+        if isinstance(channels, str):
+            # TODO: document this special key for all channels
+            if channels == '<all>':
+                channels = list(self.pathinfo['channels'].keys())
         if channels is ub.NoParam:
             default_chan = self.pathinfo.get('default', None)
             if default_chan not in self.pathinfo['channels']:
                 raise Exception(
                     'Channels is not specified and the image metadata does have a default')
             channels = [default_chan]
-            # TODO: special key for all channels
-            # channels = self.pathinfo['channels'].keys()
 
-        height = self.pathinfo.get('height', None)
-        width = self.pathinfo.get('width', None)
-
-        if img_region is not None:
-            height = self.pathinfo.get('height', None)
-            width = self.pathinfo.get('width', None)
-            if len(img_region) < 2:
-                # Add empty dimensions
-                tail = tuple([slice(None)] * (2 - len(img_region)))
-                img_region = tuple(img_region) + tail
-            if all(r.start is None and r.stop is None for r in img_region):
-                # Avoid forcing a cache computation when loading the full image
-                flag = (
-                    img_region[0].stop in [None, height] and
-                    img_region[1].stop in [None, width]
-                )
-                if flag:
-                    img_region = None
+        # height = self.pathinfo.get('height', None)
+        # width = self.pathinfo.get('width', None)
+        # if img_region is not None:
+        #     height = self.pathinfo.get('height', None)
+        #     width = self.pathinfo.get('width', None)
+        #     if len(img_region) < 2:
+        #         # Add empty dimensions
+        #         tail = tuple([slice(None)] * (2 - len(img_region)))
+        #         img_region = tuple(img_region) + tail
+        #     if all(r.start is None and r.stop is None for r in img_region):
+        #         # Avoid forcing a cache computation when loading the full image
+        #         flag = (
+        #             img_region[0].stop in [None, height] and
+        #             img_region[1].stop in [None, width]
+        #         )
+        #         if flag:
+        #             img_region = None
 
         subregions = []
         for chan_name in channels:
             # Load full image in "virtual" image space
             im = self._load_delayed_channel(chan_name)
-            if img_region is not None:
-                im = im.delayed_crop(img_region)
+            # if img_region is not None:
+            im = im.delayed_crop(img_region)
 
             subregion = {
                 'im': im,
