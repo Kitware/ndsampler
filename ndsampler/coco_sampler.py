@@ -754,14 +754,81 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             time_slice, *space_slice = data_slice
             time_gids = gids[time_slice]
             space_frames = []
-            for gid in time_gids:
+            from kwcoco import channel_spec
+            import xarray as xr
+            for time_idx, gid in enumerate(time_gids):
+                hack = self.frames._load_alignable(gid).pathinfo['channels']
+                cs = ','.join(list(hack.keys()))
+
+                spec = channel_spec.ChannelSpec(cs)
+                # code = spec.unique(normalize=True)
+                chan_coords = tuple(ub.flatten(spec.normalize().values()))
+
                 frame = self.frames.load_region(
                     image_id=gid, region=space_slice, channels=channels)
                 # Add a dimension for time
-                space_frames.append(frame[None, :])
 
-            # TODO: handle frames with different bands
-            data_clipped = np.concatenate(space_frames, axis=0)
+                # TODO: can add lat/lon coords here
+                xr_frame = xr.DataArray(
+                    frame[None, ...],
+                    dims=('t', 'y', 'x', 'c'),
+                    # dims={0: 'c'},
+                    # coords={'c': tuple(map(str, chan_coords}
+                    coords={
+                        't': np.array([time_idx]),
+                        'y': np.arange(frame.shape[0]),
+                        'x': np.arange(frame.shape[1]),
+                        'c': np.array(chan_coords),
+                    }
+                )
+
+                space_frames.append(xr_frame)
+
+            def nan_concat(objs, dim):
+                # not sure why this didnt work otherwise
+                # new_channs = list(ub.unique(map(str, ub.flatten(obj.coords['c'].values for obj in objs))))
+                obj = objs[0]
+                # toalign = set(obj.dims) - {dim}
+                # for d in toalign:
+                # d = 'c'
+                # ub.flatten(obj.coords[d].values for obj in objs)
+                # xdev.fix_embed_globals()
+                new_chans = np.unique(list(ub.flatten(obj.coords['c'].values for obj in objs)))
+                new_dims = obj.dims
+
+                new_shape = obj.shape[0:-1] + (len(new_chans),)
+                # for obj in objs:
+                #     new_channs = ub.flatten(obj.coords['c'].values for obj in objs)
+
+                new_frames = []
+                for obj in objs:
+                    bigger = np.full_like(obj.values, shape=new_shape, fill_value=float('nan'))
+                    # so slow
+                    val_map = [np.where(new_chans == c)[0][0] for c in obj.coords['c'] ]
+                    bigger[..., val_map] = obj.values
+
+                    new_coords = {}
+                    new_coords['t'] = obj.coords['t']
+                    new_coords['x'] = obj.coords['x']
+                    new_coords['y'] = obj.coords['y']
+                    new_coords['c'] = new_chans
+
+                    # TODO: can add lat/lon coords here
+                    new_frame = xr.DataArray(
+                        bigger, dims=new_dims, coords=new_coords)
+                    new_frames.append(new_frame)
+                hack_cat = xr.concat(new_frames, dim='t')
+                return hack_cat
+
+            objs = space_frames
+            _data_clipped = nan_concat(objs, dim='t')
+
+            tr_['_coords'] = _data_clipped.coords
+            tr_['_dims'] = _data_clipped.dims
+
+            data_clipped = _data_clipped.values
+            # data_clipped = np.concatenate(space_frames, axis=0)
+            # xr.concat(space_frames, dim='t', coords={'c': new_channs})
 
             # TODO: gids should be padded if it goes oob.
             tr_['_data_gids'] = time_gids

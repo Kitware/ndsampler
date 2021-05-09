@@ -1,6 +1,7 @@
 networkx >= 2.2.0
 ubelt >= 0.8.2
 parse >= 1.12.0
+xarray >= 0.18.0
 
 numpy 
 scipy
