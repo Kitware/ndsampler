@@ -703,13 +703,7 @@ class AlignableImageData(object):
         chan = DelayedWarp(data, warp_aux_to_img, dsize=img_dsize)
         return chan
 
-    @profile
-    def _load_prefused_region(self, img_region, channels=ub.NoParam):
-        """
-        Loads crops from multiple channels in their native coordinate system
-        packaged with transformation info on how to align them.
-        """
-
+    def _coerce_channels(self, channels=ub.NoParam):
         if isinstance(channels, str):
             # TODO: document this special key for all channels
             if channels == '<all>':
@@ -720,6 +714,15 @@ class AlignableImageData(object):
                 raise Exception(
                     'Channels is not specified and the image metadata does have a default')
             channels = [default_chan]
+        return channels
+
+    @profile
+    def _load_prefused_region(self, img_region, channels=ub.NoParam):
+        """
+        Loads crops from multiple channels in their native coordinate system
+        packaged with transformation info on how to align them.
+        """
+        channels = self._coerce_channels(channels)
 
         # height = self.pathinfo.get('height', None)
         # width = self.pathinfo.get('width', None)

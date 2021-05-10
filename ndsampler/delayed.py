@@ -82,7 +82,7 @@ import ubelt as ub
 import numpy as np
 import kwimage
 import kwarray
-from ndsampler._transform import Affine
+from kwimage.transform import Affine
 
 
 class DelayedOperation(ub.NiceRepr):

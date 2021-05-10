@@ -614,6 +614,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> tr['channels'] = ['B1', 'B8']
             >>> sample = self.load_sample(tr)
             >>> assert sample['im'].shape == (3, 128, 128, 2)
+            >>> tr['channels'] = '<all>'
+            >>> sample = self.load_sample(tr)
+            >>> assert sample['im'].shape == (3, 128, 128, 5)
         """
         sample = self._load_slice(tr, window_dims, pad, padkw)
 
@@ -726,6 +729,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         requested_slice = tr_['slices']
         channels = tr_.get('channels', ub.NoParam)
 
+        if channels == '<all>' or channels is ub.NoParam:
+            # Do something special
+            pass
+
         vidid = tr_.get('vidid', None)
         if vidid is not None:
             ndim = 3  # number of space-time dimensions (ignore channel)
@@ -754,33 +761,65 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             time_slice, *space_slice = data_slice
             time_gids = gids[time_slice]
             space_frames = []
-            from kwcoco import channel_spec
+            # from kwcoco import channel_spec
+            from kwimage.transform import Affine
             import xarray as xr
+
+            # HACKED AND NOT ELEGANT OR EFFICIENT
             for time_idx, gid in enumerate(time_gids):
-                hack = self.frames._load_alignable(gid).pathinfo['channels']
-                cs = ','.join(list(hack.keys()))
+                img = self.dset.imgs[gid]
+                tf_img_to_vid = Affine.coerce(img['warp_img_to_vid'])
 
-                spec = channel_spec.ChannelSpec(cs)
-                # code = spec.unique(normalize=True)
-                chan_coords = tuple(ub.flatten(spec.normalize().values()))
+                alignable = self.frames._load_alignable(gid)
+                frame_channels = alignable._coerce_channels(channels)
 
-                frame = self.frames.load_region(
-                    image_id=gid, region=space_slice, channels=channels)
-                # Add a dimension for time
+                chan_frames = []
+                for chan_name in frame_channels:
+                    # Load full image in "virtual" image space
+                    img_full = alignable._load_delayed_channel(chan_name)
+                    vid_full = img_full.delayed_warp(tf_img_to_vid, dsize=(vid_width, vid_height))
+                    vid_part = vid_full.delayed_crop(space_slice)
+
+                    vid_chan_frame = vid_part.finalize()
+                    # TODO: can add lat/lon coords here
+                    xr_chan_frame = xr.DataArray(
+                        vid_chan_frame[None, ...],
+                        dims=('t', 'y', 'x', 'c'),
+                        # dims={0: 'c'},
+                        # coords={'c': tuple(map(str, chan_coords}
+                        coords={
+                            't': np.array([time_idx]),
+                            # 'y': np.arange(vid_chan_frame.shape[0]),
+                            # 'x': np.arange(vid_chan_frame.shape[1]),
+                            'c': np.array([chan_name]),
+                        }
+                    )
+                    chan_frames.append(xr_chan_frame)
+
+                xr_frame = xr.concat(chan_frames, dim='c')
+
+                # avail = list(alignable.pathinfo['channels'].keys())
+                # loaded_ = ub.oset(avail) & channels
+                # cs = ','.join(loaded_)
+                # spec = channel_spec.ChannelSpec(cs)
+                # # code = spec.unique(normalize=True)
+                # chan_coords = tuple(ub.flatten(spec.normalize().values()))
+                # frame = self.frames.load_region(
+                #     image_id=gid, region=space_slice, channels=channels)
 
                 # TODO: can add lat/lon coords here
-                xr_frame = xr.DataArray(
-                    frame[None, ...],
-                    dims=('t', 'y', 'x', 'c'),
-                    # dims={0: 'c'},
-                    # coords={'c': tuple(map(str, chan_coords}
-                    coords={
-                        't': np.array([time_idx]),
-                        'y': np.arange(frame.shape[0]),
-                        'x': np.arange(frame.shape[1]),
-                        'c': np.array(chan_coords),
-                    }
-                )
+                # xr_frame = xr.DataArray(
+                #     frame[None, ...],
+                #     dims=('t', 'y', 'x', 'c'),
+                #     # dims={0: 'c'},
+                #     # coords={'c': tuple(map(str, chan_coords}
+                #     coords={
+                #         't': np.array([time_idx]),
+                #         'y': np.arange(frame.shape[0]),
+                #         'x': np.arange(frame.shape[1]),
+                #         'c': np.array(chan_coords),
+                #     }
+                # )
 
                 space_frames.append(xr_frame)
 
@@ -820,8 +859,16 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 hack_cat = xr.concat(new_frames, dim='t')
                 return hack_cat
 
-            objs = space_frames
-            _data_clipped = nan_concat(objs, dim='t')
+            if 0:
+                for f in space_frames:
+                    print('f.coords = {!r}'.format(f.coords))
+                    print('f.shape = {!r}'.format(f.shape))
+
+            # objs = space_frames
+            # _data_clipped = nan_concat(objs, dim='t')
+
+            # Works in 0.17.0?
+            _data_clipped = xr.concat(space_frames, dim='t')
 
             tr_['_coords'] = _data_clipped.coords
             tr_['_dims'] = _data_clipped.dims
