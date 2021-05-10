@@ -355,15 +355,15 @@ class DelayedLoad(DelayedImageOperation):
 
     def finalize(self, **kwargs):
         import kwimage
+        from ndsampler.utils import util_gdal
         final = self.cache.get('final', None)
         if final is None:
-            if 0:
+            if util_gdal.have_gdal():
+                final = util_gdal.LazyGDalFrameFile(self.fpath)
+            else:
                 # TODO: delay even further with gdal
                 final = kwimage.imread(self.fpath)
                 final = kwarray.atleast_nd(final, 3)
-            else:
-                from ndsampler.utils.util_gdal import LazyGDalFrameFile
-                final = LazyGDalFrameFile(self.fpath)
             dsize = self.meta.get('dsize', None)
             if dsize is not None:
                 final = np.asarray(final)
