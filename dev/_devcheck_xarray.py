@@ -16,9 +16,11 @@ def _devcheck_xarray():
     combo = xr.concat([data1, data2, data3], dim='t')
 
     datas = [
-        xr.DataArray(np.random.rand(1, 10, 10, 1), dims=('t', 'y', 'x', 'c'), coords={'c': ['Z'], 't': [1]}),
-        xr.DataArray(np.random.rand(1, 10, 10, 3), dims=('t', 'y', 'x', 'c'), coords={'c': ['R', 'G', 'B'], 't': [2]}),
-        xr.DataArray(np.random.rand(1, 10, 10, 3), dims=('t', 'y', 'x', 'c'), coords={'c': ['R', 'G', 'B'], 't': [3]}),
-        xr.DataArray(np.random.rand(1, 10, 10, 1), dims=('t', 'y', 'x', 'c'), coords={'c': ['Z'], 't': [4]}),
+        xr.DataArray(np.random.rand(*(1, 10, 10, 5)), dims=('t', 'y', 'x', 'c'), coords={'t': [1], 'c': ['wv1', 'wv2', 'wv3', 'wv4', 'wv5']}),
+        xr.DataArray(np.random.rand(*(1, 10, 10, 1)), dims=('t', 'y', 'x', 'c'), coords={'t': [2], 'c': ['gray']}),
+        xr.DataArray(np.random.rand(*(1, 10, 10, 0)), dims=('t', 'y', 'x', 'c'), coords={'t': [3], 'c': []}),
+        xr.DataArray(np.random.rand(*(1, 10, 10, 5)), dims=('t', 'y', 'x', 'c'), coords={'t': [4], 'c': ['wv1', 'wv2', 'wv3', 'wv4', 'wv5']}),
+        xr.DataArray(np.random.rand(*(1, 10, 10, 1)), dims=('t', 'y', 'x', 'c'), coords={'t': [5], 'c': ['gray']}),
     ]
     combo = xr.concat(datas, dim='t')
+    assert np.all(np.isnan(combo.values[2]))

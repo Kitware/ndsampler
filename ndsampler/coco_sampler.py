@@ -503,7 +503,6 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 annots (dict): containing items:
                     aids (list): annotation ids
                     cids (list): category ids
-                    rel_cxywh (ndarray): boxes relative to the sample
                     rel_ssegs (ndarray): segmentations relative to the sample
                     rel_kpts (ndarray): keypoints relative to the sample
 
@@ -569,7 +568,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> sample = self.load_sample(tr)
             >>> annots = sample['annots']
             >>> assert len(annots['aids']) > 0
-            >>> assert len(annots['rel_cxywh']) == len(annots['aids'])
+            >>> #assert len(annots['rel_cxywh']) == len(annots['aids'])
             >>> # xdoc: +REQUIRES(--show)
             >>> import kwplot
             >>> kwplot.autompl()
@@ -735,6 +734,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
         vidid = tr_.get('vidid', None)
         if vidid is not None:
+            from kwcoco import channel_spec
+            from kwimage.transform import Affine
+            import xarray as xr
             ndim = 3  # number of space-time dimensions (ignore channel)
             pad = tuple(_ensure_iterablen(pad, ndim))
 
@@ -751,6 +753,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 vid_width = img['width']
                 vid_height = img['height']
 
+            vid_dsize = (vid_width, vid_height)
             data_dims = (num_frames, vid_height, vid_width)
 
             data_slice, extra_padding = kwarray.embed_slice(
@@ -759,115 +762,70 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             # TODO: frames should have better nd-support, hack it for now to
             # just load the 2d data for each image
             time_slice, *space_slice = data_slice
+            space_slice = tuple(space_slice)
             time_gids = gids[time_slice]
             space_frames = []
-            # from kwcoco import channel_spec
-            from kwimage.transform import Affine
-            import xarray as xr
 
-            # HACKED AND NOT ELEGANT OR EFFICIENT
+            slice_height = space_slice[0].stop - space_slice[0].start
+            slice_width = space_slice[1].stop - space_slice[1].start
+
+            # TODO: Handle channel encodings more ellegantly
+
+            # HACKED AND NOT ELEGANT OR EFFICIENT.
+            # MOST OF THIS LOGIC SHOULD BE IN WHATEVER THE TIME-SAMPLING VIDEO
+            # MECHANISM IS
             for time_idx, gid in enumerate(time_gids):
                 img = self.dset.imgs[gid]
                 tf_img_to_vid = Affine.coerce(img['warp_img_to_vid'])
 
                 alignable = self.frames._load_alignable(gid)
                 frame_channels = alignable._coerce_channels(channels)
+                avail_channels = set(alignable.pathinfo['channels'])
 
                 chan_frames = []
                 for chan_name in frame_channels:
-                    # Load full image in "virtual" image space
-                    img_full = alignable._load_delayed_channel(chan_name)
-                    vid_full = img_full.delayed_warp(tf_img_to_vid, dsize=(vid_width, vid_height))
-                    vid_part = vid_full.delayed_crop(space_slice)
 
-                    vid_chan_frame = vid_part.finalize()
-                    # TODO: can add lat/lon coords here
+                    if chan_name not in avail_channels:
+                        continue
+                    else:
+                        # Load full image in "virtual" image space
+                        img_full = alignable._load_delayed_channel(chan_name)
+                        vid_full = img_full.delayed_warp(tf_img_to_vid, dsize=vid_dsize)
+                        vid_part = vid_full.delayed_crop(space_slice)
+
+                        vid_chan_frame = vid_part.finalize()
+
+                    chan_spec = channel_spec.ChannelSpec(chan_name)
+                    chan_coords = ub.peek(chan_spec.normalize().values())
+                    # TODO: we could add utm coords here
                     xr_chan_frame = xr.DataArray(
                         vid_chan_frame[None, ...],
                         dims=('t', 'y', 'x', 'c'),
-                        # dims={0: 'c'},
-                        # coords={'c': tuple(map(str, chan_coords}
                         coords={
                             't': np.array([time_idx]),
                             # 'y': np.arange(vid_chan_frame.shape[0]),
                             # 'x': np.arange(vid_chan_frame.shape[1]),
-                            'c': np.array([chan_name]),
+                            'c': list(chan_coords),
                         }
                     )
                     chan_frames.append(xr_chan_frame)
 
-                xr_frame = xr.concat(chan_frames, dim='c')
-
-                # avail = list(alignable.pathinfo['channels'].keys())
-                # loaded_ = ub.oset(avail) & channels
-                # cs = ','.join(loaded_)
-                # spec = channel_spec.ChannelSpec(cs)
-                # # code = spec.unique(normalize=True)
-                # chan_coords = tuple(ub.flatten(spec.normalize().values()))
-                # frame = self.frames.load_region(
-                #     image_id=gid, region=space_slice, channels=channels)
-
-                # TODO: can add lat/lon coords here
-                # xr_frame = xr.DataArray(
-                #     frame[None, ...],
-                #     dims=('t', 'y', 'x', 'c'),
-                #     # dims={0: 'c'},
-                #     # coords={'c': tuple(map(str, chan_coords}
-                #     coords={
-                #         't': np.array([time_idx]),
-                #         'y': np.arange(frame.shape[0]),
-                #         'x': np.arange(frame.shape[1]),
-                #         'c': np.array(chan_coords),
-                #     }
-                # )
-
+                if len(chan_frames):
+                    xr_frame = xr.concat(chan_frames, dim='c')
+                else:
+                    # TODO: we could add utm coords here
+                    xr_frame = xr.DataArray(
+                        np.empty((1, slice_height, slice_width, 0)),
+                        dims=('t', 'y', 'x', 'c'),
+                        coords={
+                            't': np.array([time_idx]),
+                            'c': [],
+                        }
+                    )
                 space_frames.append(xr_frame)
 
-            def nan_concat(objs, dim):
-                # not sure why this didnt work otherwise
-                # new_channs = list(ub.unique(map(str, ub.flatten(obj.coords['c'].values for obj in objs))))
-                obj = objs[0]
-                # toalign = set(obj.dims) - {dim}
-                # for d in toalign:
-                # d = 'c'
-                # ub.flatten(obj.coords[d].values for obj in objs)
-                # xdev.fix_embed_globals()
-                new_chans = np.unique(list(ub.flatten(obj.coords['c'].values for obj in objs)))
-                new_dims = obj.dims
-
-                new_shape = obj.shape[0:-1] + (len(new_chans),)
-                # for obj in objs:
-                #     new_channs = ub.flatten(obj.coords['c'].values for obj in objs)
-
-                new_frames = []
-                for obj in objs:
-                    bigger = np.full_like(obj.values, shape=new_shape, fill_value=float('nan'))
-                    # so slow
-                    val_map = [np.where(new_chans == c)[0][0] for c in obj.coords['c'] ]
-                    bigger[..., val_map] = obj.values
-
-                    new_coords = {}
-                    new_coords['t'] = obj.coords['t']
-                    new_coords['x'] = obj.coords['x']
-                    new_coords['y'] = obj.coords['y']
-                    new_coords['c'] = new_chans
-
-                    # TODO: can add lat/lon coords here
-                    new_frame = xr.DataArray(
-                        bigger, dims=new_dims, coords=new_coords)
-                    new_frames.append(new_frame)
-                hack_cat = xr.concat(new_frames, dim='t')
-                return hack_cat
-
-            if 0:
-                for f in space_frames:
-                    print('f.coords = {!r}'.format(f.coords))
-                    print('f.shape = {!r}'.format(f.shape))
-
-            # objs = space_frames
-            # _data_clipped = nan_concat(objs, dim='t')
-
-            # Works in 0.17.0?
+            # Concat aligned frames together (add nans for non-existing
+            # channels)
             _data_clipped = xr.concat(space_frames, dim='t')
 
             tr_['_coords'] = _data_clipped.coords
@@ -966,20 +924,39 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         else:
             gids = [tr['gid']]
 
-        # accumulate information over all frames
-        frame_accum = []
-
         params = sample['params']
         sample_tlbr = params['sample_tlbr']
         offset = params['offset']
         data_dims = params['data_dims']
         space_dims = data_dims[-2:]
+
+        # accumulate information over all frames
+        frame_dets = []
+
         for rel_frame_idx, gid in enumerate(gids):
-            # ltrb box in original image space around this sampled patch
+
+            # Check to see if there is a transform between the image-space and
+            # the sampling-space (currently this can only be done by a video,
+            # but in the future the user might be able to adjust sample scale)
+            if tr.get('vidid', None) is not None:
+                # hack to align annots from image space to video space
+                img = self.dset.imgs[gid]
+                from kwimage.transform import Affine
+                tf_img_to_abs = Affine.coerce(img.get('warp_img_to_vid', None))
+                tf_abs_to_img = tf_img_to_abs.inv()
+            else:
+                tf_img_to_abs = None
+
+            # check overlap in image space
+            if tf_img_to_abs is None:
+                sample_tlbr_ = sample_tlbr
+            else:
+                sample_tlbr_ = sample_tlbr.warp(tf_abs_to_img.matrix).quantize()
+                print('sample_tlbr_ = {!r}'.format(sample_tlbr_))
 
             # Find which bounding boxes are visible in this region
             overlap_aids = self.regions.overlapping_aids(
-                gid, sample_tlbr, visible_thresh=visible_thresh)
+                gid, sample_tlbr_, visible_thresh=visible_thresh)
 
             # Get info about all annotations inside this window
 
@@ -988,19 +965,17 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             abs_boxes = kwimage.Boxes(
                 [ann['bbox'] for ann in overlap_anns], 'xywh')
 
-            # Transform spatial information to be relative to the sample
-            rel_boxes = abs_boxes.translate(offset)
-
             # Handle segmentations and keypoints if they exist
-            sseg_list = []
-            kpts_list = []
-
             coco_dset = self.dset
             kp_classes = self.kp_classes
+            classes = self.classes
+            sseg_list = []
+            kpts_list = []
             for ann in overlap_anns:
                 # TODO: it should probably be the regions's responsibilty to load
                 # and return these kwimage data structures.
-                rel_points = None
+                abs_points = None
+                abs_sseg = None
                 if 'keypoints' in with_annots:
                     coco_kpts = ann.get('keypoints', None)
                     if coco_kpts is not None and len(coco_kpts) > 0:
@@ -1016,62 +991,62 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                             kp_class_idxs = np.array([kp_classes.index(n) for n in kpnames])
                             abs_points = kwimage.Points.from_coco(
                                 coco_kpts, kp_class_idxs, kp_classes)
-                        rel_points = abs_points.translate(offset)
-
-                rel_sseg = None
                 if 'segmentation' in with_annots:
                     coco_sseg = ann.get('segmentation', None)
                     if coco_sseg is not None:
                         # x = _coerce_coco_segmentation(coco_sseg, space_dims)
                         # abs_sseg = kwimage.Mask.coerce(coco_sseg, dims=space_dims)
                         abs_sseg = kwimage.MultiPolygon.coerce(coco_sseg, dims=space_dims)
-                        if abs_sseg is None:
-                            rel_sseg = None
-                        else:
-                            # abs_sseg = abs_sseg.to_multi_polygon()
-                            rel_sseg = abs_sseg.translate(offset)
+                sseg_list.append(abs_sseg)
+                kpts_list.append(abs_points)
 
-                kpts_list.append(rel_points)
-                sseg_list.append(rel_sseg)
+            abs_ssegs = kwimage.PolygonList(sseg_list)
+            abs_kpts = kwimage.PointsList(kpts_list)
+            abs_kpts.meta['classes'] = self.kp_classes
 
-            rel_ssegs = kwimage.PolygonList(sseg_list)
-            rel_kpts = kwimage.PointsList(kpts_list)
-            rel_kpts.meta['classes'] = self.kp_classes
+            # Construct a detections object containing absolute annotation
+            # positions
+            abs_dets = kwimage.Detections(
+                aids=np.array(overlap_aids),
+                cids=np.array(overlap_cids),
+                boxes=abs_boxes,
+                segmentations=abs_ssegs,
+                keypoints=abs_kpts,
+                classes=classes,
+                rel_frame_index=rel_frame_idx,
+                gid=gid,
+                datakeys=['aids', 'cids'],
+                metakeys=['gid', 'rel_frame_index']
+            )
 
-            frame_annots = {
-                'aids': np.array(overlap_aids),
-                'cids': np.array(overlap_cids),
+            # Translate the absolute detections to relative sample coordinates
+            if tf_img_to_abs is not None:
+                # hack to align annots from image space to video space
+                tf_abs_to_rel = Affine.translate(offset) @ tf_img_to_abs
+                rel_dets = abs_dets.warp(tf_abs_to_rel.matrix)
+            else:
+                rel_dets = abs_dets.translate(offset)
 
-                'rel_frame_index': np.array([rel_frame_idx] * len(overlap_aids)),
+            frame_dets.append(rel_dets)
 
-                'rel_cxywh': rel_boxes.to_cxywh().data,
-                'abs_cxywh': abs_boxes.to_cxywh().data,
-
-                'rel_boxes': rel_boxes,
-                'rel_ssegs': rel_ssegs,
-                'rel_kpts': rel_kpts,
-            }
-
-            frame_accum.append(frame_annots)
-
-        if len(frame_accum) == 1:
-            annots = frame_accum[0]
-        else:
-            # Hack to get multi-frame annots without too much developer effort.
-            # Could be more efficient
-            annots = {
-                'aids': np.hstack([x['aids'] for x in frame_accum]),
-                'cids': np.hstack([x['cids'] for x in frame_accum]),
-                'rel_frame_index': np.hstack([x['rel_frame_index'] for x in frame_accum]),
-
-                'rel_cxywh': np.vstack([x['rel_cxywh'] for x in frame_accum]),
-                'abs_cxywh': np.vstack([x['abs_cxywh'] for x in frame_accum]),
-
-                'rel_boxes': kwimage.Boxes.concatenate([x['rel_boxes'] for x in frame_accum]),
-                'rel_ssegs': kwimage.PolygonList(list(ub.flatten([x['rel_ssegs'].data for x in frame_accum]))),
-                'rel_kpts': kwimage.PointsList(list(ub.flatten([x['rel_kpts'].data for x in frame_accum]))),
-            }
-            annots['rel_kpts'].meta['classes'] = self.kp_classes
+        # if len(frame_dets) == 1:
+        #     annots = frame_dets[0].data
+        # else:
+        # Hack to get multi-frame annots without too much developer effort.
+        # Could be more efficient
+        annots = {
+            'aids': np.hstack([x.data['aids'] for x in frame_dets]),
+            'cids': np.hstack([x.data['cids'] for x in frame_dets]),
+            'rel_frame_index': np.hstack([[x.meta['rel_frame_index']] * len(x) for x in frame_dets]),
+            'rel_boxes': kwimage.Boxes.concatenate([x.data['boxes'] for x in frame_dets]),
+            'rel_ssegs': kwimage.PolygonList(list(ub.flatten([x.data['segmentations'].data for x in frame_dets]))),
+            'rel_kpts': kwimage.PointsList(list(ub.flatten([x.data['keypoints'].data for x in frame_dets]))),
+            'frame_dets': frame_dets,
+            # Removed:
+            # 'rel_cxywh': np.vstack([x['rel_cxywh'] for x in frame_accum]),
+            # 'abs_cxywh': np.vstack([x['abs_cxywh'] for x in frame_accum]),
+        }
+        annots['rel_kpts'].meta['classes'] = self.kp_classes
 
         # Note the center coordinates in the padded sample reference frame
         tr_ = sample['tr']

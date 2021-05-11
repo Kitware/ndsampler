@@ -946,6 +946,12 @@ def _compute_leaf_subcrop(root_region_bounds, tf_leaf_to_root):
         >>> print('tf_new =\n{!r}'.format(tf_new))
         >>> print('slices = {!r}'.format(slices))
 
+    Ignore:
+
+        root_region_bounds = kwimage.Coords.random(4)
+        tf_leaf_to_root = np.eye(3)
+        tf_leaf_to_root[0, 2] = -1e-11
+
     """
     # Transform the region bounds into the sub-image space
     tf_root_to_leaf = np.asarray(Affine.coerce(tf_leaf_to_root).inv())
@@ -954,6 +960,9 @@ def _compute_leaf_subcrop(root_region_bounds, tf_leaf_to_root):
 
     # Quantize to a region that is possible to sample from
     leaf_crop_box = leaf_region_box.quantize()
+
+    # is this ok?
+    leaf_crop_box = leaf_crop_box.clip(0, 0, None, None)
 
     # Because we sampled a large quantized region, we need to modify the
     # transform to nudge it a bit to the left, undoing the quantization,
