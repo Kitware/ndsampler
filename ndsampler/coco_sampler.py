@@ -448,39 +448,49 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                                   with_annots=with_annots)
         return sample
 
-    @profile
-    def load_sample(self, tr, pad=None, window_dims=None, visible_thresh=0.0,
-                    with_annots=True, padkw={'mode': 'constant'}):
+    def load_sample(self, tr, with_annots=True, visible_thresh=0.0, pad=None,
+                    padkw={'mode': 'constant'}, **kw):
         """
         Loads the volume data associated with the bbox and frame of a target
 
         Args:
-            tr (dict): target dictionary containing image and bbox info for a
-                positive / negative target. Must contain the keys ['gid',
-                'cx', 'cy'] (gid is the image-id, cx is the center x position
-                in pixels, and cy is the center y position in pixels.) or an
-                alternative way of determening this information.  If
-                `window_dims` is None it must also contain the keys ['width'
-                and 'height'].
+            tr (dict): target dictionary indicating an nd source object (e.g.
+                image or video) and the coordinate region to sample from.
+                Unspecified coordinate regions default to the extent of the
+                source object.
 
-                NEW: tr can now contain the key `slices`, which maps a tuple of
-                slices, one slice for each of the n dimensions.  If specified
-                this will overwrite the 'cx', 'cy' keys. The 'gid' key is still
-                required, and `pad` does still have an effect.
+                For 2D image source objects, tr must contain or be able to
+                infer the key `gid (int)`, to specify an image id.
 
-                NEW in 0.5.10: tr can now contain the key `aid`, which
-                indicates the specific annotation id to load. The keys ['gid',
-                'cx', 'cy'] are derived from `aid` if not present.
+                For 3D video source objects, tr must contain the key
+                `vidid (int)`, to specify a video id. (NEW in 0.6.1)
+
+                In general, coordinate regions can specified by the key
+                `slices`, a numpy-like "fancy index" over each of the n
+                dimensions. Usually this is a tuple of slices, e.g.
+                (y1:y2, x1:x2) for images and (t1:t2, y1:y2, x1:x2) for videos.
+
+                Spatial regions can be specified with keys:
+                    * 'cx' and 'cy' as the center of the region in pixels.
+                    * 'width' and 'height' are in pixels.
+                    * 'window_dims' is a height, width tuple or can be a
+                    special string key 'square', which overrides width and
+                    height to both be the maximum of the two.
+
+                Temporal regions are currently only specifiable by slices. This
+                will change in the future.
+
+                The `aid` key can be specified to indicate a specific
+                annotation to load. This uses the annotation information to
+                infer 'gid', 'cx', 'cy', 'width', and 'height' if they are not
+                present. (NEW in 0.5.10)
+
+                The `channels` key can be specified as a channel code or list
+                of channel codes indicating a subset of channels to load.
+                (NEW in 0.6.1)
 
             pad (tuple): (height, width) extra context to add to window dims.
                 This helps prevent augmentation from producing boundary effects
-
-            window_dims (tuple | str): (height, width) overrides the height/width
-                in tr to determine the extracted window size. Can also be
-                'extent' or 'square', which determines the final size using
-                target information.
-
-                DEPRECATED. IF DESIRED SPECIFY IN THE TARGET DICTIONARY
 
             visible_thresh (float): does not return annotations with visibility
                 less than this threshold.
@@ -494,6 +504,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 should be extracted. Valid strings in this list are: boxes,
                 keypoints, and segmentation.
 
+            window_dims (tuple | str): (height, width) overrides the height/width
+                in tr to determine the extracted window size. Can also be
+                'extent' or 'square', which determines the final size using
+                target information.
+
+                DEPRECATED. IF DESIRED SPECIFY IN THE TARGET DICTIONARY
+
         Returns:
             Dict: sample: dict containing keys
                 im (ndarray): image data
@@ -501,10 +518,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     specifies rel_cx and rel_cy, which gives the center
                     of the target w.r.t the returned **padded** sample.
                 annots (dict): containing items:
-                    aids (list): annotation ids
-                    cids (list): category ids
-                    rel_ssegs (ndarray): segmentations relative to the sample
-                    rel_kpts (ndarray): keypoints relative to the sample
+                    frame_dets (List[kwimage.Detections]): a list of detection
+                        objects containing the requested annotation info for each
+                        frame.
+                    aids (list): annotation ids DEPRECATED
+                    cids (list): category ids DEPRECATED
+                    rel_ssegs (ndarray): segmentations relative to the sample DEPRECATED
+                    rel_kpts (ndarray): keypoints relative to the sample DEPRECATED
 
         CommandLine:
             xdoctest -m ndsampler.coco_sampler CocoSampler.load_sample:2 --show
@@ -562,9 +582,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo()
             >>> tr = self.regions.get_positive(0)
-            >>> window_dims = None
-            >>> window_dims = (364, 364)
-            >>> tr['window_dims'] = window_dims
+            >>> tr['window_dims'] = (364, 364)
             >>> sample = self.load_sample(tr)
             >>> annots = sample['annots']
             >>> assert len(annots['aids']) > 0
@@ -593,11 +611,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo('photos')
             >>> tr = self.regions.get_positive(1)
-            >>> window_dims = (300, 150)
             >>> pad = None
-            >>> tr['window_dims'] = window_dims
+            >>> tr['window_dims'] = (300, 150)
             >>> sample = self.load_sample(tr, pad)
-            >>> assert sample['im'].shape[0:2] == window_dims
+            >>> assert sample['im'].shape[0:2] == tr['window_dims']
             >>> # xdoc: +REQUIRES(--show)
             >>> import kwplot
             >>> kwplot.autompl()
@@ -617,7 +634,12 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> sample = self.load_sample(tr)
             >>> assert sample['im'].shape == (3, 128, 128, 5)
         """
-        sample = self._load_slice(tr, window_dims, pad, padkw)
+        if len(kw):
+            raise Exception(
+                'The load_sample API has deprecated arguments that should now '
+                ' be given in `tr` itself. You specified {}'.format(list(kw)))
+
+        sample = self._load_slice(tr, pad, padkw)
 
         if with_annots or ub.iterable(with_annots):
             self._populate_overlap(sample, visible_thresh, with_annots)
@@ -627,7 +649,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         return sample
 
     @profile
-    def _infer_target_attributes(self, tr, window_dims=None):
+    def _infer_target_attributes(self, tr):
         """
         Infer unpopulated target attribues
 
@@ -640,6 +662,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> assert tr_['gid'] == 1
             >>> assert all(k in tr_ for k in ['cx', 'cy', 'width', 'height'])
         """
+        window_dims = None
         # we might modify the target
         tr_ = tr.copy()
         if 'aid' in tr_:
@@ -707,8 +730,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         return tr_
 
     @profile
-    def _load_slice(self, tr, window_dims=None, pad=None,
-                    padkw={'mode': 'constant'}):
+    def _load_slice(self, tr, pad=None, padkw={'mode': 'constant'}):
         """
         Example:
             >>> # sample an out of bounds target
@@ -720,29 +742,32 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         """
         import skimage
         import kwarray
+        from kwcoco import channel_spec
+        from kwimage.transform import Affine
+        import xarray as xr
         if pad is None:
             pad = 0
 
-        tr_ = self._infer_target_attributes(tr, window_dims=window_dims)
+        tr_ = self._infer_target_attributes(tr)
         assert 'slices' in tr_
         requested_slice = tr_['slices']
         channels = tr_.get('channels', ub.NoParam)
 
         if channels == '<all>' or channels is ub.NoParam:
             # Do something special
-            pass
+            all_chan = True
+        else:
+            request_chanspec = channel_spec.ChannelSpec.coerce(channels)
+            requeset_chan_coords = ub.oset(ub.flatten(request_chanspec.normalize().values()))
+            all_chan = False
 
         vidid = tr_.get('vidid', None)
         if vidid is not None:
-            from kwcoco import channel_spec
-            from kwimage.transform import Affine
-            import xarray as xr
             ndim = 3  # number of space-time dimensions (ignore channel)
             pad = tuple(_ensure_iterablen(pad, ndim))
 
             # As of kwcoco 0.2.1 gids are ordered by frame index
             gids = self.dset.index.vidid_to_gids[vidid]
-
             video = self.dset.index.videos[vidid]
             vid_width = video.get('width', None)
             vid_height = video.get('height', None)
@@ -779,36 +804,49 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 tf_img_to_vid = Affine.coerce(img['warp_img_to_vid'])
 
                 alignable = self.frames._load_alignable(gid)
-                frame_channels = alignable._coerce_channels(channels)
-                avail_channels = set(alignable.pathinfo['channels'])
+                frame_chan_names = list(alignable.pathinfo['channels'].keys())
 
                 chan_frames = []
-                for chan_name in frame_channels:
+                for frame_chan_name in frame_chan_names:
+                    frame_spec = channel_spec.ChannelSpec.coerce(frame_chan_name)
+                    file_chan_coords = ub.oset(ub.flatten(frame_spec.normalize().values()))
 
-                    if chan_name not in avail_channels:
-                        continue
+                    if all_chan:
+                        matching_coords = file_chan_coords
                     else:
+                        matching_coords = file_chan_coords & requeset_chan_coords
+
+                    if matching_coords:
                         # Load full image in "virtual" image space
-                        img_full = alignable._load_delayed_channel(chan_name)
+                        img_full = alignable._load_delayed_channel(frame_chan_name)
                         vid_full = img_full.delayed_warp(tf_img_to_vid, dsize=vid_dsize)
+
                         vid_part = vid_full.delayed_crop(space_slice)
 
-                        vid_chan_frame = vid_part.finalize()
+                        # TODO: only load some of the channels if that is an
+                        # option
+                        _vid_chan_frame = vid_part.finalize()
 
-                    chan_spec = channel_spec.ChannelSpec(chan_name)
-                    chan_coords = ub.peek(chan_spec.normalize().values())
-                    # TODO: we could add utm coords here
-                    xr_chan_frame = xr.DataArray(
-                        vid_chan_frame[None, ...],
-                        dims=('t', 'y', 'x', 'c'),
-                        coords={
-                            't': np.array([time_idx]),
-                            # 'y': np.arange(vid_chan_frame.shape[0]),
-                            # 'x': np.arange(vid_chan_frame.shape[1]),
-                            'c': list(chan_coords),
-                        }
-                    )
-                    chan_frames.append(xr_chan_frame)
+                        if 1:
+                            # TODO: can we test if we can simplify this to None
+                            # or a slice? Maybe we can write a function
+                            # simplify slice?
+                            subchan_idxs = [file_chan_coords.index(c)
+                                            for c in matching_coords]
+                            vid_chan_frame = _vid_chan_frame[..., subchan_idxs]
+
+                        # TODO: we could add utm coords here
+                        xr_chan_frame = xr.DataArray(
+                            vid_chan_frame[None, ...],
+                            dims=('t', 'y', 'x', 'c'),
+                            coords={
+                                't': np.array([time_idx]),
+                                # 'y': np.arange(vid_chan_frame.shape[0]),
+                                # 'x': np.arange(vid_chan_frame.shape[1]),
+                                'c': list(matching_coords),
+                            }
+                        )
+                        chan_frames.append(xr_chan_frame)
 
                 if len(chan_frames):
                     xr_frame = xr.concat(chan_frames, dim='c')
@@ -826,7 +864,18 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
             # Concat aligned frames together (add nans for non-existing
             # channels)
+
             _data_clipped = xr.concat(space_frames, dim='t')
+            if all_chan:
+                # This is not the right thing to do for rgb data
+                _data_clipped = _data_clipped.sel(c=sorted(_data_clipped.coords['c']))
+            else:
+                _data_clipped = _data_clipped.sel(c=list(requeset_chan_coords))
+            """
+            import xarray as xr
+            a = xr.DataArray(np.random.rand(5, 8, 3, 2), dims=('a', 'b', 'c', 'd'), coords={'c': ['z', 'x', 'y']})
+            a.sel(c=['x', 'y', 'z'])
+            """
 
             tr_['_coords'] = _data_clipped.coords
             tr_['_dims'] = _data_clipped.dims
