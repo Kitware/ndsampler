@@ -169,7 +169,7 @@ def _imwrite_cloud_optimized_geotiff(fpath, data, compress='auto',
         xdoctest -m ndsampler.utils.util_gdal _imwrite_cloud_optimized_geotiff
 
     Example:
-        >>> # xdoctest: +REQUIRES(module:gdal)
+        >>> # xdoctest: +REQUIRES(module:osgeo)
         >>> from ndsampler.utils.util_gdal import *  # NOQA
         >>> from ndsampler.utils.util_gdal import _imwrite_cloud_optimized_geotiff
         >>> from ndsampler.utils.util_gdal import _doctest_check_cog
@@ -541,7 +541,7 @@ def _api_convert_cloud_optimized_geotiff2(src_fpath, dst_fpath,
 
     translate_opts = gdal.TranslateOptions(format='GTiff', creationOptions=options)
     data_set2 = gdal.Translate(dst_fpath, data_set, options=translate_opts)
-    data_set2 = None
+    data_set2 = None  # NOQA
 
     # # Copy the in-memory dataset to an on-disk GeoTiff
     # driver2 = gdal.GetDriverByName(str('GTiff'))
@@ -572,7 +572,7 @@ class LazyGDalFrameFile(ub.NiceRepr):
               height, width, and channels if possible.
 
     Example:
-        >>> # xdoctest: +REQUIRES(module:gdal)
+        >>> # xdoctest: +REQUIRES(module:osgeo)
         >>> from ndsampler.utils.util_gdal import *  # NOQA
         >>> self = LazyGDalFrameFile.demo()
         >>> cog_fpath = self.cog_fpath
@@ -710,6 +710,15 @@ class LazyGDalFrameFile(ub.NiceRepr):
             img_part = np.dstack(channels)
         return img_part
 
+    def __array__(self):
+        """
+        Allow this object to be passed to np.asarray
+
+        References:
+            https://numpy.org/doc/stable/user/basics.dispatch.html
+        """
+        return self[:]
+
     def validate(self, orig_fpath=None, orig_data=None):
         """
         Check for any corruption issues
@@ -792,7 +801,7 @@ def validate_nonzero_data(file):
     May fail on all-black images
 
     Example:
-        >>> # xdoctest: +REQUIRES(module:gdal)
+        >>> # xdoctest: +REQUIRES(module:osgeo)
         >>> from ndsampler.utils.util_gdal import LazyGDalFrameFile
         >>> import kwimage
         >>> gpath = kwimage.grab_test_image_fpath()

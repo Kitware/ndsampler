@@ -531,6 +531,33 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
             targets['img_height'] = [img['height'] for img in imgs]
         return targets
 
+    def new_sample_grid(self, task, window_dims, window_overlap=0):
+        """
+        New experimental method to replace preselect positives / negatives
+
+        Args:
+            task (str): can be
+                video_detection
+                # image_detection
+                # video_classification
+                # image_classification
+
+        Example:
+            >>> from ndsampler.coco_regions import *
+            >>> from ndsampler import coco_sampler
+            >>> self = coco_sampler.CocoSampler.demo('vidshapes1').regions
+            >>> self.dset.conform()
+            >>> sample_grid = self.new_sample_grid('video_detection', window_dims=(2, 100, 100))
+        """
+        dset = self.dset
+        if task == 'video_detection':
+            sample_grid = new_video_sample_grid(dset, window_dims,
+                                                window_overlap)
+        else:
+            raise NotImplementedError(task)
+
+        return sample_grid
+
     def _preselect_positives(self, num=None, window_dims=None, rng=None,
                              verbose=None):
         """"
@@ -820,3 +847,215 @@ def select_positive_regions(targets, window_dims=(300, 300), thresh=0.0,
 
     selection = np.array(sorted(selection))
     return selection
+
+
+def new_video_sample_grid(dset, window_dims, window_overlap=0.0,
+                          classes_of_interest=None, ignore_coverage_thresh=0.6,
+                          negative_classes={'ignore', 'background'}):
+    """
+    Create a space time-grid to sample with
+
+    Example:
+        >>> from ndsampler.coco_regions import *  # NOQA
+        >>> import kwcoco
+        >>> dset = kwcoco.CocoDataset.demo('vidshapes8-multispectral', num_frames=5)
+        >>> dset.conform()
+        >>> window_dims = (2, 224, 224)
+        >>> sample_grid = new_video_sample_grid(dset, window_dims)
+        >>> print('sample_grid = {}'.format(ub.repr2(sample_grid, nl=2)))
+
+    Ignore:
+        import xdev
+        globals().update(xdev.get_func_kwargs(new_video_sample_grid))
+    """
+    import kwarray
+    from ndsampler import isect_indexer
+    keepbound = True
+
+    if classes_of_interest:
+        raise NotImplementedError
+
+    # Create a sliding window object for each specific image (because they may
+    # have different sizes, technically we could memoize this)
+    vidid_to_slider = {}
+    for vidid, video in dset.index.videos.items():
+        gids = dset.index.vidid_to_gids[vidid]
+        num_frames = len(gids)
+        full_dims = [num_frames, video['height'], video['width']]
+        window_dims_ = full_dims if window_dims == 'full' else window_dims
+        slider = kwarray.SlidingWindow(full_dims, window_dims_,
+                                       overlap=window_overlap,
+                                       keepbound=keepbound,
+                                       allow_overshoot=True)
+
+        vidid_to_slider[vidid] = slider
+
+    _isect_index = isect_indexer.FrameIntersectionIndex.from_coco(dset)
+
+    positives = []
+    negatives = []
+    for vidid, slider in vidid_to_slider.items():
+        regions = list(slider)
+        gids = dset.index.vidid_to_gids[vidid]
+        boxes = []
+        box_gids = []
+        for region in regions:
+            t_sl, y_sl, x_sl = region
+            region_gids = gids[t_sl]
+            box_gids.append(region_gids)
+            boxes.append([x_sl.start,  y_sl.start, x_sl.stop, y_sl.stop])
+        boxes = kwimage.Boxes(np.array(boxes), 'ltrb')
+
+        for region, region_gids, box in zip(regions, box_gids, boxes):
+            # Check to see what annotations this window-box overlaps with
+            region_aids = []
+            for gid in region_gids:
+                # TODO: memoize to prevent dup queries (box is not hashable)
+                aids = _isect_index.overlapping_aids(gid, box)
+                region_aids.append(aids)
+
+            pos_aids = sorted(ub.flatten(region_aids))
+
+            tr = {
+                'vidid': vidid,
+                'slices': region,
+                'gids': region_gids,
+                'aids': pos_aids,
+            }
+            if len(pos_aids):
+                positives.append(tr)
+            else:
+                negatives.append(tr)
+
+    print('Found {} positives'.format(len(positives)))
+    print('Found {} negatives'.format(len(negatives)))
+    sample_grid = {
+        'positives': positives,
+        'negatives': negatives,
+    }
+    return sample_grid
+
+
+def new_image_sample_grid(dset, window_dims, window_overlap=0.0,
+                          classes_of_interest=None, ignore_coverage_thresh=0.6,
+                          negative_classes={'ignore', 'background'}):
+    """
+    Create a space time-grid to sample with
+
+    Example:
+        >>> from ndsampler.coco_regions import *  # NOQA
+        >>> import kwcoco
+        >>> dset = kwcoco.CocoDataset.demo('shapes8')
+        >>> dset = kwcoco.CocoDataset.demo('vidshapes8-multispectral')
+        >>> window_dims = (224, 224)
+        >>> sample_grid = new_image_sample_grid(dset, window_dims)
+        >>> print('sample_grid = {}'.format(ub.repr2(sample_grid, nl=2)))
+
+    Ignore:
+        import xdev
+        globals().update(xdev.get_func_kwargs(new_image_sample_grid))
+    """
+    # import netharn as nh
+    import kwarray
+    from ndsampler import isect_indexer
+    keepbound = True
+
+    # Create a sliding window object for each specific image (because they may
+    # have different sizes, technically we could memoize this)
+    gid_to_slider = {}
+    for img in dset.imgs.values():
+        full_dims = [img['height'], img['width']]
+        window_dims_ = full_dims if window_dims == 'full' else window_dims
+        slider = kwarray.SlidingWindow(full_dims, window_dims_,
+                                       overlap=window_overlap, keepbound=keepbound,
+                                       allow_overshoot=True)
+        gid_to_slider[img['id']] = slider
+
+    _isect_index = isect_indexer.FrameIntersectionIndex.from_coco(dset)
+
+    positives = []
+    negatives = []
+    for gid, slider in gid_to_slider.items():
+
+        # For each image, create a box for each spatial region in the slider
+        boxes = []
+        regions = list(slider)
+        for region in regions:
+            y_sl, x_sl = region
+            boxes.append([x_sl.start,  y_sl.start, x_sl.stop, y_sl.stop])
+        boxes = kwimage.Boxes(np.array(boxes), 'ltrb')
+
+        for region, box in zip(regions, boxes):
+            # Check to see what annotations this window-box overlaps with
+            aids = _isect_index.overlapping_aids(gid, box)
+
+            # Look at the categories within this region
+            catnames = [
+                dset.cats[dset.anns[aid]['category_id']]['name'].lower()
+                for aid in aids
+            ]
+
+            if ignore_coverage_thresh:
+                ignore_flags = [catname == 'ignore' for catname in catnames]
+                if any(ignore_flags):
+                    # If the almost the entire window is marked as ignored then
+                    # just skip this window.
+                    ignore_aids = list(ub.compress(aids, ignore_flags))
+                    ignore_boxes = dset.annots(ignore_aids).boxes
+
+                    # Get an upper bound on coverage to short circuit extra
+                    # computation in simple cases.
+                    box_area = box.area.sum()
+                    coverage_ub = ignore_boxes.area.sum() / box_area
+                    if coverage_ub  > ignore_coverage_thresh:
+                        max_coverage = ignore_boxes.iooas(box).max()
+                        if max_coverage > ignore_coverage_thresh:
+                            continue
+                        elif len(ignore_boxes) > 1:
+                            # We have to test the complex case
+                            try:
+                                from shapely.ops import cascaded_union
+                                ignore_shape = cascaded_union(ignore_boxes.to_shapley())
+                                region_shape = box[None, :].to_shapley()[0]
+                                coverage_shape = ignore_shape.intersection(region_shape)
+                                real_coverage = coverage_shape.area / box_area
+                                if real_coverage > ignore_coverage_thresh:
+                                    continue
+                            except Exception as ex:
+                                import warnings
+                                warnings.warn(
+                                    'ignore region select had non-critical '
+                                    'issue ex = {!r}'.format(ex))
+
+            if classes_of_interest:
+                # If there are CoIs then only count a region as positive if one
+                # of those is in this region
+                interest_flags = np.array([
+                    catname in classes_of_interest for catname in catnames])
+                pos_aids = list(ub.compress(aids, interest_flags))
+            elif negative_classes:
+                # Don't count negative classes as positives
+                nonnegative_flags = np.array([
+                    catname not in negative_classes for catname in catnames])
+                pos_aids = list(ub.compress(aids, nonnegative_flags))
+            else:
+                pos_aids = aids
+
+            # aids = sampler.regions.overlapping_aids(gid, box, visible_thresh=0.001)
+            tr = {
+                'gid': gid,
+                'slices': region,
+                'aids': aids,
+            }
+            if len(pos_aids):
+                positives.append(tr)
+            else:
+                negatives.append(tr)
+
+    print('Found {} positives'.format(len(positives)))
+    print('Found {} negatives'.format(len(negatives)))
+    sample_grid = {
+        'positives': positives,
+        'negatives': negatives,
+    }
+    return sample_grid

@@ -124,8 +124,9 @@ class FrameIntersectionIndex(ub.NiceRepr):
             >>>     box = kwimage.Boxes([0, 0, qtree.width, qtree.height], 'xywh')
             >>>     self.overlapping_aids(gid, box)
         """
+        boxes1 = box[None, :] if len(box.shape) == 1 else box
         qtree = self.qtrees[gid]
-        query = box.to_tlbr().data
+        query = boxes1.to_tlbr().data[0]
         isect_aids = sorted(set(qtree.intersect(query)))
         return isect_aids
 
@@ -143,6 +144,7 @@ class FrameIntersectionIndex(ub.NiceRepr):
                 isect_aids: list of annotation ids
                 ious: jaccard score for each returned annotation id
         """
+        boxes1 = box[None, :] if len(box.shape) == 1 else box
         isect_aids = self.overlapping_aids(gid, box)
         if len(isect_aids):
             boxes1 = box[None, :]
@@ -165,9 +167,9 @@ class FrameIntersectionIndex(ub.NiceRepr):
         other's  (groundtruth) area. This means we dont care how big the
         (negative) `box` is.
         """
+        boxes1 = box[None, :] if len(box.shape) == 1 else box
         isect_aids = self.overlapping_aids(gid, box)
         if len(isect_aids):
-            boxes1 = box[None, :]
             boxes2 = [self.qtrees[gid].aid_to_tlbr[aid] for aid in isect_aids]
             boxes2 = kwimage.Boxes(np.array(boxes2), 'tlbr')
             isect = boxes1.isect_area(boxes2)
