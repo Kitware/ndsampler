@@ -891,7 +891,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                         dims=('t', 'y', 'x', 'c'),
                         coords={
                             't': np.array([time_idx]),
-                            'c': [],
+                            'c': np.empty((0,), dtype=str),
                         }
                     )
                 space_frames.append(xr_frame)
@@ -905,7 +905,18 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 c = sorted(_data_clipped.coords['c'].values.tolist())
                 _data_clipped = _data_clipped.sel(c=c)
             else:
-                _data_clipped = _data_clipped.sel(c=list(requeset_chan_coords))
+                # have = set(_data_clipped.coords['c'].values.tolist())
+                # if len(have & requeset_chan_coords):
+                #     c = list(requeset_chan_coords)
+                #     _data_clipped = _data_clipped.sel(c=c)
+                # else:
+                exist = ub.oset(_data_clipped.coords['c'].values.tolist())
+                missing = requeset_chan_coords - exist
+                if len(missing):
+                    _data_clipped = _data_clipped.pad({'c': (0, len(missing))})
+                    _data_clipped.coords['c'] = list(exist) + list(missing)
+                c = list(requeset_chan_coords)
+                _data_clipped = _data_clipped.sel(c=c)
 
             # Hack to return some info about dims and not returning the xarray
             # itself. In the future we will likely return the xarray itself.
@@ -954,6 +965,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         tf_rel_to_abs = skimage.transform.AffineTransform(
             translation=-offset
         ).params
+
+        if 0:
+            print('data_sliced.shape = {!r}'.format(data_sliced.shape))
+            print('data_sliced.dtype = {!r}'.format(data_sliced.dtype))
 
         sample = {
             'im': data_sliced,
