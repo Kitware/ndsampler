@@ -9,9 +9,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * The target dictionary in `CocoSampler.load_sample` can now accept a `vidid`
   and will return a 3D sample.
 
-
 ### Changed 
 * New version will kwarray >= 0.5.16
+* The CocoSampler now defaults to backend=None instead of backend="auto".
+* The `load_sample` signature was modified and deprecated args were removed.
+
 
 ## Version 0.6.0 - Released 2021-04-22
 

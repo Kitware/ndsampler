@@ -24,3 +24,6 @@ def _devcheck_xarray():
     ]
     combo = xr.concat(datas, dim='t')
     assert np.all(np.isnan(combo.values[2]))
+
+    a = xr.DataArray(np.random.rand(5, 8, 3, 2), dims=('a', 'b', 'c', 'd'), coords={'c': ['z', 'x', 'y']})
+    a.sel(c=['x', 'y', 'z'])

@@ -117,7 +117,7 @@ class Frames(object):
         '_hack_use_cli': True,  # Uses the gdal-CLI to create cogs, which frustratingly seems to be faster
     }
 
-    def __init__(self, hashid_mode='PATH', workdir=None, backend='auto'):
+    def __init__(self, hashid_mode='PATH', workdir=None, backend=None):
 
         self._backend = None
         self._backend_hashid = None  # hash of backend config parameters
@@ -164,7 +164,7 @@ class Frames(object):
         self._id_to_pathinfo = {}
 
     @classmethod
-    def _coerce_backend_config(cls, backend='auto'):
+    def _coerce_backend_config(cls, backend=None):
         """
         Coerce a backend argument into a valid configuration dictionary.
 
@@ -576,7 +576,7 @@ class SimpleFrames(Frames):
         >>> assert self.load_image(1).shape == (512, 512, 3)
         >>> assert self.load_region(1, (slice(-20), slice(-10))).shape == (492, 502, 3)
     """
-    def __init__(self, id_to_path, workdir=None, backend='auto'):
+    def __init__(self, id_to_path, workdir=None, backend=None):
         super(SimpleFrames, self).__init__(
             hashid_mode='PATH', workdir=workdir, backend=backend)
         self.id_to_path = id_to_path
