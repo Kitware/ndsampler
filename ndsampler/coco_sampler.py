@@ -463,12 +463,17 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 infer the key `gid (int)`, to specify an image id.
 
                 For 3D video source objects, tr must contain the key
-                `vidid (int)`, to specify a video id. (NEW in 0.6.1)
+                `vidid (int)`, to specify a video id (NEW in 0.6.1) or
+                `gids List[int]`, as a list of images in a video (NEW in 0.6.2)
 
                 In general, coordinate regions can specified by the key
                 `slices`, a numpy-like "fancy index" over each of the n
                 dimensions. Usually this is a tuple of slices, e.g.
                 (y1:y2, x1:x2) for images and (t1:t2, y1:y2, x1:x2) for videos.
+
+                You may also specify:
+                `space_slice` as (y1:y2, x1:x2) for both 2D images and 3D
+                videos and `time_slice` as t1:t2 for 3D videos.
 
                 Spatial regions can be specified with keys:
                     * 'cx' and 'cy' as the center of the region in pixels.
@@ -477,17 +482,19 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     special string key 'square', which overrides width and
                     height to both be the maximum of the two.
 
-                Temporal regions are currently only specifiable by slices. This
-                will change in the future.
+                Temporal regions are specifiable by `slices`, `time_slice` or
+                an explicit list of `gids`.
 
                 The `aid` key can be specified to indicate a specific
                 annotation to load. This uses the annotation information to
                 infer 'gid', 'cx', 'cy', 'width', and 'height' if they are not
                 present. (NEW in 0.5.10)
 
-                The `channels` key can be specified as a channel code or list
-                of channel codes indicating a subset of channels to load.
-                (NEW in 0.6.1)
+                The `channels` key can be specified as a channel code or
+                    :class:`kwcoco.ChannelSpec` object.  (NEW in 0.6.1)
+
+                as_xarray (bool, default=False):
+                    if True, return the image data as an xarray object
 
             pad (tuple): (height, width) extra context to add to window dims.
                 This helps prevent augmentation from producing boundary effects
@@ -504,16 +511,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 should be extracted. Valid strings in this list are: boxes,
                 keypoints, and segmentation.
 
-            window_dims (tuple | str): (height, width) overrides the height/width
-                in tr to determine the extracted window size. Can also be
-                'extent' or 'square', which determines the final size using
-                target information.
-
-                DEPRECATED. IF DESIRED SPECIFY IN THE TARGET DICTIONARY
-
         Returns:
             Dict: sample: dict containing keys
-                im (ndarray): image data
+                im (ndarray | DataArray): image / video data
                 tr (dict): contains the same input items as tr but additionally
                     specifies rel_cx and rel_cy, which gives the center
                     of the target w.r.t the returned **padded** sample.
@@ -628,7 +628,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> sample_grid = self.new_sample_grid('video_detection', (3, 128, 128))
             >>> tr = sample_grid['positives'][0]
             >>> tr['channels'] = 'B1|B8'
+            >>> tr['as_xarray'] = False
             >>> sample = self.load_sample(tr)
+            >>> print(ub.repr2(sample['tr'], nl=1))
+            >>> print(sample['im'].shape)
             >>> assert sample['im'].shape == (3, 128, 128, 2)
             >>> tr['channels'] = '<all>'
             >>> sample = self.load_sample(tr)
@@ -657,12 +660,27 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> # sample using only an annotation id
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo()
-            >>> tr = {'aid': 1}
+            >>> tr = {'aid': 1, 'as_xarray': True}
+            >>> tr_ = self._infer_target_attributes(tr)
+            >>> print('tr_ = {}'.format(ub.repr2(tr_, nl=1)))
+            >>> assert tr_['gid'] == 1
+            >>> assert all(k in tr_ for k in ['cx', 'cy', 'width', 'height'])
+
+            >>> self = CocoSampler.demo('vidshapes8-multispectral')
+            >>> tr = {'aid': 1, 'as_xarray': True}
             >>> tr_ = self._infer_target_attributes(tr)
             >>> assert tr_['gid'] == 1
             >>> assert all(k in tr_ for k in ['cx', 'cy', 'width', 'height'])
+
+            >>> tr = {'vidid': 1, 'as_xarray': True}
+            >>> tr_ = self._infer_target_attributes(tr)
+            >>> print('tr_ = {}'.format(ub.repr2(tr_, nl=1)))
+            >>> assert 'gids' in tr_
+
+            >>> tr = {'gids': [1, 2], 'as_xarray': True}
+            >>> tr_ = self._infer_target_attributes(tr)
+            >>> print('tr_ = {}'.format(ub.repr2(tr_, nl=1)))
         """
-        window_dims = None
         # we might modify the target
         tr_ = tr.copy()
         if 'aid' in tr_:
@@ -689,71 +707,104 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 if 'category_id' not in tr_:
                     tr_['category_id'] = ann['category_id']
 
-        ndims = 3 if 'vidid' in tr_ else 2
+        gid = tr_.get('gid', None)
+        vidid = tr_.get('vidid', None)
+        gids = tr_.get('gids', None)
+        slices = tr_.get('slices', None)
+        time_slice = tr_.get('time_slice', None)
+        space_slice = tr_.get('space_slice', None)
+        window_dims = tr_.get('window_dims', None)
+        vid_gids = None
+        ndim = None
+
+        if vidid is not None or gids is not None:
+            # Video sample
+            if vidid is None:
+                if gids is None:
+                    raise ValueError('ambiguous image or video object id(s)')
+                _vidids = self.dset.images(gids).lookup('video_id')
+                if __debug__:
+                    if not ub.allsame(_vidids):
+                        warnings.warn('sampled gids from different videos')
+                vidid = ub.peek(_vidids)
+                tr_['vidid'] = vidid
+            assert vidid == tr_['vidid']
+            ndim = 3
+        elif gid is not None:
+            # Image sample
+            ndim = 2
+        else:
+            raise ValueError('no source object id(s)')
+
+        # Fix non-determined bounds
+        if ndim == 2:
+            img = self.dset.index.imgs[gid]
+            space_dims = (img['height'], img['width'])
+            data_dims = space_dims
+        elif ndim == 3:
+            video = self.dset.index.videos[vidid]
+            space_dims = (video['height'], video['width'])
+            vid_gids = self.dset.index.vidid_to_gids[vidid]
+            data_dims = (len(vid_gids),) + space_dims
+        else:
+            raise NotImplementedError
+
+        tr_['space_dims'] = space_dims
+        tr_['data_dims'] = data_dims
 
         # other spatial specifiers allowed if slices is not given
         alternate_keys = {'cx', 'cy', 'height', 'width'}
         has_alternate = bool(set(tr_) & alternate_keys)
 
-        if 'slices' in tr_:
-            # Slice was explicitly specified
-            if has_alternate or window_dims:
-                warnings.warn(ub.paragraph(
-                    '''
-                    data_slice was specified, but ignored keys are present
-                    '''))
-        elif not has_alternate:
-            # No region specified. load everything.
-            if ndims == 3:
-                tr_['slices'] = (slice(0, None), slice(0, None), slice(0, None))
-            else:
-                tr_['slices'] = (slice(0, None), slice(0, None))
-        else:
-            if ndims == 3:
-                raise NotImplementedError
-            # A center / width / height was specified
-            center = (tr_['cy'], tr_['cx'])
-            # Determine the requested window size
-            window_dims = tr_.get('window_dims', window_dims)
-            if window_dims is None:
-                window_dims = 'extent'
-
-            if isinstance(window_dims, six.string_types):
-                if window_dims == 'extent':
-                    window_dims = (tr_['height'], tr_['width'])
-                    window_dims = np.ceil(np.array(window_dims)).astype(np.int)
-                    window_dims = tuple(window_dims.tolist())
-                elif window_dims == 'square':
-                    window_dims = (tr_['height'], tr_['width'])
-                    window_dims = np.ceil(np.array(window_dims)).astype(np.int)
-                    window_dims = tuple(window_dims.tolist())
-                    maxdim = max(window_dims)
-                    window_dims = (maxdim, maxdim)
+        if slices is not None:
+            if space_slice is None:
+                if ndim == 3:
+                    space_slice = tr_['space_slice'] = slices[1:3]
+                elif ndim == 2:
+                    space_slice = tr_['space_slice'] = slices[0:2]
                 else:
-                    raise KeyError(window_dims)
-            tr_['window_dims'] = window_dims
-            tr_['slices'] = _center_extent_to_slice(center, window_dims)
+                    raise NotImplementedError
+            if ndim == 3 and gids is None and time_slice is None:
+                time_slice = tr_['time_slice'] = slices[0]
 
-        if ndims == 3:
-            vidid = tr['vidid']
-            vid_gids = self.dset.index.vidid_to_gids[vidid]
+        if space_slice is None:
+            if has_alternate:
+                # A center / width / height was specified
+                center = (tr_['cy'], tr_['cx'])
+                # Determine the requested window size
+                if window_dims is None:
+                    window_dims = 'extent'
 
-        if any(sl.stop is None for sl in tr_['slices']):
-            # Fix non-determined bounds
-            if ndims == 2:
-                gid = tr['gid']
-                img = self.dset.index.imgs[gid]
-                data_dims = img['height'], img['width']
+                if isinstance(window_dims, six.string_types):
+                    if window_dims == 'extent':
+                        window_dims = (tr_['height'], tr_['width'])
+                        window_dims = np.ceil(np.array(window_dims)).astype(np.int)
+                        window_dims = tuple(window_dims.tolist())
+                    elif window_dims == 'square':
+                        window_dims = (tr_['height'], tr_['width'])
+                        window_dims = np.ceil(np.array(window_dims)).astype(np.int)
+                        window_dims = tuple(window_dims.tolist())
+                        maxdim = max(window_dims)
+                        window_dims = (maxdim, maxdim)
+                    else:
+                        raise KeyError(window_dims)
+                tr_['window_dims'] = window_dims
+                space_slice = _center_extent_to_slice(center, window_dims)
             else:
-                video = self.dset.index.videos[vidid]
-                data_dims = len(vid_gids), video['height'], video['width']
+                height, width = space_dims
+                space_slice = (slice(0, height), slice(0, width))
+            tr_['space_slice'] = space_slice
 
-            fixed = []
-            for sl, D in zip(tr_['slices'], data_dims):
-                stop = D if sl.stop is None else sl.stop
-                fixed.append(slice(sl.start, stop, sl.step))
-            tr_['slices'] = tuple(fixed)
-
+        if ndim == 2:
+            tr_['slices'] = slices = space_slice
+        elif ndim == 3:
+            if time_slice is None:
+                time_slice = tr['time_slice'] = slice(0, len(vid_gids))
+            if gids is None:
+                gids = tr_['gids'] = vid_gids[time_slice]
+            tr_['slices'] = slices = (time_slice,) + space_slice
+        else:
+            raise NotImplementedError(ndim)
         return tr_
 
     @profile
@@ -764,6 +815,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo()
             >>> tr = self.regions.get_positive(0)
+            >>> tr['as_xarray'] = True
             >>> sample = self._load_slice(tr)
             >>> print('sample = {!r}'.format(ub.map_vals(type, sample)))
 
@@ -771,6 +823,12 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo('vidshapes2')
             >>> tr = self._infer_target_attributes({'vidid': 1})
+            >>> tr['as_xarray'] = True
+            >>> sample = self._load_slice(tr)
+            >>> print('sample = {!r}'.format(ub.map_vals(type, sample)))
+
+            >>> tr = self._infer_target_attributes({'gids': [1, 2, 3]})
+            >>> tr['as_xarray'] = True
             >>> sample = self._load_slice(tr)
             >>> print('sample = {!r}'.format(ub.map_vals(type, sample)))
         """
@@ -783,8 +841,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             pad = 0
 
         tr_ = self._infer_target_attributes(tr)
-        assert 'slices' in tr_
+        assert 'space_slice' in tr_
+        data_dims = tr_['data_dims']
+
         requested_slice = tr_['slices']
+
         channels = tr_.get('channels', ub.NoParam)
 
         if channels == '<all>' or channels is ub.NoParam:
@@ -801,19 +862,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             pad = tuple(_ensure_iterablen(pad, ndim))
 
             # As of kwcoco 0.2.1 gids are ordered by frame index
-            vid_gids = self.dset.index.vidid_to_gids[vidid]
-            video = self.dset.index.videos[vidid]
-            vid_width = video.get('width', None)
-            vid_height = video.get('height', None)
-            num_frames = len(vid_gids)
-            if vid_height is None or vid_width is None:
-                # Fallback on the first image
-                img = self.dset.imgs[vid_gids[0]]
-                vid_width = img['width']
-                vid_height = img['height']
-
-            vid_dsize = (vid_width, vid_height)
-            data_dims = (num_frames, vid_height, vid_width)
+            vid_dsize = (data_dims[2], data_dims[1])
 
             data_slice, extra_padding = kwarray.embed_slice(
                 requested_slice, data_dims, pad)
@@ -822,7 +871,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             # just load the 2d data for each image
             time_slice, *space_slice = data_slice
             space_slice = tuple(space_slice)
-            time_gids = vid_gids[time_slice]
+
+            time_gids = tr_['gids']
             space_frames = []
 
             slice_height = space_slice[0].stop - space_slice[0].start
@@ -920,30 +970,41 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
             # Hack to return some info about dims and not returning the xarray
             # itself. In the future we will likely return the xarray itself.
-            tr_['_coords'] = _data_clipped.coords
-            tr_['_dims'] = _data_clipped.dims
-
-            data_clipped = _data_clipped.values
+            if not tr_.get('as_xarray', False):
+                data_clipped = _data_clipped.values
+                tr_['_coords'] = _data_clipped.coords
+                tr_['_dims'] = _data_clipped.dims
+            else:
+                data_clipped = _data_clipped
 
             # TODO: gids should be padded if it goes oob.
-            tr_['_data_gids'] = time_gids
+            # tr_['_data_gids'] = time_gids
         else:
+            gid = tr_['gid']
             ndim = 2  # number of space-time dimensions (ignore channel)
             pad = tuple(_ensure_iterablen(pad, ndim))
-            gid = tr_['gid']
-            # Determine the image extent
-            img = self.dset.imgs[gid]
-            data_dims = (img['height'], img['width'])
-
             data_slice, extra_padding = kwarray.embed_slice(
                 requested_slice, data_dims, pad)
 
-            # Load the image data
-            # frame = self.frames.load_image(gid)  # TODO: lazy load on slice
-            # im = frame[data_slice]
-
             data_clipped = self.frames.load_region(
                 image_id=gid, region=data_slice, channels=channels)
+
+            if tr_.get('as_xarray', False):
+                # TODO: respect the channels arg in tr_
+                if len(data_clipped.shape) == 1:
+                    num_bands = 1
+                else:
+                    num_bands = data_clipped.shape[2]
+
+                xrkw = {}
+                if num_bands == 1:
+                    xrkw['c'] = ['gray']
+                elif num_bands == 3:
+                    xrkw['c'] = ['r', 'g', 'b']
+
+                # hack to respect xarray
+                data_clipped = xr.DataArray(
+                    data_clipped, dims=('y', 'x', 'c'), coords=xrkw)
 
         # Apply the padding
         if sum(map(sum, extra_padding)) == 0:
@@ -1013,8 +1074,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
         tr = sample['tr']
 
-        if '_data_gids' in tr:
-            gids = tr['_data_gids']
+        if 'gids' in tr:
+            gids = tr['gids']
         else:
             gids = [tr['gid']]
 

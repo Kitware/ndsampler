@@ -863,6 +863,14 @@ def new_video_sample_grid(dset, window_dims, window_overlap=0.0,
         >>> window_dims = (2, 224, 224)
         >>> sample_grid = new_video_sample_grid(dset, window_dims)
         >>> print('sample_grid = {}'.format(ub.repr2(sample_grid, nl=2)))
+        >>> # Now try to load a sample
+        >>> tr = sample_grid['positives'][0]
+        >>> import ndsampler
+        >>> sampler = ndsampler.CocoSampler(dset)
+        >>> tr_ = sampler._infer_target_attributes(tr)
+        >>> print('tr_ = {}'.format(ub.repr2(tr_, nl=1)))
+        >>> sample = sampler.load_sample(tr)
+        >>> assert sample['im'].shape == (2, 224, 224, 5)
 
     Ignore:
         import xdev
@@ -915,10 +923,14 @@ def new_video_sample_grid(dset, window_dims, window_overlap=0.0,
                 region_aids.append(aids)
 
             pos_aids = sorted(ub.flatten(region_aids))
+            space_slice = region[1:3]
+            time_slice = region[0]
 
             tr = {
                 'vidid': vidid,
-                'slices': region,
+                'time_slice': time_slice,
+                'space_slice': space_slice,
+                # 'slices': region,
                 'gids': region_gids,
                 'aids': pos_aids,
             }
@@ -950,6 +962,15 @@ def new_image_sample_grid(dset, window_dims, window_overlap=0.0,
         >>> window_dims = (224, 224)
         >>> sample_grid = new_image_sample_grid(dset, window_dims)
         >>> print('sample_grid = {}'.format(ub.repr2(sample_grid, nl=2)))
+        >>> # Now try to load a sample
+        >>> tr = sample_grid['positives'][0]
+        >>> import ndsampler
+        >>> sampler = ndsampler.CocoSampler(dset)
+        >>> tr['channels'] = '<all>'
+        >>> tr_ = sampler._infer_target_attributes(tr)
+        >>> print('tr_ = {}'.format(ub.repr2(tr_, nl=1)))
+        >>> sample = sampler.load_sample(tr)
+        >>> assert sample['im'].shape == (224, 224, 5)
 
     Ignore:
         import xdev
