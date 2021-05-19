@@ -5,6 +5,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Version 0.6.2 - Unreleased
 
+### Added
+* The target dictionary can now contain `space_slice`, `time_slice` or `gids` 
+
 
 ## Version 0.6.1 - Released 2021-05-13
 
