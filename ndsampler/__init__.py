@@ -2,7 +2,7 @@
 mkinit ~/code/ndsampler/ndsampler/__init__.py --diff
 mkinit ~/code/ndsampler/ndsampler/__init__.py -w
 """
-__version__ = '0.6.3'
+__version__ = '0.6.4'
 
 from ndsampler.utils.util_misc import (HashIdentifiable,)
 
