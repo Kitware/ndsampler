@@ -299,12 +299,18 @@ class DelayedLoad(DelayedImageOperation):
     """
     __hack_dont_optimize__ = True
 
-    def __init__(self, fpath, dsize=None):
+    def __init__(self, fpath, dsize=None, channels=None):
         self.data = {}
         self.meta = {}
         self.cache = {}
         self.data['fpath'] = fpath
         self.meta['dsize'] = dsize
+        self.meta['channels'] = channels
+
+        if channels is not None:
+            # hack
+            self.meta['channels'] = self.meta['channels'].normalize()
+            self.meta['num_bands'] = len(self.meta['channels'].unique())
 
     @classmethod
     def demo(DelayedLoad, key='astro', dsize=None):
@@ -350,6 +356,10 @@ class DelayedLoad(DelayedImageOperation):
         return dsize
 
     @property
+    def channels(self):
+        return self.meta.get('channels', None)
+
+    @property
     def fpath(self):
         return self.data.get('fpath', None)
 
@@ -369,6 +379,17 @@ class DelayedLoad(DelayedImageOperation):
                 final = np.asarray(final)
                 final = kwimage.imresize(final, dsize=dsize)
             self.cache['final'] = final
+
+        as_xarray = kwargs.get('as_xarray', False)
+        if as_xarray:
+            # FIXME: might not work with
+            import xarray as xr
+            channels = self.channels
+            coords = {}
+            if channels is not None:
+                coords['c'] = channels.code_list()
+            final = xr.DataArray(final, dims=('y', 'x', 'c'), coords=coords)
+
         return final
 
 
@@ -450,6 +471,8 @@ class DelayedFrameConcat(DelayedVideoOperation):
         Execute the final transform
         """
         # Add in the video axis
+        # as_xarray = kwargs.get('as_xarray', False)
+
         stack = [frame.finalize(**kwargs)[None, :]
                  for frame in self.frames]
         stack_shapes = np.array([s.shape for s in stack])
@@ -513,7 +536,6 @@ class DelayedFrameConcat(DelayedVideoOperation):
         new_frames = []
         for frame in self.frames:
             new_frame = frame.delayed_crop(region_slices)
-            print('new_frame = {!r}'.format(new_frame))
             new_frames.append(new_frame)
         new = DelayedFrameConcat(new_frames)
         return new
@@ -609,8 +631,16 @@ class DelayedChannelConcat(DelayedImageOperation):
         """
         Execute the final transform
         """
+        as_xarray = kwargs.get('as_xarray', False)
         stack = [comp.finalize(**kwargs) for comp in self.components]
-        final = np.concatenate(stack, axis=2)
+        if len(stack) == 1:
+            final = stack[0]
+        else:
+            if as_xarray:
+                import xarray as xr
+                final = xr.concat(stack, dim='c')
+            else:
+                final = np.concatenate(stack, axis=2)
         return final
 
 
@@ -728,6 +758,13 @@ class DelayedWarp(DelayedImageOperation):
             'transform': self.transform,
         }
 
+    @property
+    def channels(self):
+        if hasattr(self.sub_data, 'channels'):
+            return self.sub_data.channels
+        else:
+            return None
+
     @classmethod
     def random(cls, nesting=(2, 5), rng=None):
         """
@@ -798,7 +835,8 @@ class DelayedWarp(DelayedImageOperation):
             leaf = DelayedWarp(sub_data, transform, dsize=dsize)
             yield leaf
 
-    def finalize(self, transform=None, dsize=None, interpolation='linear'):
+    def finalize(self, transform=None, dsize=None, interpolation='linear',
+                 **kwargs):
         """
         Execute the final transform
 
@@ -854,18 +892,28 @@ class DelayedWarp(DelayedImageOperation):
         if hasattr(sub_data, 'finalize'):
             # Branch finalize
             final = sub_data.finalize(transform=transform, dsize=dsize,
-                                      interpolation=interpolation)
+                                      interpolation=interpolation, **kwargs)
+            # Ensure that the last dimension is channels
+            final = kwarray.atleast_nd(final, 3, front=False)
         else:
+            as_xarray = kwargs.get('as_xarray', False)
             # Leaf finalize
             flags = im_cv2._coerce_interpolation(interpolation)
             M = transform[0:2]  # todo allow projective
             if dsize == (None, None):
                 dsize = None
-            sub_data = np.asarray(sub_data)
-            final = cv2.warpAffine(sub_data, M, dsize=dsize, flags=flags)
+            sub_data_ = np.asarray(sub_data)
+            final = cv2.warpAffine(sub_data_, M, dsize=dsize, flags=flags)
+            # Ensure that the last dimension is channels
+            final = kwarray.atleast_nd(final, 3, front=False)
+            if as_xarray:
+                import xarray as xr
+                channels = self.channels
+                coords = {}
+                if channels is not None:
+                    coords['c'] = channels.code_list()
+                final = xr.DataArray(final, dims=('y', 'x', 'c'), coords=coords)
 
-        # Ensure that the last dimension is channels
-        final = kwarray.atleast_nd(final, 3, front=False)
         return final
 
 
