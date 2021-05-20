@@ -326,7 +326,9 @@ class DelayedLoad(DelayedImageOperation):
         yield from []
 
     def _optimize_paths(self, **kwargs):
-        raise AssertionError('hack so this is not called')
+        # hack
+        yield DelayedWarp(self, Affine(None), dsize=self.dsize)
+        # raise AssertionError('hack so this is not called')
 
     def load_shape(self):
         disk_shape = kwimage.load_image_shape(self.fpath)
@@ -964,6 +966,13 @@ class DelayedCrop(DelayedImageOperation):
             'sub_slices': self.sub_slices,
             'num_bands': self.num_bands,
         }
+
+    @property
+    def channels(self):
+        if hasattr(self.sub_data, 'channels'):
+            return self.sub_data.channels
+        else:
+            return None
 
     def children(self):
         yield self.sub_data
