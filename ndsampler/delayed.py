@@ -266,7 +266,16 @@ class DelayedIdentity(DelayedImageOperation):
 
     @classmethod
     def demo(cls, key='astro', chan=None, dsize=None):
-        sub_data = kwimage.grab_test_image(key, dsize=dsize)
+        if key == 'checkerboard':
+            # https://stackoverflow.com/questions/2169478/how-to-make-a-checkerboard-in-numpy
+            num_squares = 8
+            num_pairs = num_squares // 2
+            img_size = 512
+            b = img_size // num_squares
+            img = np.kron([[1, 0] * num_pairs, [0, 1] * num_pairs] * num_pairs, np.ones((b, b)))
+            sub_data = img
+        else:
+            sub_data = kwimage.grab_test_image(key, dsize=dsize)
         if chan is not None:
             sub_data = sub_data[..., chan]
         self = cls(sub_data)
@@ -701,6 +710,29 @@ class DelayedWarp(DelayedImageOperation):
         >>> tf = np.array([[5.2, 0, 1.1], [0, 3.1, 2.2], [0, 0, 1]])
         >>> self = DelayedWarp(np.random.rand(3, 5, 13), tf, dsize=dsize)
         >>> self.finalize().shape
+
+    Example:
+        >>> # Test aliasing
+        >>> from ndsampler.delayed import *  # NOQA
+        >>> s = DelayedIdentity.demo('checkerboard')
+        >>> s = DelayedIdentity.demo()
+        >>> a = s.delayed_warp(Affine.scale(0.05), dsize='auto')
+        >>> b = s.delayed_warp(Affine.scale(3), dsize='auto')
+
+        >>> # xdoctest: +REQUIRES(--show)
+        >>> import kwplot
+        >>> kwplot.autompl()
+        >>> # It looks like downsampling linear and area is the same
+        >>> # Does warpAffine have no alias handling?
+        >>> pnum_ = kwplot.PlotNums(nRows=2, nCols=4)
+        >>> kwplot.imshow(a.finalize(interpolation='area'), pnum=pnum_(), title='warpAffine area')
+        >>> kwplot.imshow(a.finalize(interpolation='linear'), pnum=pnum_(), title='warpAffine linear')
+        >>> kwplot.imshow(a.finalize(interpolation='nearest'), pnum=pnum_(), title='warpAffine nearest')
+        >>> kwplot.imshow(a.finalize(interpolation='cubic'), pnum=pnum_(), title='warpAffine cubic')
+        >>> kwplot.imshow(kwimage.imresize(s.finalize(), dsize=a.dsize, interpolation='area'), pnum=pnum_(), title='resize area')
+        >>> kwplot.imshow(kwimage.imresize(s.finalize(), dsize=a.dsize, interpolation='linear'), pnum=pnum_(), title='resize linear')
+        >>> kwplot.imshow(kwimage.imresize(s.finalize(), dsize=a.dsize, interpolation='nearest'), pnum=pnum_(), title='resize nearest')
+        >>> kwplot.imshow(kwimage.imresize(s.finalize(), dsize=a.dsize, interpolation='cubic'), pnum=pnum_(), title='resize cubic')
     """
     def __init__(self, sub_data, transform=None, dsize=None):
         self.sub_data = sub_data
@@ -901,11 +933,32 @@ class DelayedWarp(DelayedImageOperation):
             as_xarray = kwargs.get('as_xarray', False)
             # Leaf finalize
             flags = im_cv2._coerce_interpolation(interpolation)
-            M = transform[0:2]  # todo allow projective
+            M = transform.matrix  # todo allow projective
             if dsize == (None, None):
                 dsize = None
             sub_data_ = np.asarray(sub_data)
-            final = cv2.warpAffine(sub_data_, M, dsize=dsize, flags=flags)
+            # sub_data_ = sub_data_.astype(np.float32) / 255.
+            # print('flags = {!r}'.format(flags))
+            # print('sub_data_.dtype = {!r}'.format(sub_data_.dtype))
+
+            # TODO: should we blur the source if the determanent of M is less
+            # than 1? If so by how much
+            if kwargs.get('antialias', True) and interpolation != 'nearest':
+                factor = np.linalg.det(M)
+                # [0:2, 0:2])
+                # Hacked in heuristic for antialiasing before a downsample
+                if factor < 1:
+                    k = int(1 / np.sqrt(factor) * 1.2)
+                    if k % 2 == 0:
+                        k += 1
+                    sigma = 0.3 * ((k - 1) * 0.5 - 1) + 0.8
+                    sigma = sigma ** 1.2
+                    sub_data_ = sub_data_.copy()
+                    sub_data_ = cv2.GaussianBlur(sub_data_, (k, k), sigma, sigma)
+
+            final = cv2.warpAffine(sub_data_, M[0:2], dsize=dsize, flags=flags)
+            # final = cv2.warpPerspective(sub_data_, M, dsize=dsize, flags=flags)
+            print(final.mean())
             # Ensure that the last dimension is channels
             final = kwarray.atleast_nd(final, 3, front=False)
             if as_xarray:
