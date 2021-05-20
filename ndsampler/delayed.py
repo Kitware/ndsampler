@@ -933,7 +933,6 @@ class DelayedWarp(DelayedImageOperation):
             as_xarray = kwargs.get('as_xarray', False)
             # Leaf finalize
             flags = im_cv2._coerce_interpolation(interpolation)
-            M = transform.matrix  # todo allow projective
             if dsize == (None, None):
                 dsize = None
             sub_data_ = np.asarray(sub_data)
@@ -944,10 +943,10 @@ class DelayedWarp(DelayedImageOperation):
             # TODO: should we blur the source if the determanent of M is less
             # than 1? If so by how much
             if kwargs.get('antialias', True) and interpolation != 'nearest':
-                factor = np.linalg.det(M)
+                factor = transform.det()
                 # [0:2, 0:2])
                 # Hacked in heuristic for antialiasing before a downsample
-                if factor < 1:
+                if factor < 0.99:
                     k = int(1 / np.sqrt(factor) * 1.2)
                     if k % 2 == 0:
                         k += 1
@@ -956,6 +955,7 @@ class DelayedWarp(DelayedImageOperation):
                     sub_data_ = sub_data_.copy()
                     sub_data_ = cv2.GaussianBlur(sub_data_, (k, k), sigma, sigma)
 
+            M = np.asarray(transform)
             final = cv2.warpAffine(sub_data_, M[0:2], dsize=dsize, flags=flags)
             # final = cv2.warpPerspective(sub_data_, M, dsize=dsize, flags=flags)
             print(final.mean())
