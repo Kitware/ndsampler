@@ -942,10 +942,13 @@ class DelayedWarp(DelayedImageOperation):
 
             # TODO: should we blur the source if the determanent of M is less
             # than 1? If so by how much
-            if kwargs.get('antialias', True) and interpolation != 'nearest':
+            if kwargs.get('antialias', 0) and interpolation != 'nearest':
                 """
                 transform = Affine.scale(0.2)
+                See: ~/code/ndsampler/dev/antialias_warp.py
                 """
+                # FIXME! This is too slow for large images.
+
                 # Hacked in heuristic for antialiasing before a downsample
                 factor = np.sqrt(transform.det())
                 if factor < 0.99:
@@ -964,6 +967,7 @@ class DelayedWarp(DelayedImageOperation):
                     if k % 2 == 0:
                         k += 1
 
+                    sub_data_ = sub_data_.copy()
                     sub_data_ = cv2.GaussianBlur(sub_data_, (k, k), sigma, sigma)
 
             M = np.asarray(transform)
