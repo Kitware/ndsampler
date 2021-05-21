@@ -891,8 +891,8 @@ class DelayedWarp(DelayedImageOperation):
         Example:
             >>> # Test aliasing
             >>> from ndsampler.delayed import *  # NOQA
-            >>> s = DelayedIdentity.demo('checkerboard')
             >>> s = DelayedIdentity.demo()
+            >>> s = DelayedIdentity.demo('checkerboard')
             >>> a = s.delayed_warp(Affine.scale(0.05), dsize='auto')
             >>> b = s.delayed_warp(Affine.scale(3), dsize='auto')
 

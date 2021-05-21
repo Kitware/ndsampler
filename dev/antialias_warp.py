@@ -16,11 +16,14 @@ def warp_image_test(image, transform, dsize=None):
     import ubelt as ub
 
     # Choose a random affine transform that probably has a small scale
-    # transform = Affine.random(rng=432) @ Affine.scale(0.01)
-    transform = Affine.scale(0.01)
+    # transform = Affine.random() @ Affine.scale((0.3, 2))
+    # transform = Affine.scale((0.1, 1.2))
+    # transform = Affine.scale(0.05)
+    transform = Affine.random() @ Affine.scale(0.01)
+    # transform = Affine.random()
 
-    image = kwimage.grab_test_image('checkerboard', dsize=(2048, 2048))
-    # image = kwimage.grab_test_image('astro', dsize=(2048, 2048))
+    image = kwimage.grab_test_image('astro')
+    image = kwimage.grab_test_image('checkerboard')
 
     image = kwimage.ensure_float01(image)
 
@@ -43,6 +46,8 @@ def warp_image_test(image, transform, dsize=None):
 
     def _full_gauss_kernel(k0, sigma0, scale):
         num_downscales = np.log2(1 / scale)
+        if num_downscales < 0:
+            return 1, 0
 
         # Define b0 = kernel size for one downsample operation
         b0 = 5
@@ -57,6 +62,18 @@ def warp_image_test(image, transform, dsize=None):
             k += 1
 
         return k, sigma
+
+    def pyrDownK(a, k=1):
+        assert k >= 0
+        for _ in range(k):
+            a = cv2.pyrDown(a)
+        return a
+
+    for timer in ti.reset('naive'):
+        with timer:
+            interpolation = 'nearest'
+            flags = im_cv2._coerce_interpolation(interpolation)
+            final_v5 = cv2.warpAffine(image, transform.matrix[0:2], dsize=dsize, flags=flags)
 
     # --------------------
     # METHOD 1
@@ -99,16 +116,18 @@ def warp_image_test(image, transform, dsize=None):
 
     for timer in ti.reset('pyrDown+blur+warp'):
         with timer:
-            temp = image
+            temp = image.copy()
+            params = transform.decompose()
+            sx, sy = params['scale']
 
-            smallest_scale = max(sx, sy)
-            num_downscales = int(np.log2(1 / smallest_scale))
+            biggest_scale = max(sx, sy)
+            # The -2 allows the gaussian to be a little bigger. This
+            # seems to help with border effects at only a small runtime cost
+            num_downscales = max(int(np.log2(1 / biggest_scale)) - 2, 0)
             pyr_scale = 1 / (2 ** num_downscales)
 
             # Does the gaussian downsampling
-            temp = image
-            for _ in range(num_downscales):
-                temp = cv2.pyrDown(temp)
+            temp = pyrDownK(image, num_downscales)
 
             rest_sx = sx / pyr_scale
             rest_sy = sy / pyr_scale
@@ -118,29 +137,29 @@ def warp_image_test(image, transform, dsize=None):
 
             k_x, sigma_x = _full_gauss_kernel(k0=5, sigma0=1, scale=rest_sx)
             k_y, sigma_y = _full_gauss_kernel(k0=5, sigma0=1, scale=rest_sy)
-            temp = temp.copy()
             temp = cv2.GaussianBlur(temp, (k_x, k_y), sigma_x, sigma_y)
             temp = kwarray.atleast_nd(temp, 3)
 
-            interpolation = 'linear'
+            interpolation = 'cubic'
             flags = im_cv2._coerce_interpolation(interpolation)
-            final_v3 = cv2.warpAffine(temp, rest_warp.matrix[0:2], dsize=dsize, flags=flags)
+            final_v3 = cv2.warpAffine(temp, rest_warp.matrix[0:2], dsize=dsize,
+                                      flags=flags)
 
     # --------------------
     # METHOD 4 - dont do the final blur
 
     for timer in ti.reset('pyrDown+warp'):
         with timer:
-            temp = image
+            temp = image.copy()
+            params = transform.decompose()
+            sx, sy = params['scale']
 
-            smallest_scale = max(sx, sy)
-            num_downscales = int(np.log2(1 / smallest_scale))
+            biggest_scale = max(sx, sy)
+            num_downscales = max(int(np.log2(1 / biggest_scale)), 0)
             pyr_scale = 1 / (2 ** num_downscales)
 
             # Does the gaussian downsampling
-            temp = image
-            for _ in range(num_downscales):
-                temp = cv2.pyrDown(temp)
+            temp = pyrDownK(image, num_downscales)
 
             rest_sx = sx / pyr_scale
             rest_sy = sy / pyr_scale
@@ -166,10 +185,12 @@ def warp_image_test(image, transform, dsize=None):
         final_v1 = final_v1.clip(0, 1)
         final_v3 = final_v3.clip(0, 1)
         final_v4 = final_v4.clip(0, 1)
+        final_v5 = final_v5.clip(0, 1)
         import kwplot
         kwplot.autompl()
-        kwplot.imshow(final_v2, pnum=(1, 4, 1), title=get_title('fullblur+warp'))
-        kwplot.imshow(final_v1, pnum=(1, 4, 2), title=get_title('resize+warp'))
-        kwplot.imshow(final_v3, pnum=(1, 4, 3), title=get_title('pyrDown+blur+warp'))
-        kwplot.imshow(final_v4, pnum=(1, 4, 4), title=get_title('pyrDown+warp'))
+        kwplot.imshow(final_v5, pnum=(1, 5, 1), title=get_title('naive'))
+        kwplot.imshow(final_v2, pnum=(1, 5, 2), title=get_title('fullblur+warp'))
+        kwplot.imshow(final_v1, pnum=(1, 5, 3), title=get_title('resize+warp'))
+        kwplot.imshow(final_v3, pnum=(1, 5, 4), title=get_title('pyrDown+blur+warp'))
+        kwplot.imshow(final_v4, pnum=(1, 5, 5), title=get_title('pyrDown+warp'))
         # kwplot.imshow(np.abs(final_v2 - final_v1), pnum=(1, 4, 4))
