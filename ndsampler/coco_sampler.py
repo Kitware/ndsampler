@@ -885,6 +885,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             # MECHANISM IS
             for time_idx, gid in enumerate(time_gids):
                 img = self.dset.imgs[gid]
+                frame_index = img.get('frame_index', gid)
                 tf_img_to_vid = Affine.coerce(img['warp_img_to_vid'])
 
                 alignable = self.frames._load_alignable(gid)
@@ -924,7 +925,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                             vid_chan_frame[None, ...],
                             dims=('t', 'y', 'x', 'c'),
                             coords={
-                                't': np.array([time_idx]),
+                                # TODO: this should be a timestamp if we have it
+                                't': np.array([frame_index]),
                                 # 'y': np.arange(vid_chan_frame.shape[0]),
                                 # 'x': np.arange(vid_chan_frame.shape[1]),
                                 'c': list(matching_coords),
