@@ -905,7 +905,7 @@ class DelayedWarp(DelayedImageOperation):
             >>> kwplot.imshow(a.finalize(interpolation='area'), pnum=pnum_(), title='warpAffine area')
             >>> kwplot.imshow(a.finalize(interpolation='linear'), pnum=pnum_(), title='warpAffine linear')
             >>> kwplot.imshow(a.finalize(interpolation='nearest'), pnum=pnum_(), title='warpAffine nearest')
-            >>> kwplot.imshow(a.finalize(interpolation='cubic'), pnum=pnum_(), title='warpAffine cubic')
+            >>> kwplot.imshow(a.finalize(interpolation='nearest', antialias=False), pnum=pnum_(), title='warpAffine nearest AA=0')
             >>> kwplot.imshow(kwimage.imresize(s.finalize(), dsize=a.dsize, interpolation='area'), pnum=pnum_(), title='resize area')
             >>> kwplot.imshow(kwimage.imresize(s.finalize(), dsize=a.dsize, interpolation='linear'), pnum=pnum_(), title='resize linear')
             >>> kwplot.imshow(kwimage.imresize(s.finalize(), dsize=a.dsize, interpolation='nearest'), pnum=pnum_(), title='resize nearest')
@@ -913,8 +913,8 @@ class DelayedWarp(DelayedImageOperation):
         """
         # todo: needs to be extended for the case where the sub_data is a
         # nested chain of transforms.
-        import cv2
-        from kwimage import im_cv2
+        # import cv2
+        # from kwimage import im_cv2
         if dsize is None:
             dsize = self.dsize
         transform = Affine.coerce(transform) @ self.transform
@@ -932,7 +932,7 @@ class DelayedWarp(DelayedImageOperation):
         else:
             as_xarray = kwargs.get('as_xarray', False)
             # Leaf finalize
-            flags = im_cv2._coerce_interpolation(interpolation)
+            # flags = im_cv2._coerce_interpolation(interpolation)
             if dsize == (None, None):
                 dsize = None
             sub_data_ = np.asarray(sub_data)
@@ -942,36 +942,40 @@ class DelayedWarp(DelayedImageOperation):
 
             # TODO: should we blur the source if the determanent of M is less
             # than 1? If so by how much
-            if kwargs.get('antialias', 0) and interpolation != 'nearest':
-                """
-                transform = Affine.scale(0.2)
-                See: ~/code/ndsampler/dev/antialias_warp.py
-                """
-                # FIXME! This is too slow for large images.
+            # if kwargs.get('antialias', 0) and interpolation != 'nearest':
+            #     """
+            #     transform = Affine.scale(0.2)
+            #     See: ~/code/ndsampler/dev/antialias_warp.py
+            #     """
+            #     # FIXME! This is too slow for large images.
 
-                # Hacked in heuristic for antialiasing before a downsample
-                factor = np.sqrt(transform.det())
-                if factor < 0.99:
-                    # compute the number of 2x downsamples
-                    num_downscales = np.log2(1 / factor)
+            #     # Hacked in heuristic for antialiasing before a downsample
+            #     factor = np.sqrt(transform.det())
+            #     if factor < 0.99:
+            #         # compute the number of 2x downsamples
+            #         num_downscales = np.log2(1 / factor)
 
-                    # Define b0 = kernel size for one downsample operation
-                    b0 = 5
-                    # Define s0 = sigma for one downsample operation
-                    s0 = 1
+            #         # Define b0 = kernel size for one downsample operation
+            #         b0 = 5
+            #         # Define s0 = sigma for one downsample operation
+            #         s0 = 1
 
-                    # The kernel size and sigma doubles for each 2x downsample
-                    k = int(np.ceil(b0 * (2 ** (num_downscales - 1))))
-                    sigma = s0 * (2 ** (num_downscales - 1))
+            #         # The kernel size and sigma doubles for each 2x downsample
+            #         k = int(np.ceil(b0 * (2 ** (num_downscales - 1))))
+            #         sigma = s0 * (2 ** (num_downscales - 1))
 
-                    if k % 2 == 0:
-                        k += 1
+            #         if k % 2 == 0:
+            #             k += 1
 
-                    sub_data_ = sub_data_.copy()
-                    sub_data_ = cv2.GaussianBlur(sub_data_, (k, k), sigma, sigma)
-
+            #         sub_data_ = sub_data_.copy()
+            #         sub_data_ = cv2.GaussianBlur(sub_data_, (k, k), sigma, sigma)
             M = np.asarray(transform)
-            final = cv2.warpAffine(sub_data_, M[0:2], dsize=dsize, flags=flags)
+            # final = cv2.warpAffine(sub_data_, M[0:2], dsize=dsize, flags=flags)
+            antialias = kwargs.get('antialias', 1)
+            # Requires update to kwimage version
+            final = kwimage.warp_affine(sub_data_, M, dsize=dsize,
+                                        interpolation=interpolation,
+                                        antialias=antialias)
             # final = cv2.warpPerspective(sub_data_, M, dsize=dsize, flags=flags)
             # Ensure that the last dimension is channels
             final = kwarray.atleast_nd(final, 3, front=False)

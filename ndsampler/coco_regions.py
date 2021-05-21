@@ -849,7 +849,8 @@ def select_positive_regions(targets, window_dims=(300, 300), thresh=0.0,
     return selection
 
 
-def new_video_sample_grid(dset, window_dims, window_overlap=0.0,
+def new_video_sample_grid(dset, window_dims=None, window_overlap=0.0,
+                          space_dims=None, time_dim=None,  # TODO
                           classes_of_interest=None, ignore_coverage_thresh=0.6,
                           negative_classes={'ignore', 'background'}):
     """
