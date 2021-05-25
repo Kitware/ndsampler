@@ -23,7 +23,7 @@ pyqtree >= 1.0.0
 # There are likely several more undocumented deps, see what fails and submit a PR please!
 # TODO : fill me in!
 
-kwimage >= 0.7.5
+kwimage >= 0.7.6
 kwarray >= 0.5.16
 kwcoco >= 0.2.1
 

@@ -388,7 +388,7 @@ class DelayedLoad(DelayedImageOperation):
             dsize = self.meta.get('dsize', None)
             if dsize is not None:
                 final = np.asarray(final)
-                final = kwimage.imresize(final, dsize=dsize)
+                final = kwimage.imresize(final, dsize=dsize, antialias=True)
             self.cache['final'] = final
 
         as_xarray = kwargs.get('as_xarray', False)
@@ -936,43 +936,8 @@ class DelayedWarp(DelayedImageOperation):
             if dsize == (None, None):
                 dsize = None
             sub_data_ = np.asarray(sub_data)
-            # sub_data_ = sub_data_.astype(np.float32) / 255.
-            # print('flags = {!r}'.format(flags))
-            # print('sub_data_.dtype = {!r}'.format(sub_data_.dtype))
-
-            # TODO: should we blur the source if the determanent of M is less
-            # than 1? If so by how much
-            # if kwargs.get('antialias', 0) and interpolation != 'nearest':
-            #     """
-            #     transform = Affine.scale(0.2)
-            #     See: ~/code/ndsampler/dev/antialias_warp.py
-            #     """
-            #     # FIXME! This is too slow for large images.
-
-            #     # Hacked in heuristic for antialiasing before a downsample
-            #     factor = np.sqrt(transform.det())
-            #     if factor < 0.99:
-            #         # compute the number of 2x downsamples
-            #         num_downscales = np.log2(1 / factor)
-
-            #         # Define b0 = kernel size for one downsample operation
-            #         b0 = 5
-            #         # Define s0 = sigma for one downsample operation
-            #         s0 = 1
-
-            #         # The kernel size and sigma doubles for each 2x downsample
-            #         k = int(np.ceil(b0 * (2 ** (num_downscales - 1))))
-            #         sigma = s0 * (2 ** (num_downscales - 1))
-
-            #         if k % 2 == 0:
-            #             k += 1
-
-            #         sub_data_ = sub_data_.copy()
-            #         sub_data_ = cv2.GaussianBlur(sub_data_, (k, k), sigma, sigma)
             M = np.asarray(transform)
-            # final = cv2.warpAffine(sub_data_, M[0:2], dsize=dsize, flags=flags)
-            antialias = kwargs.get('antialias', 1)
-            # Requires update to kwimage version
+            antialias = kwargs.get('antialias', True)
             final = kwimage.warp_affine(sub_data_, M, dsize=dsize,
                                         interpolation=interpolation,
                                         antialias=antialias)
