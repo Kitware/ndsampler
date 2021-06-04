@@ -553,6 +553,9 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
         if task == 'video_detection':
             sample_grid = new_video_sample_grid(dset, window_dims,
                                                 window_overlap)
+        elif task == 'image_detection':
+            sample_grid = new_image_sample_grid(dset, window_dims,
+                                                window_overlap)
         else:
             raise NotImplementedError(task)
 
