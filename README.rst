@@ -4,15 +4,15 @@ ndsampler
 |GitlabCIPipeline| |GitlabCICoverage| |Pypi| |Downloads| 
 
 
-+------------------+-----------------------------------------------+
-| Read the docs    | https://ndsampler.readthedocs.io              |
-+------------------+-----------------------------------------------+
-| Gitlab (main)    | https://gitlab.kitware.com/utils/ndsampler    |
-+------------------+-----------------------------------------------+
-| Github (mirror)  | https://github.com/Kitware/ndsampler          |
-+------------------+-----------------------------------------------+
-| Pypi             | https://pypi.org/project/ndsampler            |
-+------------------+-----------------------------------------------+
++------------------+---------------------------------------------------------+
+| Read the docs    | https://ndsampler.readthedocs.io                        |
++------------------+---------------------------------------------------------+
+| Gitlab (main)    | https://gitlab.kitware.com/computer-vision/ndsampler    |
++------------------+---------------------------------------------------------+
+| Github (mirror)  | https://github.com/Kitware/ndsampler                    |
++------------------+---------------------------------------------------------+
+| Pypi             | https://pypi.org/project/ndsampler                      |
++------------------+---------------------------------------------------------+
 
 The main webpage for this project is: https://gitlab.kitware.com/computer-vision/ndsampler
 
