@@ -1,4 +1,7 @@
 """
+DEPRECATD. THIS IS BEING MOVED TO KWCOCO FOR DEVELOPMENT AND EVENTUALLY WILL
+LIVE IN KWIMAGE.
+
 The classes in this file represent a tree of delayed operations.
 
 Proof of concept for delayed chainable transforms in Python.
