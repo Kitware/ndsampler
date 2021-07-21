@@ -974,6 +974,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             # itself. In the future we will likely return the xarray itself.
             if not tr_.get('as_xarray', False):
                 data_clipped = _data_clipped.values
+                print('data_clipped = {!r}'.format(data_clipped))
                 tr_['_coords'] = _data_clipped.coords
                 tr_['_dims'] = _data_clipped.dims
             else:
@@ -1016,7 +1017,15 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             trailing_dims = len(data_clipped.shape) - len(extra_padding)
             if trailing_dims > 0:
                 extra_padding = extra_padding + ([(0, 0)] * trailing_dims)
-            data_sliced = np.pad(data_clipped, extra_padding, **padkw)
+            if tr_.get('as_xarray', False):
+                coord_pad = dict(zip(data_clipped.dims, extra_padding))
+                # print('data_clipped.dims = {!r}'.format(data_clipped.dims))
+                if 'constant_values' not in padkw:
+                    # hack for consistency
+                    padkw['constant_values'] = 0
+                data_sliced = data_clipped.pad(coord_pad, **padkw)
+            else:
+                data_sliced = np.pad(data_clipped, extra_padding, **padkw)
 
         st_dims = [(sl.start - pad_[0], sl.stop + pad_[1])
                    for sl, pad_ in zip(data_slice, extra_padding)]
