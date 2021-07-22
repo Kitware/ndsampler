@@ -689,6 +689,7 @@ class AlignableImageData(object):
                 _channel_memcache[cache_key] = data
         return data
 
+    @profile
     def _load_delayed_channel(self, chan_name, cache=True):
         height = self.pathinfo.get('height', None)
         width = self.pathinfo.get('width', None)

@@ -974,7 +974,6 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             # itself. In the future we will likely return the xarray itself.
             if not tr_.get('as_xarray', False):
                 data_clipped = _data_clipped.values
-                print('data_clipped = {!r}'.format(data_clipped))
                 tr_['_coords'] = _data_clipped.coords
                 tr_['_dims'] = _data_clipped.dims
             else:
