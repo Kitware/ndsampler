@@ -831,6 +831,25 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> tr['as_xarray'] = True
             >>> sample = self._load_slice(tr)
             >>> print('sample = {!r}'.format(ub.map_vals(type, sample)))
+
+        CommandLine:
+            xdoctest -m /home/joncrall/code/ndsampler/ndsampler/coco_sampler.py CocoSampler._load_slice --profile
+
+        Example:
+            >>> # Multispectral video sample example
+            >>> from ndsampler.coco_sampler import *
+            >>> self = CocoSampler.demo('vidshapes1-multispectral', num_frames=5)
+            >>> sample_grid = self.new_sample_grid('video_detection', (3, 128, 128))
+            >>> tr = sample_grid['positives'][0]
+            >>> tr['channels'] = 'B1|B8'
+            >>> tr['as_xarray'] = False
+            >>> sample = self.load_sample(tr)
+            >>> print(ub.repr2(sample['tr'], nl=1))
+            >>> print(sample['im'].shape)
+            >>> assert sample['im'].shape == (3, 128, 128, 2)
+            >>> tr['channels'] = '<all>'
+            >>> sample = self.load_sample(tr)
+            >>> assert sample['im'].shape == (3, 128, 128, 5)
         """
         import skimage
         import kwarray
@@ -843,6 +862,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         tr_ = self._infer_target_attributes(tr)
         assert 'space_slice' in tr_
         data_dims = tr_['data_dims']
+
+        use_experimental_loader = tr_.get('use_experimental_loader', False)
 
         requested_slice = tr_['slices']
 
@@ -884,69 +905,77 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             # MOST OF THIS LOGIC SHOULD BE IN WHATEVER THE TIME-SAMPLING VIDEO
             # MECHANISM IS
             for time_idx, gid in enumerate(time_gids):
-                img = self.dset.imgs[gid]
-                frame_index = img.get('frame_index', gid)
-                tf_img_to_vid = Affine.coerce(img['warp_img_to_vid'])
+                if use_experimental_loader:
+                    # New method
+                    delayed_frame = self.dset.delayed_load(gid, space='video')
+                    delayed_frame = delayed_frame.crop(space_slice)
+                    if not all_chan:
+                        delayed_frame = delayed_frame.take_channels(request_chanspec)
+                    xr_frame = delayed_frame.finalize(as_xarray=True)
+                    space_frames.append(xr_frame)
+                else:
+                    # Old method
+                    img = self.dset.imgs[gid]
+                    frame_index = img.get('frame_index', gid)
+                    tf_img_to_vid = Affine.coerce(img['warp_img_to_vid'])
+                    alignable = self.frames._load_alignable(gid)
+                    frame_chan_names = list(alignable.pathinfo['channels'].keys())
+                    chan_frames = []
+                    for frame_chan_name in frame_chan_names:
+                        frame_spec = channel_spec.ChannelSpec.coerce(frame_chan_name)
+                        file_chan_coords = ub.oset(ub.flatten(frame_spec.normalize().values()))
 
-                alignable = self.frames._load_alignable(gid)
-                frame_chan_names = list(alignable.pathinfo['channels'].keys())
+                        if all_chan:
+                            matching_coords = file_chan_coords
+                        else:
+                            matching_coords = file_chan_coords & requeset_chan_coords
 
-                chan_frames = []
-                for frame_chan_name in frame_chan_names:
-                    frame_spec = channel_spec.ChannelSpec.coerce(frame_chan_name)
-                    file_chan_coords = ub.oset(ub.flatten(frame_spec.normalize().values()))
+                        if matching_coords:
+                            # Load full image in "virtual" image space
+                            img_full = alignable._load_delayed_channel(frame_chan_name)
+                            vid_full = img_full.delayed_warp(tf_img_to_vid, dsize=vid_dsize)
 
-                    if all_chan:
-                        matching_coords = file_chan_coords
+                            vid_part = vid_full.delayed_crop(space_slice)
+
+                            # TODO: only load some of the channels if that is an
+                            # option
+                            _vid_chan_frame = vid_part.finalize()
+
+                            if 1:
+                                # TODO: can we test if we can simplify this to None
+                                # or a slice? Maybe we can write a function
+                                # simplify slice?
+                                subchan_idxs = [file_chan_coords.index(c)
+                                                for c in matching_coords]
+                                vid_chan_frame = _vid_chan_frame[..., subchan_idxs]
+
+                            # TODO: we could add utm coords here
+                            xr_chan_frame = xr.DataArray(
+                                vid_chan_frame[None, ...],
+                                dims=('t', 'y', 'x', 'c'),
+                                coords={
+                                    # TODO: this should be a timestamp if we have it
+                                    't': np.array([frame_index]),
+                                    # 'y': np.arange(vid_chan_frame.shape[0]),
+                                    # 'x': np.arange(vid_chan_frame.shape[1]),
+                                    'c': list(matching_coords),
+                                }
+                            )
+                            chan_frames.append(xr_chan_frame)
+
+                    if len(chan_frames):
+                        xr_frame = xr.concat(chan_frames, dim='c')
                     else:
-                        matching_coords = file_chan_coords & requeset_chan_coords
-
-                    if matching_coords:
-                        # Load full image in "virtual" image space
-                        img_full = alignable._load_delayed_channel(frame_chan_name)
-                        vid_full = img_full.delayed_warp(tf_img_to_vid, dsize=vid_dsize)
-
-                        vid_part = vid_full.delayed_crop(space_slice)
-
-                        # TODO: only load some of the channels if that is an
-                        # option
-                        _vid_chan_frame = vid_part.finalize()
-
-                        if 1:
-                            # TODO: can we test if we can simplify this to None
-                            # or a slice? Maybe we can write a function
-                            # simplify slice?
-                            subchan_idxs = [file_chan_coords.index(c)
-                                            for c in matching_coords]
-                            vid_chan_frame = _vid_chan_frame[..., subchan_idxs]
-
                         # TODO: we could add utm coords here
-                        xr_chan_frame = xr.DataArray(
-                            vid_chan_frame[None, ...],
+                        xr_frame = xr.DataArray(
+                            np.empty((1, slice_height, slice_width, 0)),
                             dims=('t', 'y', 'x', 'c'),
                             coords={
-                                # TODO: this should be a timestamp if we have it
-                                't': np.array([frame_index]),
-                                # 'y': np.arange(vid_chan_frame.shape[0]),
-                                # 'x': np.arange(vid_chan_frame.shape[1]),
-                                'c': list(matching_coords),
+                                't': np.array([time_idx]),
+                                'c': np.empty((0,), dtype=str),
                             }
                         )
-                        chan_frames.append(xr_chan_frame)
-
-                if len(chan_frames):
-                    xr_frame = xr.concat(chan_frames, dim='c')
-                else:
-                    # TODO: we could add utm coords here
-                    xr_frame = xr.DataArray(
-                        np.empty((1, slice_height, slice_width, 0)),
-                        dims=('t', 'y', 'x', 'c'),
-                        coords={
-                            't': np.array([time_idx]),
-                            'c': np.empty((0,), dtype=str),
-                        }
-                    )
-                space_frames.append(xr_frame)
+                    space_frames.append(xr_frame)
 
             # Concat aligned frames together (add nans for non-existing
             # channels)
