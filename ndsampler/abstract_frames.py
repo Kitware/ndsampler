@@ -529,10 +529,9 @@ class Frames(object):
         stamp.cacher.enabled = bool(hashid) and bool(use_stamp) and gids is None
 
         if stamp.expired() or hashid is None:
-            from ndsampler.utils import util_futures
             from concurrent import futures
             # Use thread mode, because we are mostly in doing io.
-            executor = util_futures.Executor(mode='thread', max_workers=workers)
+            executor = ub.Executor(mode='thread', max_workers=workers)
             with executor as executor:
                 if gids is None:
                     gids = self.image_ids
