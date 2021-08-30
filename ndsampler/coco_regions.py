@@ -902,34 +902,34 @@ def new_video_sample_grid(dset, window_dims=None, window_overlap=0.0,
 
         vidid_to_slider[vidid] = slider
 
+    @ub.memoize
+    def _lut_warp(gid):
+        warp_img_to_vid = dset.index.imgs[gid].get('warp_img_to_vid', None)
+        return kwimage.Affine.coerce(warp_img_to_vid)
+
     _isect_index = isect_indexer.FrameIntersectionIndex.from_coco(dset)
 
     positives = []
     negatives = []
     for vidid, slider in vidid_to_slider.items():
-        regions = list(slider)
+        video_regions = list(slider)
         gids = dset.index.vidid_to_gids[vidid]
-        boxes = []
-        box_gids = []
-        for region in regions:
-            t_sl, y_sl, x_sl = region
+        for vid_region in video_regions:
+            t_sl, y_sl, x_sl = vid_region
+            vid_box = kwimage.Boxes.from_slice((y_sl, x_sl))
             region_gids = gids[t_sl]
-            box_gids.append(region_gids)
-            boxes.append([x_sl.start,  y_sl.start, x_sl.stop, y_sl.stop])
-        boxes = kwimage.Boxes(np.array(boxes), 'ltrb')
-
-        for region, region_gids, box in zip(regions, box_gids, boxes):
-            # Check to see what annotations this window-box overlaps with
             region_aids = []
             for gid in region_gids:
-                # TODO: memoize to prevent dup queries (box is not hashable)
-                aids = _isect_index.overlapping_aids(gid, box)
-                region_aids.append(aids)
+                warp_img_to_vid = _lut_warp(gid)
+                # Check to see what annotations this window-box overlaps with
+                # (in image space!)
+                img_box = vid_box.warp(warp_img_to_vid)
+                aids = _isect_index.overlapping_aids(gid, img_box)
+                region_aids.extend(aids)
 
-            pos_aids = sorted(ub.flatten(region_aids))
-            space_slice = region[1:3]
-            time_slice = region[0]
-
+            pos_aids = sorted(region_aids)
+            time_slice = vid_region[0]
+            space_slice = vid_region[1:3]
             tr = {
                 'vidid': vidid,
                 'time_slice': time_slice,

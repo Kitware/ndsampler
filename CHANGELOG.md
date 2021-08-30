@@ -5,6 +5,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Version 0.6.5 - Unreleased
 
+### Fixed
+
+* Bug where the video sample grid did not respect "video-space"
+
+
 
 ## Version 0.6.4 - Released 2021-06-22
 
