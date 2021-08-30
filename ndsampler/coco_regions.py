@@ -923,7 +923,7 @@ def new_video_sample_grid(dset, window_dims=None, window_overlap=0.0,
                 warp_img_to_vid = _lut_warp(gid)
                 # Check to see what annotations this window-box overlaps with
                 # (in image space!)
-                img_box = vid_box.warp(warp_img_to_vid)
+                img_box = vid_box.warp(warp_img_to_vid.inv())
                 aids = _isect_index.overlapping_aids(gid, img_box)
                 region_aids.extend(aids)
 

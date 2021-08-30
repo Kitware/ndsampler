@@ -1135,8 +1135,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             if tr.get('vidid', None) is not None:
                 # hack to align annots from image space to video space
                 img = self.dset.imgs[gid]
-                from kwimage.transform import Affine
-                tf_img_to_abs = Affine.coerce(img.get('warp_img_to_vid', None))
+                # Build transform from image to absolute sample space.
+                tf_img_to_abs = kwimage.Affine.coerce(
+                    img.get('warp_img_to_vid', None))
                 tf_abs_to_img = tf_img_to_abs.inv()
             else:
                 tf_img_to_abs = None
@@ -1215,7 +1216,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             # Translate the absolute detections to relative sample coordinates
             if tf_img_to_abs is not None:
                 # hack to align annots from image space to video space
-                tf_abs_to_rel = Affine.translate(offset) @ tf_img_to_abs
+                tf_abs_to_rel = kwimage.Affine.translate(offset) @ tf_img_to_abs
                 rel_dets = abs_dets.warp(tf_abs_to_rel.matrix)
             else:
                 rel_dets = abs_dets.translate(offset)
