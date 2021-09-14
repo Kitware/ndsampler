@@ -1,5 +1,5 @@
 networkx >= 2.2.0
-ubelt >= 0.8.2
+ubelt >= 0.10.0
 parse >= 1.12.0
 
 xarray >= 0.16.0

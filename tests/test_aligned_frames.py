@@ -1,5 +1,6 @@
 def test_video_channel_alignment_parts():
     import ndsampler
+    import kwimage
     import ubelt as ub
     sampler = ndsampler.CocoSampler.demo('vidshapes5-multispectral', num_frames=5, backend=None)
     dset = sampler.dset  # NOQA
@@ -8,9 +9,9 @@ def test_video_channel_alignment_parts():
     print('pathinfo = {}'.format(ub.repr2(pathinfo, nl=3)))
 
     b1_aux = pathinfo['channels']['B1']
-    assert b1_aux['warp_aux_to_img']['matrix'][0][0] == 1.0
+    assert kwimage.Affine.coerce(b1_aux['warp_aux_to_img']).matrix[0][0] == 1.0
     b11_aux = pathinfo['channels']['B11']
-    assert b11_aux['warp_aux_to_img']['matrix'][0][0] == 3.0
+    assert kwimage.Affine.coerce(b11_aux['warp_aux_to_img']).matrix[0][0] == 3.0
 
     alignable = frames._load_alignable(1)
     frame_b1 = alignable._load_native_channel('B1')
@@ -60,7 +61,7 @@ def test_video_channel_alignment_parts():
         for gid in gids:
             import numpy as np
             img = dset.index.imgs[gid]
-            tf_img_to_vid = np.array(img['warp_img_to_vid']['matrix'])
+            tf_img_to_vid = kwimage.Affine.coerce(img['warp_img_to_vid']).matrix
 
             img_chans_ = []
             for chan_name in channels:

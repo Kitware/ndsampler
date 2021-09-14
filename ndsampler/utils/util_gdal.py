@@ -850,8 +850,7 @@ def batch_convert_to_cog(src_fpaths, dst_fpaths,
             'compress': 'LZW',
             'blocksize': 256,
         }
-    from ndsampler.utils import util_futures
-    jobs = util_futures.JobPool(mode, max_workers=max_workers)
+    jobs = ub.JobPool(mode, max_workers=max_workers)
     for src_fpath, dst_fpath in zip(src_fpaths, dst_fpaths):
         jobs.submit(_convert_to_cog_worker, src_fpath, dst_fpath,
                     cog_config=cog_config)
@@ -869,8 +868,7 @@ def batch_validate_cog(dst_fpaths, mode='thread', max_workers=0):
         mode (str, default='process'): either process, thread, or serial
         max_workers (int, default=0): number of processes / threads to use
     """
-    from ndsampler.utils import util_futures
-    jobs = util_futures.JobPool(mode, max_workers=max_workers)
+    jobs = ub.JobPool(mode, max_workers=max_workers)
     for dst_fpath in dst_fpaths:
         jobs.submit(_validate_cog_worker, dst_fpath)
     for job in ub.ProgIter(jobs.as_completed(), total=len(jobs),
