@@ -863,7 +863,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         assert 'space_slice' in tr_
         data_dims = tr_['data_dims']
 
-        use_experimental_loader = tr_.get('use_experimental_loader', False)
+        # Experimental loader is now the faster method
+        use_experimental_loader = tr_.get('use_experimental_loader', True)
 
         requested_slice = tr_['slices']
 
@@ -907,10 +908,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             for time_idx, gid in enumerate(time_gids):
                 if use_experimental_loader:
                     # New method
-                    delayed_frame = self.dset.delayed_load(gid, space='video')
+                    delayed_frame = self.dset.delayed_load(
+                        gid, channels=request_chanspec, space='video')
                     delayed_frame = delayed_frame.crop(space_slice)
-                    if not all_chan:
-                        delayed_frame = delayed_frame.take_channels(request_chanspec)
+                    # if not all_chan:
+                    #     delayed_frame = delayed_frame.take_channels(request_chanspec)
                     xr_frame = delayed_frame.finalize(as_xarray=True)
                     space_frames.append(xr_frame)
                 else:

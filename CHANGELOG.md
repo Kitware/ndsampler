@@ -6,6 +6,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## Version 0.6.6 - Unreleased
 
 
+### Changed
+* using the experimental loader is now the faster method (given kwcoco > 0.2.13) and has been set as the default
+
+
 ## Version 0.6.5 - Released 2021-09-14
 
 ### Fixed
