@@ -863,16 +863,16 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         assert 'space_slice' in tr_
         data_dims = tr_['data_dims']
 
-        # Experimental loader is now the faster method
+        # Experimental loader is now the faster and more robust method
         use_experimental_loader = tr_.get('use_experimental_loader', True)
 
         requested_slice = tr_['slices']
-
         channels = tr_.get('channels', ub.NoParam)
 
         if channels == '<all>' or channels is ub.NoParam:
             # Do something special
             all_chan = True
+            request_chanspec = None
         else:
             request_chanspec = channel_spec.ChannelSpec.coerce(channels)
             requeset_chan_coords = ub.oset(ub.flatten(request_chanspec.normalize().values()))
@@ -910,16 +910,16 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     # New method
                     delayed_frame = self.dset.delayed_load(
                         gid, channels=request_chanspec, space='video')
-                    delayed_frame = delayed_frame.crop(space_slice)
-                    # if not all_chan:
-                    #     delayed_frame = delayed_frame.take_channels(request_chanspec)
-                    xr_frame = delayed_frame.finalize(as_xarray=True)
+                    delayed_crop = delayed_frame.crop(space_slice)
+                    xr_frame = delayed_crop.finalize(as_xarray=True)
                     space_frames.append(xr_frame)
                 else:
                     # Old method
                     img = self.dset.imgs[gid]
                     frame_index = img.get('frame_index', gid)
                     tf_img_to_vid = Affine.coerce(img['warp_img_to_vid'])
+
+                    # This load_alignable stuff might no longer be needed
                     alignable = self.frames._load_alignable(gid)
                     frame_chan_names = list(alignable.pathinfo['channels'].keys())
                     chan_frames = []
