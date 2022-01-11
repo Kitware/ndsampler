@@ -113,12 +113,12 @@ stages:
 
 ._install_strict_minimal_requirements: &_install_strict_minimal_requirements |-
     ./dev/make_strict_req.sh
-    pip install -r requirements-strict/runtime.txt -r requirements-strict/tests.txt
+    pip install -r requirements-strict/runtime.txt -r requirements-strict/tests.txt -r requirements/headless.txt
 
 
 ._install_strict_full_requirements: &_install_strict_full_requirements |-
     ./dev/make_strict_req.sh
-    pip install -r requirements-strict/optional.txt -r requirements-strict/runtime.txt -r requirements-strict/tests.txt
+    pip install -r requirements-strict/optional.txt -r requirements-strict/runtime.txt -r requirements-strict/tests.txt -r requirements/headless.txt
 
 
 .test_minimal_strict_template: &test_minimal_strict_template
@@ -653,6 +653,5 @@ test_minimal_strict/cp36-cp36m-linux:
             ./run_tests.py
 
             # LOOSE VARIANT
-            pip install -r requirements.txt
-            pip install -e .
+            pip install -e .[tests,headless]
             ./run_tests.py
