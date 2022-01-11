@@ -129,7 +129,7 @@ stages:
     before_script:
         - *_setup_virtualenv_template
         - *_install_strict_minimal_requirements
-        - pip install .[tests]  
+        - pip install .[tests,headless]  
         #- pip install opencv-python-headless==4.5.3.56
 
 
@@ -141,7 +141,7 @@ stages:
     before_script:
         - *_setup_virtualenv_template
         - *_install_strict_full_requirements
-        - pip install .[all]  
+        - pip install .[all,headless]  
         #- pip install opencv-python-headless==4.5.3.56
 
 .test_minimal_loose_template: &test_minimal_loose_template
@@ -151,7 +151,7 @@ stages:
 
     before_script:
         - *_setup_virtualenv_template
-        - pip install .[tests]
+        - pip install .[tests,headless]
         #- pip install .[tests,headless]
 
 
@@ -162,7 +162,7 @@ stages:
 
     before_script:
         - *_setup_virtualenv_template
-        - pip install .[all]  
+        - pip install .[all,headless]  
         #- pip install .[all,headless]  
 
 
@@ -623,7 +623,7 @@ test_minimal_strict/cp36-cp36m-linux:
             # the watch repo, create the environment, and run the tests. 
             #docker login gitlab.kitware.com:4567
 
-            IMAGE_NAME=gitlab.kitware.com:4567/computer-vision/ci-docker/gl-python:3.8
+            IMAGE_NAME=gitlab.kitware.com:4567/computer-vision/ci-docker/gl-python:3.9
             docker run -v $PWD:/io:ro -v $HOME/.cache/pip:/pip_cache -it $IMAGE_NAME bash
             # Will need to chmod things afterwords
             export PIP_CACHE_DIR=/pip_cache
