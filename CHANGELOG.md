@@ -3,7 +3,19 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
-## Version 0.6.5 - Unreleased
+## Version 0.6.6 - Unreleased
+
+### Added
+* Add `dtype` argument to `load_sample`, which will control the type of data returned.
+* Add `nodata` argument to `load_sample`, which will handle nodata values for integer images.
+
+
+### Changed
+* using the experimental loader is now the faster method (given kwcoco >
+  0.2.13) and has been set as the default, and the other method has been removed.
+
+
+## Version 0.6.5 - Released 2021-09-14
 
 ### Fixed
 

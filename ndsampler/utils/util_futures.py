@@ -1,8 +1,6 @@
-# -*- coding: utf-8 -*-
 """
 Note: this module also exists in kwcoco.utils
 """
-from __future__ import absolute_import, division, print_function, unicode_literals
 import concurrent.futures
 from concurrent.futures import as_completed
 

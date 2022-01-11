@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Extends the :class:`CategoryTree` class in the :mod:`kwcoco.category_tree`
 module with torch methods for computing hierarchical losses / decisions.
@@ -14,7 +13,6 @@ Notes from YOLO-9000:
         superordinate term applicable to it. For example, spoon is a
         hyponym of cutlery.
 """
-from __future__ import absolute_import, division, print_function, unicode_literals
 import kwarray
 import functools
 import networkx as nx

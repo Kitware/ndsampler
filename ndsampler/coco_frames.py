@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-from __future__ import absolute_import, division, print_function, unicode_literals
 from ndsampler import abstract_frames
 from ndsampler.utils import util_misc
 import numpy as np

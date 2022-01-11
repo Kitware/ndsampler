@@ -20,7 +20,6 @@ Notes:
     sphinx-apidoc -f -o ~/code/ndsampler/docs/source ~/code/ndsampler/ndsampler --separate
     make html
 """
-# -*- coding: utf-8 -*-
 #
 # Configuration file for the Sphinx documentation builder.
 #

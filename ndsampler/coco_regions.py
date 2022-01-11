@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Maintains information about groundtruth targets. Positives are specified
 explicitly, and negatives are mined.
@@ -20,7 +19,6 @@ Cases to Handle:
     - [ ] Annotations are about the same size as the images
 
 """
-from __future__ import absolute_import, division, print_function, unicode_literals
 import itertools as it
 import kwarray
 import kwimage

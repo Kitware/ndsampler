@@ -1,3 +1,4 @@
-kwplot
-gdal
-lru-dict
+# python ~/local/tools/supported_python_versions_pip.py lru-dict
+kwplot>=0.4.10
+# gdal Moved to problematic
+lru-dict>=1.1.7
