@@ -11,4 +11,5 @@ sed 's/>=/==/' requirements/tests.txt > requirements-strict/tests.txt
 sed 's/>=/==/' requirements/build.txt > requirements-strict/build.txt
 sed 's/>=/==/' requirements/headless.txt > requirements-strict/headless.txt  # opencv issues
 sed 's/>=/==/' requirements/graphics.txt > requirements-strict/graphics.txt  # opencv issues
+sed 's/>=/==/' requirements/problematic.txt > requirements-strict/problematic.txt  # gdal isues
 sed 's/requirements/requirements-strict/' requirements.txt > requirements-strict.txt
