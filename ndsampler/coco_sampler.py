@@ -449,7 +449,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         return sample
 
     def load_sample(self, tr, with_annots=True, visible_thresh=0.0, pad=None,
-                    padkw={'mode': 'constant'}, **kw):
+                    padkw={'mode': 'constant'}, dtype=None, **kw):
         """
         Loads the volume data associated with the bbox and frame of a target
 
@@ -642,7 +642,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 'The load_sample API has deprecated arguments that should now '
                 ' be given in `tr` itself. You specified {}'.format(list(kw)))
 
-        sample = self._load_slice(tr, pad, padkw)
+        sample = self._load_slice(tr, pad, padkw, dtype)
 
         if with_annots or ub.iterable(with_annots):
             self._populate_overlap(sample, visible_thresh, with_annots)
@@ -808,7 +808,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         return tr_
 
     @profile
-    def _load_slice(self, tr, pad=None, padkw={'mode': 'constant'}):
+    def _load_slice(self, tr, pad=None, padkw={'mode': 'constant'}, dtype=None):
         """
         Example:
             >>> # sample an out of bounds target
@@ -912,6 +912,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     if not all_chan:
                         delayed_frame = delayed_frame.take_channels(request_chanspec)
                     xr_frame = delayed_frame.finalize(as_xarray=True)
+                    if dtype is not None:
+                        xr_frame = xr_frame.astype(dtype)
                     space_frames.append(xr_frame)
                 else:
                     # Old method
