@@ -119,6 +119,8 @@ stages:
 ._install_strict_full_requirements: &_install_strict_full_requirements |-
     ./dev/make_strict_req.sh
     pip install -r requirements-strict/optional.txt -r requirements-strict/runtime.txt -r requirements-strict/tests.txt -r requirements/headless.txt
+    # Hack for gdal (not sure best way to handle it)
+    pip install GDAL==3.3.1 --find-links https://girder.github.io/large_image_wheels
 
 
 .test_minimal_strict_template: &test_minimal_strict_template
@@ -163,6 +165,7 @@ stages:
     before_script:
         - *_setup_virtualenv_template
         - pip install .[all,headless]  
+        - pip install GDAL>=3.3.1 --find-links https://girder.github.io/large_image_wheels
         #- pip install .[all,headless]  
 
 
