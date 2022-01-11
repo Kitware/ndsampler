@@ -4,7 +4,7 @@ Script to publish a new version of this library on PyPI.
 
 If your script has binary dependencies then we assume that you have built a
 proper binary wheel with auditwheel and it exists in the wheelhouse directory.
-Otherwise, for source tarballs and universal wheels this script runs the
+Otherwise, for source tarballs and wheels this script runs the
 setup.py script to create the wheels as well.
 
 Running this script with the default arguments will perform any builds and gpg
@@ -73,8 +73,9 @@ NAME=${NAME:=$(python -c "import setup; print(setup.NAME)")}
 VERSION=$(python -c "import setup; print(setup.VERSION)")
 
 # The default should change depending on the application
-#DEFAULT_MODE_LIST=("sdist" "universal" "bdist")
-DEFAULT_MODE_LIST=("sdist" "native" "universal")
+#DEFAULT_MODE_LIST=("sdist" "bdist")
+#DEFAULT_MODE_LIST=("sdist" "native")
+DEFAULT_MODE_LIST=("sdist" "native")
 #DEFAULT_MODE_LIST=("sdist" "bdist")
 
 check_variable DEPLOY_REMOTE
@@ -238,11 +239,6 @@ if [ "$DO_BUILD" == "True" ]; then
             python setup.py bdist_wheel || { echo 'failed to build native wheel' ; exit 1; }
             WHEEL_PATH=$(ls dist/$NAME-$VERSION*.whl)
             #WHEEL_PATHS+=($WHEEL_PATH)
-        elif [[ "$_MODE" == "universal" ]]; then
-            python setup.py bdist_wheel --universal || { echo 'failed to build universal wheel' ; exit 1; }
-            UNIVERSAL_TAG="py3-none-any"
-            WHEEL_PATH=$(ls dist/$NAME-$VERSION-$UNIVERSAL_TAG*.whl)
-            #WHEEL_PATHS+=($WHEEL_PATH)
         elif [[ "$_MODE" == "bdist" ]]; then
             echo "Assume wheel has already been built"
             WHEEL_PATH=$(ls wheelhouse/$NAME-$VERSION-*.whl)
@@ -272,10 +268,6 @@ do
         WHEEL_PATHS+=($WHEEL_PATH)
     elif [[ "$_MODE" == "native" ]]; then
         WHEEL_PATH=$(ls dist/$NAME-$VERSION*.whl)
-        WHEEL_PATHS+=($WHEEL_PATH)
-    elif [[ "$_MODE" == "universal" ]]; then
-        UNIVERSAL_TAG="py3-none-any"
-        WHEEL_PATH=$(ls dist/$NAME-$VERSION-$UNIVERSAL_TAG*.whl)
         WHEEL_PATHS+=($WHEEL_PATH)
     elif [[ "$_MODE" == "bdist" ]]; then
         WHEEL_PATH=$(ls wheelhouse/$NAME-$VERSION-*.whl)
@@ -342,6 +334,7 @@ if [[ "$DO_TAG" == "True" ]]; then
     git tag $TAG_NAME -m "tarball tag $VERSION"
     git push --tags $DEPLOY_REMOTE
     echo "Should also do a: git push $DEPLOY_REMOTE main:release"
+    echo "For github should draft a new release: https://github.com/PyUtils/line_profiler/releases/new"
 else
     echo "Not tagging"
 fi
