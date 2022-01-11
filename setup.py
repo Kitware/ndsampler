@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 from os.path import exists
 from setuptools import setup
 from setuptools import find_packages

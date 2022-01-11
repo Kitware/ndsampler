@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Example:
     >>> # Imagine you have some images
@@ -44,7 +43,6 @@ Example:
     >>> # which deal with annotations. See those for more details.
     >>> # For random negative sampling see coco_regions.
 """
-from __future__ import absolute_import, division, print_function, unicode_literals
 import ubelt as ub
 import numpy as np
 import kwimage

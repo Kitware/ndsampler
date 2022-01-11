@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Fast access to subregions of images.
 
@@ -12,7 +11,6 @@ TODO:
         - [X] Use as COG if input file is a COG
         - [X] Convert to COG if needed
 """
-from __future__ import absolute_import, division, print_function, unicode_literals
 import numpy as np
 import ubelt as ub
 import copy
