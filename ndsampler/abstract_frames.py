@@ -15,7 +15,6 @@ TODO:
 from __future__ import absolute_import, division, print_function, unicode_literals
 import numpy as np
 import ubelt as ub
-import six
 import copy
 import warnings
 from os.path import exists, join
@@ -183,7 +182,7 @@ class Frames(object):
                 backend = 'cog'
             else:
                 backend = 'npy'
-        if isinstance(backend, six.string_types):
+        if isinstance(backend, str):
             backend = {'type': backend, 'config': {}}
 
         backend_type = backend.get('type', None)

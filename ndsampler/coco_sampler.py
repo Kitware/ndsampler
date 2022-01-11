@@ -48,7 +48,6 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import ubelt as ub
 import numpy as np
 import kwimage
-import six
 import kwcoco
 import warnings
 from ndsampler import coco_regions
@@ -781,7 +780,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 if window_dims is None:
                     window_dims = 'extent'
 
-                if isinstance(window_dims, six.string_types):
+                if isinstance(window_dims, str):
                     if window_dims == 'extent':
                         window_dims = (tr_['height'], tr_['width'])
                         window_dims = np.ceil(np.array(window_dims)).astype(np.int)
@@ -1040,7 +1039,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
         if with_annots is True:
             with_annots = ['segmentation', 'keypoints', 'boxes']
-        elif isinstance(with_annots, six.string_types):
+        elif isinstance(with_annots, str):
             with_annots = with_annots.split('+')
 
         if __debug__:
