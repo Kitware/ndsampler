@@ -133,6 +133,7 @@ if __name__ == '__main__':
             'tests': parse_requirements('requirements/tests.txt'),
             'build': parse_requirements('requirements/build.txt'),
             'optional': parse_requirements('requirements/optional.txt'),
+            'problematic': parse_requirements('requirements/problematic.txt'),
             # Really annoying that this is the best we can do
             'headless': parse_requirements('requirements/headless.txt'),
             'graphics': parse_requirements('requirements/graphics.txt'),
