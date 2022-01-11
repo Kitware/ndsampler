@@ -5,9 +5,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Version 0.6.6 - Unreleased
 
+### Added
+* Add `dtype` argument to `load_sample`, which will control the type of data returned.
+* Add `nodata` argument to `load_sample`, which will handle nodata values for integer images.
+
 
 ### Changed
-* using the experimental loader is now the faster method (given kwcoco > 0.2.13) and has been set as the default
+* using the experimental loader is now the faster method (given kwcoco >
+  0.2.13) and has been set as the default, and the other method has been removed.
 
 
 ## Version 0.6.5 - Released 2021-09-14

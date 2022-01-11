@@ -23,8 +23,8 @@ pyqtree >= 1.0.0
 # There are likely several more undocumented deps, see what fails and submit a PR please!
 # TODO : fill me in!
 
-kwimage >= 0.7.6
-kwarray >= 0.5.16
-kwcoco >= 0.2.1
+kwimage >= 0.8.0
+kwarray >= 0.5.19
+kwcoco >= 0.2.19
 
 futures>=3.2.0;python_version=="2.7"
