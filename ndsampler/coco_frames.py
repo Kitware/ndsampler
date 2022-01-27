@@ -39,8 +39,8 @@ class CocoFrames(abstract_frames.Frames, util_misc.HashIdentifiable):
     """
     def __init__(self, dset, hashid_mode='PATH', workdir=None, verbose=0,
                  backend='auto'):
-        super(CocoFrames, self).__init__(hashid_mode=hashid_mode,
-                                         workdir=workdir, backend=backend)
+        super().__init__(hashid_mode=hashid_mode, workdir=workdir,
+                         backend=backend)
         self.dset = dset
         self.verbose = verbose
         self._image_ids = None
@@ -66,9 +66,8 @@ class CocoFrames(abstract_frames.Frames, util_misc.HashIdentifiable):
         img = self.dset.imgs[image_id]
         width = img.get('width', None)
         height = img.get('height', None)
-        return super(CocoFrames, self).load_region(image_id, region,
-                                                   width=width, height=height,
-                                                   channels=channels)
+        return super().load_region(image_id, region, width=width,
+                                   height=height, channels=channels)
 
     @profile
     def _build_pathinfo(self, image_id):
