@@ -5,6 +5,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Version 0.6.7 - Unreleased
 
+### Added
+* Environment variable `NDSAMPLER_DISABLE_OPTIONAL_WARNINGS` can disable warnings
+
 
 ## Version 0.6.6 - Released 2022-01-11
 

@@ -138,11 +138,14 @@ class LRUDict(ub.NiceRepr):
             import lru
         except Exception as ex:
             lru = None
-            import warnings
-            warnings.warn(
-                'Optional lru-dict c-implementation is unavailable.'
-                ' `pip install lru-dict` to supress this warning.'
-                ' Fallback to pure python. ex={!r}'.format(ex))
+            from ndsampler import _internal
+            if _internal.NDSAMPLER_DISABLE_OPTIONAL_WARNINGS:
+                import warnings
+                warnings.warn(
+                    'Optional lru-dict c-implementation is unavailable.'
+                    ' `pip install lru-dict` to supress this warning,'
+                    ' or set environ NDSAMPLER_DISABLE_WARNINGS=1.'
+                    ' Fallback to pure python. ex={!r}'.format(ex))
 
         if impl == 'auto':
             impl = 'py' if lru is None else 'c'
