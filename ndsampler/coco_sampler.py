@@ -446,7 +446,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         return sample
 
     def load_sample(self, tr, with_annots=True, visible_thresh=0.0, pad=None,
-                    padkw={'mode': 'constant'}, dtype=None, nodata=None):
+                    padkw={'mode': 'constant'}, dtype=None, nodata='auto'):
         """
         Loads the volume data associated with the bbox and frame of a target
 
@@ -811,7 +811,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         return tr_
 
     @profile
-    def _load_slice(self, tr, pad=None, padkw={'mode': 'constant'}, dtype=None, nodata=None):
+    def _load_slice(self, tr, pad=None, padkw={'mode': 'constant'}, dtype=None, nodata='auto'):
         """
         Example:
             >>> # sample an out of bounds target
