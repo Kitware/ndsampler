@@ -536,7 +536,7 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
         Args:
             task (str): can be
                 video_detection
-                # image_detection
+                image_detection
                 # video_classification
                 # image_classification
 
