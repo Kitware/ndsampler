@@ -982,10 +982,22 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 coord_pad = dict(zip(data_clipped.dims, extra_padding))
                 # print('data_clipped.dims = {!r}'.format(data_clipped.dims))
                 if 'constant_values' not in padkw:
-                    # hack for consistency
-                    padkw['constant_values'] = 0
+                    if nodata in {'float', 'auto'}:
+                        padkw['constant_values'] = np.nan
+                    else:
+                        # hack for consistency
+                        padkw['constant_values'] = 0
                 data_sliced = data_clipped.pad(coord_pad, **padkw)
             else:
+                # print('data_clipped.dims = {!r}'.format(data_clipped.dims))
+                if 'constant_values' not in padkw:
+                    if nodata in {'float', 'auto'}:
+                        padkw['constant_values'] = np.nan
+                    else:
+                        # hack for consistency
+                        padkw['constant_values'] = 0
+                # TODO: if the data out of kwcoco is masked, mask the padded
+                # value.
                 data_sliced = np.pad(data_clipped, extra_padding, **padkw)
 
         st_dims = [(sl.start - pad_[0], sl.stop + pad_[1])

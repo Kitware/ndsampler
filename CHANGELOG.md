@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * Environment variable `NDSAMPLER_DISABLE_OPTIONAL_WARNINGS` can disable warnings
 
 
+### Changed
+* Setting nodata to "float" or "auto" makes nan the default pad value.
+
+
 ## Version 0.6.6 - Released 2022-01-11
 
 ### Added
