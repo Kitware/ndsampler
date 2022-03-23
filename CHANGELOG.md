@@ -11,6 +11,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 * Setting nodata to "float" or "auto" makes nan the default pad value.
+* `new_sample_grid` can now take extra kwargs that are passed to the video or
+  image sample grid function. Added a `use_annots` flag that can disable the use 
+  of annotations in constructing the grid.
+* `new_sample_grid` now returns a list "targets" that contains all targets and
+   a list of positive and negative indexes that indicate which of them are
+   positive or negative if `use_annots` is specified. The old "positives" and
+   "negatives" items in the return dict still exist but are deprecated and will be
+   removed.
 
 
 ## Version 0.6.6 - Released 2022-01-11
