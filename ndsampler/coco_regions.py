@@ -714,8 +714,7 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
             dpath = None
             enabled = False  # forced disable
 
-        cfgstr = None
-
+        depends = None
         if enabled:
             if extra_deps is None:
                 extra_deps = ub.odict()
@@ -723,9 +722,9 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
                 raise TypeError('Extra dependencies must be an OrderedDict')
             # always include `self.hashid`
             extra_deps['self_hashid'] = self.hashid
-            cfgstr = ub.hash_data(extra_deps)
+            depends = extra_deps
 
-        cacher = ub.Cacher(fname, cfgstr=cfgstr, dpath=dpath,
+        cacher = ub.Cacher(fname, depends=depends, dpath=dpath,
                            verbose=self.verbose, enabled=enabled)
         return cacher
 
