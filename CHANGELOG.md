@@ -8,6 +8,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 * Environment variable `NDSAMPLER_DISABLE_OPTIONAL_WARNINGS` can disable warnings
 
+* tr can now take parameters interpolation and antialias which are now passed
+  to kwcoco delayed finalize.
+
 
 ### Changed
 * Setting nodata to "float" or "auto" makes nan the default pad value.
