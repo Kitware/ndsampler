@@ -446,7 +446,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         return sample
 
     def load_sample(self, tr, with_annots=True, visible_thresh=0.0, pad=None,
-                    padkw={'mode': 'constant'}, dtype=None, nodata='auto'):
+                    padkw={'mode': 'constant'}, dtype=None, nodata=None):
         """
         Loads the volume data associated with the bbox and frame of a target
 
@@ -520,7 +520,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 Cast the loaded data to this type. If unspecified returns the
                 data as-is.
 
-            nodata (int | None):
+            nodata (int | None, default=None):
                 If specified, for integer data with nodata values, this is
                 passed to kwcoco delayed image finalize. The data is converted
                 to float32 and nodata values are replaced with nan. These
