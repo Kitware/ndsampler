@@ -493,6 +493,14 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 as_xarray (bool, default=False):
                     if True, return the image data as an xarray object
 
+                interpolation (str, default='auto'):
+                    type of resample interpolation
+
+                antialias (str, default='auto'):
+                    antialias sample or not
+
+                nodata: override function level nodata
+
             with_annots (bool | str, default=True):
                 if True, also extracts information about any annotation that
                 overlaps the region of interest (subject to visibility_thresh).
@@ -512,7 +520,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 Cast the loaded data to this type. If unspecified returns the
                 data as-is.
 
-            nodata (int | None):
+            nodata (int | None, default=None):
                 If specified, for integer data with nodata values, this is
                 passed to kwcoco delayed image finalize. The data is converted
                 to float32 and nodata values are replaced with nan. These
@@ -877,6 +885,15 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             requeset_chan_coords = ub.oset(ub.flatten(request_chanspec.normalize().values()))
             all_chan = False
 
+        # TODO: disable function level nodata param
+        nodata = tr_.get('nodata', nodata)
+        interpolation = tr_.get('interpolation', 'auto')
+        antialias = tr_.get('antialias', 'auto')
+        if interpolation == 'auto':
+            interpolation = 'linear'
+        if antialias == 'auto':
+            antialias = interpolation not in {'nearest'}
+
         vidid = tr_.get('vidid', None)
         if vidid is not None:
             ndim = 3  # number of space-time dimensions (ignore channel)
@@ -904,8 +921,12 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 delayed_frame = self.dset.delayed_load(
                     gid, channels=request_chanspec, space='video')
                 delayed_crop = delayed_frame.crop(space_slice)
+
                 xr_frame = delayed_crop.finalize(
-                    as_xarray=True, nodata=nodata)
+                    as_xarray=True, nodata=nodata,
+                    interpolation=interpolation,
+                    antialias=antialias,
+                )
                 if dtype is not None:
                     xr_frame = xr_frame.astype(dtype)
                 space_frames.append(xr_frame)
@@ -982,10 +1003,22 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 coord_pad = dict(zip(data_clipped.dims, extra_padding))
                 # print('data_clipped.dims = {!r}'.format(data_clipped.dims))
                 if 'constant_values' not in padkw:
-                    # hack for consistency
-                    padkw['constant_values'] = 0
+                    if nodata in {'float', 'auto'}:
+                        padkw['constant_values'] = np.nan
+                    else:
+                        # hack for consistency
+                        padkw['constant_values'] = 0
                 data_sliced = data_clipped.pad(coord_pad, **padkw)
             else:
+                # print('data_clipped.dims = {!r}'.format(data_clipped.dims))
+                if 'constant_values' not in padkw:
+                    if nodata in {'float', 'auto'}:
+                        padkw['constant_values'] = np.nan
+                    else:
+                        # hack for consistency
+                        padkw['constant_values'] = 0
+                # TODO: if the data out of kwcoco is masked, mask the padded
+                # value.
                 data_sliced = np.pad(data_clipped, extra_padding, **padkw)
 
         st_dims = [(sl.start - pad_[0], sl.stop + pad_[1])

@@ -3,7 +3,28 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
-## Version 0.6.6 - Unreleased
+## Version 0.6.7 - Unreleased
+
+### Added
+* Environment variable `NDSAMPLER_DISABLE_OPTIONAL_WARNINGS` can disable warnings
+
+* tr can now take parameters interpolation and antialias which are now passed
+  to kwcoco delayed finalize.
+
+
+### Changed
+* Setting nodata to "float" or "auto" makes nan the default pad value.
+* `new_sample_grid` can now take extra kwargs that are passed to the video or
+  image sample grid function. Added a `use_annots` flag that can disable the use 
+  of annotations in constructing the grid.
+* `new_sample_grid` now returns a list "targets" that contains all targets and
+   a list of positive and negative indexes that indicate which of them are
+   positive or negative if `use_annots` is specified. The old "positives" and
+   "negatives" items in the return dict still exist but are deprecated and will be
+   removed.
+
+
+## Version 0.6.6 - Released 2022-01-11
 
 ### Added
 * Add `dtype` argument to `load_sample`, which will control the type of data returned.

@@ -116,13 +116,14 @@ This example shows how you can efficiently load subregions from images.
      '~/.cache/kwimage/demodata/Airport.jpg']
     >>> # And you want to randomly load subregions of them in O(1) time
     >>> import ndsampler
+    >>> import kwcoco
     >>> # First make a COCO dataset that refers to your images (and possibly annotations)
     >>> dataset = {
     >>>     'images': [{'id': i, 'file_name': fpath} for i, fpath in enumerate(image_paths)],
     >>>     'annotations': [],
     >>>     'categories': [],
     >>> }
-    >>> coco_dset = ndsampler.CocoDataset(dataset)
+    >>> coco_dset = kwcoco.CocoDataset(dataset)
     >>> print(coco_dset)
     <CocoDataset(tag=None, n_anns=0, n_imgs=3, n_cats=0)>
     >>> # Now pass the dataset to a sampler and tell it where it can store temporary files

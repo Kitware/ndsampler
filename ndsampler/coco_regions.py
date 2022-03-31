@@ -529,16 +529,19 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
             targets['img_height'] = [img['height'] for img in imgs]
         return targets
 
-    def new_sample_grid(self, task, window_dims, window_overlap=0):
+    def new_sample_grid(self, task, window_dims, window_overlap=0, **kwargs):
         """
         New experimental method to replace preselect positives / negatives
 
         Args:
             task (str): can be
                 video_detection
-                # image_detection
+                image_detection
                 # video_classification
                 # image_classification
+
+            **kwargs :
+                passed to `new_video_sample_grid` or `new_image_sample_grid`
 
         Example:
             >>> from ndsampler.coco_regions import *
@@ -550,10 +553,10 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
         dset = self.dset
         if task == 'video_detection':
             sample_grid = new_video_sample_grid(dset, window_dims,
-                                                window_overlap)
+                                                window_overlap, **kwargs)
         elif task == 'image_detection':
             sample_grid = new_image_sample_grid(dset, window_dims,
-                                                window_overlap)
+                                                window_overlap, **kwargs)
         else:
             raise NotImplementedError(task)
 
@@ -711,8 +714,7 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
             dpath = None
             enabled = False  # forced disable
 
-        cfgstr = None
-
+        depends = None
         if enabled:
             if extra_deps is None:
                 extra_deps = ub.odict()
@@ -720,9 +722,9 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
                 raise TypeError('Extra dependencies must be an OrderedDict')
             # always include `self.hashid`
             extra_deps['self_hashid'] = self.hashid
-            cfgstr = ub.hash_data(extra_deps)
+            depends = extra_deps
 
-        cacher = ub.Cacher(fname, cfgstr=cfgstr, dpath=dpath,
+        cacher = ub.Cacher(fname, depends=depends, dpath=dpath,
                            verbose=self.verbose, enabled=enabled)
         return cacher
 
@@ -853,9 +855,21 @@ def select_positive_regions(targets, window_dims=(300, 300), thresh=0.0,
 def new_video_sample_grid(dset, window_dims=None, window_overlap=0.0,
                           space_dims=None, time_dim=None,  # TODO
                           classes_of_interest=None, ignore_coverage_thresh=0.6,
-                          negative_classes={'ignore', 'background'}):
+                          negative_classes={'ignore', 'background'},
+                          use_annots=True, legacy=True, verbose=1):
     """
     Create a space time-grid to sample with
+
+    Returns:
+
+        Dict: sample_grid
+
+            contains "targets", and if use_annots=True then also
+                contains "positives_indexes" and "negatives_indexes" indicating
+                which annotations contain positive/negative samples.
+
+            The "positives" and "negatives" lists are deprecated and will be
+            removed.
 
     Example:
         >>> from ndsampler.coco_regions import *  # NOQA
@@ -873,6 +887,35 @@ def new_video_sample_grid(dset, window_dims=None, window_overlap=0.0,
         >>> print('tr_ = {}'.format(ub.repr2(tr_, nl=1)))
         >>> sample = sampler.load_sample(tr)
         >>> assert sample['im'].shape == (2, 224, 224, 5)
+
+    Example:
+        >>> from ndsampler.coco_regions import *  # NOQA
+        >>> import kwcoco
+        >>> dset = kwcoco.CocoDataset.demo('vidshapes8-multispectral', num_frames=5)
+        >>> dset.conform()
+        >>> window_dims = (2, 224, 224)
+        >>> sample_grid = new_video_sample_grid(dset, window_dims, use_annots=False)
+
+    Ignore:
+        import timerit
+        ti = timerit.Timerit(10, bestof=3, verbose=2)
+        for timer in ti.reset('vid use_annots=True'):
+            with timer:
+                new_video_sample_grid(dset, window_dims, use_annots=True, verbose=0)
+
+        for timer in ti.reset('vid use_annots=False'):
+            with timer:
+                new_video_sample_grid(dset, window_dims, use_annots=False, verbose=0)
+
+        import timerit
+        ti = timerit.Timerit(10, bestof=3, verbose=2)
+        for timer in ti.reset('img use_annots=True'):
+            with timer:
+                new_image_sample_grid(dset, window_dims[1:], use_annots=True, verbose=0)
+
+        for timer in ti.reset('img use_annots=False'):
+            with timer:
+                new_image_sample_grid(dset, window_dims[1:], use_annots=False, verbose=0)
 
     Ignore:
         import xdev
@@ -909,6 +952,9 @@ def new_video_sample_grid(dset, window_dims=None, window_overlap=0.0,
 
     positives = []
     negatives = []
+    targets = []
+    positive_idxs = []
+    negative_idxs = []
     for vidid, slider in vidid_to_slider.items():
         video_regions = list(slider)
         gids = dset.index.vidid_to_gids[vidid]
@@ -916,16 +962,21 @@ def new_video_sample_grid(dset, window_dims=None, window_overlap=0.0,
             t_sl, y_sl, x_sl = vid_region
             vid_box = kwimage.Boxes.from_slice((y_sl, x_sl))
             region_gids = gids[t_sl]
-            region_aids = []
-            for gid in region_gids:
-                warp_img_to_vid = _lut_warp(gid)
-                # Check to see what annotations this window-box overlaps with
-                # (in image space!)
-                img_box = vid_box.warp(warp_img_to_vid.inv())
-                aids = _isect_index.overlapping_aids(gid, img_box)
-                region_aids.extend(aids)
 
-            pos_aids = sorted(region_aids)
+            if use_annots:
+                region_aids = []
+                for gid in region_gids:
+                    warp_img_to_vid = _lut_warp(gid)
+                    # Check to see what annotations this window-box overlaps with
+                    # (in image space!)
+                    img_box = vid_box.warp(warp_img_to_vid.inv())
+                    aids = _isect_index.overlapping_aids(gid, img_box)
+                    region_aids.extend(aids)
+
+                pos_aids = sorted(region_aids)
+            else:
+                pos_aids = None
+
             time_slice = vid_region[0]
             space_slice = vid_region[1:3]
             tr = {
@@ -936,25 +987,52 @@ def new_video_sample_grid(dset, window_dims=None, window_overlap=0.0,
                 'gids': region_gids,
                 'aids': pos_aids,
             }
-            if len(pos_aids):
-                positives.append(tr)
+            targets.append(tr)
+            if pos_aids:
+                positive_idxs.append(len(targets))
+                if legacy:
+                    positives.append(tr)
             else:
-                negatives.append(tr)
+                negative_idxs.append(len(targets))
+                if legacy:
+                    negatives.append(tr)
 
-    print('Found {} positives'.format(len(positives)))
-    print('Found {} negatives'.format(len(negatives)))
+    if verbose:
+        print('Found {} targets'.format(len(targets)))
+        if use_annots:
+            print('Found {} positives'.format(len(positive_idxs)))
+            print('Found {} negatives'.format(len(negative_idxs)))
+
     sample_grid = {
-        'positives': positives,
-        'negatives': negatives,
+        'targets': targets,
+        'positives_indexes': positive_idxs,
+        'negatives_indexes': negative_idxs,
     }
+    if legacy:
+        sample_grid.update({
+            # Deprecated:
+            'positives': positives,
+            'negatives': negatives,
+        })
     return sample_grid
 
 
 def new_image_sample_grid(dset, window_dims, window_overlap=0.0,
                           classes_of_interest=None, ignore_coverage_thresh=0.6,
-                          negative_classes={'ignore', 'background'}):
+                          negative_classes={'ignore', 'background'},
+                          use_annots=True, legacy=True, verbose=1):
     """
     Create a space time-grid to sample with
+
+    Returns:
+        Dict: sample_grid
+
+            contains "targets", and if use_annots=True then also
+                contains "positives_indexes" and "negatives_indexes" indicating
+                which annotations contain positive/negative samples.
+
+            The "positives" and "negatives" lists are deprecated and will be
+            removed.
 
     Example:
         >>> from ndsampler.coco_regions import *  # NOQA
@@ -962,10 +1040,11 @@ def new_image_sample_grid(dset, window_dims, window_overlap=0.0,
         >>> dset = kwcoco.CocoDataset.demo('shapes8')
         >>> dset = kwcoco.CocoDataset.demo('vidshapes8-multispectral')
         >>> window_dims = (224, 224)
+        >>> sample_grid1 = new_image_sample_grid(dset, window_dims, use_annots=False)
         >>> sample_grid = new_image_sample_grid(dset, window_dims)
-        >>> print('sample_grid = {}'.format(ub.repr2(sample_grid, nl=2)))
         >>> # Now try to load a sample
-        >>> tr = sample_grid['positives'][0]
+        >>> idx = sample_grid['positives_indexes'][0]
+        >>> tr = sample_grid['targets'][idx]
         >>> import ndsampler
         >>> sampler = ndsampler.CocoSampler(dset)
         >>> tr['channels'] = '<all>'
@@ -994,10 +1073,14 @@ def new_image_sample_grid(dset, window_dims, window_overlap=0.0,
                                        allow_overshoot=True)
         gid_to_slider[img['id']] = slider
 
-    _isect_index = isect_indexer.FrameIntersectionIndex.from_coco(dset)
+    if use_annots:
+        _isect_index = isect_indexer.FrameIntersectionIndex.from_coco(dset)
 
     positives = []
     negatives = []
+    targets = []
+    positive_idxs = []
+    negative_idxs = []
     for gid, slider in gid_to_slider.items():
 
         # For each image, create a box for each spatial region in the slider
@@ -1009,60 +1092,65 @@ def new_image_sample_grid(dset, window_dims, window_overlap=0.0,
         boxes = kwimage.Boxes(np.array(boxes), 'ltrb')
 
         for region, box in zip(regions, boxes):
-            # Check to see what annotations this window-box overlaps with
-            aids = _isect_index.overlapping_aids(gid, box)
 
-            # Look at the categories within this region
-            catnames = [
-                dset.cats[dset.anns[aid]['category_id']]['name'].lower()
-                for aid in aids
-            ]
+            if use_annots:
+                # Check to see what annotations this window-box overlaps with
+                aids = _isect_index.overlapping_aids(gid, box)
 
-            if ignore_coverage_thresh:
-                ignore_flags = [catname == 'ignore' for catname in catnames]
-                if any(ignore_flags):
-                    # If the almost the entire window is marked as ignored then
-                    # just skip this window.
-                    ignore_aids = list(ub.compress(aids, ignore_flags))
-                    ignore_boxes = dset.annots(ignore_aids).boxes
+                # Look at the categories within this region
+                catnames = [
+                    dset.cats[dset.anns[aid]['category_id']]['name'].lower()
+                    for aid in aids
+                ]
 
-                    # Get an upper bound on coverage to short circuit extra
-                    # computation in simple cases.
-                    box_area = box.area.sum()
-                    coverage_ub = ignore_boxes.area.sum() / box_area
-                    if coverage_ub  > ignore_coverage_thresh:
-                        max_coverage = ignore_boxes.iooas(box).max()
-                        if max_coverage > ignore_coverage_thresh:
-                            continue
-                        elif len(ignore_boxes) > 1:
-                            # We have to test the complex case
-                            try:
-                                from shapely.ops import cascaded_union
-                                ignore_shape = cascaded_union(ignore_boxes.to_shapley())
-                                region_shape = box[None, :].to_shapley()[0]
-                                coverage_shape = ignore_shape.intersection(region_shape)
-                                real_coverage = coverage_shape.area / box_area
-                                if real_coverage > ignore_coverage_thresh:
-                                    continue
-                            except Exception as ex:
-                                import warnings
-                                warnings.warn(
-                                    'ignore region select had non-critical '
-                                    'issue ex = {!r}'.format(ex))
+                if ignore_coverage_thresh:
+                    ignore_flags = [catname == 'ignore' for catname in catnames]
+                    if any(ignore_flags):
+                        # If the almost the entire window is marked as ignored then
+                        # just skip this window.
+                        ignore_aids = list(ub.compress(aids, ignore_flags))
+                        ignore_boxes = dset.annots(ignore_aids).boxes
 
-            if classes_of_interest:
-                # If there are CoIs then only count a region as positive if one
-                # of those is in this region
-                interest_flags = np.array([
-                    catname in classes_of_interest for catname in catnames])
-                pos_aids = list(ub.compress(aids, interest_flags))
-            elif negative_classes:
-                # Don't count negative classes as positives
-                nonnegative_flags = np.array([
-                    catname not in negative_classes for catname in catnames])
-                pos_aids = list(ub.compress(aids, nonnegative_flags))
+                        # Get an upper bound on coverage to short circuit extra
+                        # computation in simple cases.
+                        box_area = box.area.sum()
+                        coverage_ub = ignore_boxes.area.sum() / box_area
+                        if coverage_ub  > ignore_coverage_thresh:
+                            max_coverage = ignore_boxes.iooas(box).max()
+                            if max_coverage > ignore_coverage_thresh:
+                                continue
+                            elif len(ignore_boxes) > 1:
+                                # We have to test the complex case
+                                try:
+                                    from shapely.ops import cascaded_union
+                                    ignore_shape = cascaded_union(ignore_boxes.to_shapley())
+                                    region_shape = box[None, :].to_shapley()[0]
+                                    coverage_shape = ignore_shape.intersection(region_shape)
+                                    real_coverage = coverage_shape.area / box_area
+                                    if real_coverage > ignore_coverage_thresh:
+                                        continue
+                                except Exception as ex:
+                                    import warnings
+                                    warnings.warn(
+                                        'ignore region select had non-critical '
+                                        'issue ex = {!r}'.format(ex))
+
+                if classes_of_interest:
+                    # If there are CoIs then only count a region as positive if one
+                    # of those is in this region
+                    interest_flags = np.array([
+                        catname in classes_of_interest for catname in catnames])
+                    pos_aids = list(ub.compress(aids, interest_flags))
+                elif negative_classes:
+                    # Don't count negative classes as positives
+                    nonnegative_flags = np.array([
+                        catname not in negative_classes for catname in catnames])
+                    pos_aids = list(ub.compress(aids, nonnegative_flags))
+                else:
+                    pos_aids = aids
             else:
-                pos_aids = aids
+                aids = None
+                pos_aids = None
 
             # aids = sampler.regions.overlapping_aids(gid, box, visible_thresh=0.001)
             tr = {
@@ -1070,15 +1158,31 @@ def new_image_sample_grid(dset, window_dims, window_overlap=0.0,
                 'slices': region,
                 'aids': aids,
             }
-            if len(pos_aids):
-                positives.append(tr)
+            targets.append(tr)
+            if pos_aids:
+                positive_idxs.append(len(targets))
+                if legacy:
+                    positives.append(tr)
             else:
-                negatives.append(tr)
+                negative_idxs.append(len(targets))
+                if legacy:
+                    negatives.append(tr)
 
-    print('Found {} positives'.format(len(positives)))
-    print('Found {} negatives'.format(len(negatives)))
+    if verbose:
+        print('Found {} targets'.format(len(targets)))
+        if use_annots:
+            print('Found {} positives'.format(len(positive_idxs)))
+            print('Found {} negatives'.format(len(negative_idxs)))
+
     sample_grid = {
-        'positives': positives,
-        'negatives': negatives,
+        'targets': targets,
+        'positives_indexes': positive_idxs,
+        'negatives_indexes': negative_idxs,
     }
+    if legacy:
+        sample_grid.update({
+            # Deprecated:
+            'positives': positives,
+            'negatives': negatives,
+        })
     return sample_grid

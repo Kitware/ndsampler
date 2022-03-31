@@ -117,7 +117,6 @@ NAME = 'ndsampler'
 VERSION = version = parse_version('ndsampler/__init__.py')  # needs to be a global var for git tags
 
 if __name__ == '__main__':
-    print(find_packages(include='*'))
     setup(
         name=NAME,
         version=version,
