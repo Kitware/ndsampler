@@ -819,7 +819,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         return tr_
 
     @profile
-    def _load_slice(self, tr, pad=None, padkw={'mode': 'constant'}, dtype=None, nodata='auto'):
+    def _load_slice(self, tr, pad=None, padkw={'mode': 'constant'}, dtype=None, nodata=None):
         """
         Example:
             >>> # sample an out of bounds target
