@@ -911,15 +911,16 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             time_gids = tr_['gids']
             space_frames = []
 
-            # TODO: Handle channel encodings more ellegantly
+            # TODO: need to be able to sample the video at an arbitrary scale.
+            space = 'video'
+            # space = 'asset'
 
-            # HACKED AND NOT ELEGANT OR EFFICIENT.
-            # MOST OF THIS LOGIC SHOULD BE IN WHATEVER THE TIME-SAMPLING VIDEO
-            # MECHANISM IS
+            # TODO: Handle channel encodings more ellegantly
             for time_idx, gid in enumerate(time_gids):
                 # New method
-                delayed_frame = self.dset.delayed_load(
-                    gid, channels=request_chanspec, space='video')
+                cooc_img = self.dset.coco_image(gid)
+                delayed_frame = cooc_img.delay(
+                    channels=request_chanspec, space=space)
                 delayed_crop = delayed_frame.crop(space_slice)
 
                 xr_frame = delayed_crop.finalize(
