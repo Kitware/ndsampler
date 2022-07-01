@@ -225,6 +225,8 @@ class DelayedImageOperation(DelayedOperation):
         else:
             return DelayedChannelConcat(components)
 
+    crop = delayed_crop
+
     def delayed_warp(self, transform, dsize=None):
         """
         Delayedly transform the underlying data.

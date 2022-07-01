@@ -918,15 +918,24 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             # MECHANISM IS
             for time_idx, gid in enumerate(time_gids):
                 # New method
-                delayed_frame = self.dset.delayed_load(
-                    gid, channels=request_chanspec, space='video')
+                mode = 1
+
+                delayed_frame = self.dset.coco_image(gid).delay(
+                    gid, channels=request_chanspec, space='video',
+                    interpolation=interpolation, nodata=nodata,
+                    antialias=antialias, mode=1
+                )
                 delayed_crop = delayed_frame.crop(space_slice)
 
-                xr_frame = delayed_crop.finalize(
-                    as_xarray=True, nodata=nodata,
-                    interpolation=interpolation,
-                    antialias=antialias,
-                )
+                if mode == 0:
+                    xr_frame = delayed_crop.finalize(
+                        as_xarray=True, nodata=nodata,
+                        interpolation=interpolation,
+                        antialias=antialias,
+                    )
+                else:
+                    xr_frame = delayed_crop.as_xarray().finalize()
+
                 if dtype is not None:
                     xr_frame = xr_frame.astype(dtype)
                 space_frames.append(xr_frame)
