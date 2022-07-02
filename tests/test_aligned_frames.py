@@ -22,14 +22,25 @@ def test_video_channel_alignment_parts():
 
     subregion1 = alignable._load_prefused_region(None, channels=['B1'])
     subregion11 = alignable._load_prefused_region(None, channels=['B11'])
-    subregion = alignable._load_prefused_region(None, channels=['B1', 'B11'])
+    subregion = alignable._load_prefused_region(None, channels=['B1', 'B11'])  # NOQA
 
     # Prefused inputs should be in native resolution
-    assert subregion1['subregions'][0]['im'].sub_shape[0] == 600
-    assert subregion11['subregions'][0]['im'].sub_shape[0] == 200
-    # They should be carried along with their transforms
-    assert subregion1['subregions'][0]['im'].transform[0][0] == 1
-    assert subregion11['subregions'][0]['im'].transform[0][0] == 3
+
+    delayed1 = subregion1['subregions'][0]['im']
+    delayed11 = subregion11['subregions'][0]['im']
+    if hasattr(delayed1, 'sub_shape'):
+        assert delayed1.sub_shape[0] == 600
+        assert delayed11.sub_shape[0] == 200
+        # They should be carried along with their transforms
+        assert delayed1.transform[0][0] == 1
+        assert delayed11.transform[0][0] == 3
+    else:
+        # Newer stuff
+        assert delayed1.subdata.subdata.dsize[0] == 600
+        assert delayed11.subdata.subdata.dsize[0] == 200
+        # They should be carried along with their transforms
+        assert delayed1.meta['transform'].matrix[0][0] == 1
+        assert delayed11.meta['transform'].matrix[0][0] == 3
 
     img_region = (slice(10, 32), slice(10, 32))
     fused_region = alignable._load_fused_region(img_region, channels=['B1', 'B11'])
@@ -39,11 +50,20 @@ def test_video_channel_alignment_parts():
     assert fused_full.shape == (600, 600, 2)
 
     subregion1_crop = alignable._load_prefused_region(img_region, channels=['B1'])
-    assert subregion1_crop['subregions'][0]['im'].transform[0][2] == 0
     subregion11_crop = alignable._load_prefused_region(img_region, channels=['B11'])
-    assert subregion11_crop['subregions'][0]['im'].transform[0][2] != 0, (
-        'should have a small translation factor because img_region aligns to '
-        'subpixels in the auxiliary channel')
+    if hasattr(delayed1, 'sub_shape'):
+        assert subregion1_crop['subregions'][0]['im'].transform[0][2] == 0
+        assert subregion11_crop['subregions'][0]['im'].transform[0][2] != 0, (
+            'should have a small translation factor because img_region aligns to '
+            'subpixels in the auxiliary channel')
+    else:
+        delayed11 = subregion11_crop['subregions'][0]['im']
+        delayed1 = subregion1_crop['subregions'][0]['im']
+
+        assert delayed1.meta['transform'].matrix[0][2] == 0
+        assert delayed11.meta['transform'].matrix[0][2] != 0, (
+            'should have a small translation factor because img_region aligns to '
+            'subpixels in the auxiliary channel')
 
     if 0:
         # TEST video component

@@ -846,6 +846,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         CommandLine:
             xdoctest -m /home/joncrall/code/ndsampler/ndsampler/coco_sampler.py CocoSampler._load_slice --profile
 
+        Ignore:
+            from ndsampler.coco_sampler import *  # NOQA
+            from ndsampler.coco_sampler import _center_extent_to_slice, _ensure_iterablen
+            import ndsampler
+            import xdev
+            globals().update(xdev.get_func_kwargs(ndsampler.CocoSampler._load_slice))
+
         Example:
             >>> # Multispectral video sample example
             >>> from ndsampler.coco_sampler import *
@@ -920,21 +927,24 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 # New method
                 mode = 1
                 coco_img = self.dset.coco_image(gid)
-                delayed_frame = coco_img.delay(
-                    gid, channels=request_chanspec, space=space,
-                    interpolation=interpolation, nodata=nodata,
-                    antialias=antialias, mode=1
-                )
-                delayed_crop = delayed_frame.crop(space_slice)
-
-                if mode == 0:
+                if mode == 1:
+                    delayed_frame = coco_img.delay(
+                        channels=request_chanspec, space=space,
+                        interpolation=interpolation, nodata_method=nodata,
+                        antialias=antialias, mode=1
+                    )
+                    delayed_crop = delayed_frame.crop(space_slice)
+                    xr_frame = delayed_crop.as_xarray().finalize()
+                elif mode == 0:
+                    delayed_frame = coco_img.delay(
+                        channels=request_chanspec, space=space)
                     xr_frame = delayed_crop.finalize(
                         as_xarray=True, nodata=nodata,
                         interpolation=interpolation,
                         antialias=antialias,
                     )
                 else:
-                    xr_frame = delayed_crop.as_xarray().finalize()
+                    raise KeyError(mode)
 
                 if dtype is not None:
                     xr_frame = xr_frame.astype(dtype)
