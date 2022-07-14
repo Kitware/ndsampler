@@ -1,6 +1,7 @@
 def test_video_channel_alignment_parts():
     import ndsampler
     import kwimage
+    # import numpy as np
     import ubelt as ub
     sampler = ndsampler.CocoSampler.demo('vidshapes5-multispectral', num_frames=5, backend=None)
     dset = sampler.dset  # NOQA
@@ -36,10 +37,11 @@ def test_video_channel_alignment_parts():
         assert delayed11.transform[0][0] == 3
     else:
         # Newer stuff
-        assert delayed1.subdata.subdata.dsize[0] == 600
+        assert delayed1.subdata.dsize[0] == 600
         assert delayed11.subdata.subdata.dsize[0] == 200
         # They should be carried along with their transforms
-        assert delayed1.meta['transform'].matrix[0][0] == 1
+        # assert delayed1.meta['transform'].matrix[0][0] == 1
+        assert 'transform' not in delayed1.meta
         assert delayed11.meta['transform'].matrix[0][0] == 3
 
     img_region = (slice(10, 32), slice(10, 32))
@@ -59,8 +61,7 @@ def test_video_channel_alignment_parts():
     else:
         delayed11 = subregion11_crop['subregions'][0]['im']
         delayed1 = subregion1_crop['subregions'][0]['im']
-
-        assert delayed1.meta['transform'].matrix[0][2] == 0
+        # assert delayed1.meta['transform'].matrix[0][2] == 0
         assert delayed11.meta['transform'].matrix[0][2] != 0, (
             'should have a small translation factor because img_region aligns to '
             'subpixels in the auxiliary channel')
@@ -79,7 +80,6 @@ def test_video_channel_alignment_parts():
             DelayedWarp, DelayedChannelConcat, DelayedFrameConcat)
         vid_frames_ = []
         for gid in gids:
-            import numpy as np
             img = dset.index.imgs[gid]
             tf_img_to_vid = kwimage.Affine.coerce(img['warp_img_to_vid']).matrix
 
@@ -91,7 +91,7 @@ def test_video_channel_alignment_parts():
             vid_frame = DelayedWarp(img_frame, tf_img_to_vid, dsize=vid_dsize)
             vid_frames_.append(vid_frame)
 
-        space_region = (slice(10, 40), slice(10, 20))
+        # space_region = (slice(10, 40), slice(10, 20))
         # for f in vid_frames_:
         #     # f.virtual_crop(space_region)
         #     for leaf in vid.leafs():
