@@ -883,7 +883,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         requested_slice = tr_['slices']
         channels = tr_.get('channels', ub.NoParam)
 
-        if channels == '<all>' or channels is ub.NoParam:
+        if channels is ub.NoParam or isinstance(channels, str) and channels == '<all>':
             # Do something special
             all_chan = True
             request_chanspec = None
@@ -934,6 +934,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                         antialias=antialias, mode=1
                     )
                     delayed_crop = delayed_frame.crop(space_slice)
+                    delayed_crop = delayed_crop.optimize()
                     xr_frame = delayed_crop.as_xarray().finalize()
                 elif mode == 0:
                     delayed_frame = coco_img.delay(
