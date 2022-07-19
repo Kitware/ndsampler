@@ -1,2 +1,2 @@
 #!/bin/bash
-xdoctest ndsampler --style=google all
+xdoctest ndsampler --style=google all "$@"

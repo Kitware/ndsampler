@@ -16,7 +16,7 @@ class StratifiedGroupKFold(_BaseKFold):
     stratified folds. The folds are made by preserving the percentage of
     samples for each class.
 
-    Read more in the :ref:`User Guide <cross_validation>`.
+    This is an old interface and should likely be refactored and modernized.
 
     Parameters
     ----------
@@ -47,7 +47,7 @@ class StratifiedGroupKFold(_BaseKFold):
             >>> groups = [1, 1, 3, 4, 2, 2, 7, 8, 8]
             >>> y      = [1, 1, 1, 1, 2, 2, 2, 3, 3]
             >>> X = np.empty((len(y), 0))
-            >>> self = StratifiedGroupKFold(random_state=rng)
+            >>> self = StratifiedGroupKFold(random_state=rng, shuffle=True)
             >>> skf_list = list(self.split(X=X, y=y, groups=groups))
             ...
             >>> import ubelt as ub
@@ -120,7 +120,7 @@ class StratifiedGroupKFold(_BaseKFold):
                 split_diffs[splitx] = cand_diffs[splitx]
                 grouped_splitx.append(splitx)
 
-            test_folds = np.empty(n_samples, dtype=np.int)
+            test_folds = np.empty(n_samples, dtype=int)
             for group_idx, splitx in zip(sortx, grouped_splitx):
                 idxs = group_idxs[group_idx]
                 test_folds[idxs] = splitx
