@@ -846,6 +846,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         CommandLine:
             xdoctest -m /home/joncrall/code/ndsampler/ndsampler/coco_sampler.py CocoSampler._load_slice --profile
 
+        Ignore:
+            from ndsampler.coco_sampler import *  # NOQA
+            from ndsampler.coco_sampler import _center_extent_to_slice, _ensure_iterablen
+            import ndsampler
+            import xdev
+            globals().update(xdev.get_func_kwargs(ndsampler.CocoSampler._load_slice))
+
         Example:
             >>> # Multispectral video sample example
             >>> from ndsampler.coco_sampler import *
@@ -876,7 +883,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         requested_slice = tr_['slices']
         channels = tr_.get('channels', ub.NoParam)
 
-        if channels == '<all>' or channels is ub.NoParam:
+        if channels is ub.NoParam or isinstance(channels, str) and channels == '<all>':
             # Do something special
             all_chan = True
             request_chanspec = None
@@ -911,22 +918,35 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             time_gids = tr_['gids']
             space_frames = []
 
-            # TODO: Handle channel encodings more ellegantly
+            # TODO: need to be able to sample the video at an arbitrary scale.
+            space = 'video'
+            # space = 'asset'
 
-            # HACKED AND NOT ELEGANT OR EFFICIENT.
-            # MOST OF THIS LOGIC SHOULD BE IN WHATEVER THE TIME-SAMPLING VIDEO
-            # MECHANISM IS
+            # TODO: Handle channel encodings more ellegantly
             for time_idx, gid in enumerate(time_gids):
                 # New method
-                delayed_frame = self.dset.delayed_load(
-                    gid, channels=request_chanspec, space='video')
-                delayed_crop = delayed_frame.crop(space_slice)
+                mode = tr_.get('new_delayed_sampler', 1)
+                coco_img = self.dset.coco_image(gid)
+                if mode == 1:
+                    delayed_frame = coco_img.delay(
+                        channels=request_chanspec, space=space,
+                        interpolation=interpolation, nodata_method=nodata,
+                        antialias=antialias, mode=1
+                    )
+                    delayed_crop = delayed_frame.crop(space_slice)
+                    delayed_crop = delayed_crop.optimize()
+                    xr_frame = delayed_crop.as_xarray().finalize()
+                elif mode == 0:
+                    delayed_frame = coco_img.delay(
+                        channels=request_chanspec, space=space)
+                    xr_frame = delayed_crop.finalize(
+                        as_xarray=True, nodata=nodata,
+                        interpolation=interpolation,
+                        antialias=antialias,
+                    )
+                else:
+                    raise KeyError(mode)
 
-                xr_frame = delayed_crop.finalize(
-                    as_xarray=True, nodata=nodata,
-                    interpolation=interpolation,
-                    antialias=antialias,
-                )
                 if dtype is not None:
                     xr_frame = xr_frame.astype(dtype)
                 space_frames.append(xr_frame)

@@ -171,6 +171,7 @@ class DelayedImageOperation(DelayedOperation):
             >>> delayed_crop.finalize()
 
         Example:
+            >>> from ndsampler.delayed import *  # NOQA
             >>> chan1 = DelayedLoad.demo('astro')
             >>> chan2 = DelayedLoad.demo('carl')
             >>> warped1a = chan1.delayed_warp(Affine.scale(1.2).matrix)
@@ -206,7 +207,7 @@ class DelayedImageOperation(DelayedOperation):
             tf_leaf_to_root = delayed_leaf.transform
 
             root_region_box = kwimage.Boxes.from_slice(
-                region_slices, shape=delayed_leaf.shape)
+                region_slices, shape=delayed_leaf.shape, clip=True, wrap=True)
             root_region_bounds = root_region_box.to_polygons()[0]
 
             w = root_region_box.width.ravel()[0]
@@ -238,6 +239,9 @@ class DelayedImageOperation(DelayedOperation):
         """
         warped = DelayedWarp(self, transform=transform, dsize=dsize)
         return warped
+
+    crop = delayed_crop
+    warp = delayed_warp
 
 
 class DelayedIdentity(DelayedImageOperation):

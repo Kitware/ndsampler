@@ -18,7 +18,6 @@ import warnings
 from os.path import exists, join
 from ndsampler.utils import util_gdal
 from ndsampler.utils import util_lru
-from ndsampler.delayed import DelayedWarp
 from ndsampler.frame_cache import (_ensure_image_cog, _ensure_image_npy)
 
 
@@ -628,6 +627,8 @@ class AlignableImageData(object):
 
         - [ ] Make sure adding this didnt significantly hurt performance
 
+        - [ ] DEPRECATE THIS IN FAVOR OF NEW KWCOCO DELAYED LOGIC
+
     Example:
         >>> from ndsampler.abstract_frames import *
         >>> frames = SimpleFrames.demo(backend='npy')
@@ -697,7 +698,18 @@ class AlignableImageData(object):
         if height is None:
             height = data.shape[0]
         img_dsize = (width, height)
-        chan = DelayedWarp(data, warp_aux_to_img, dsize=img_dsize)
+
+        mode = -1
+        mode = 1
+        if mode == -1:
+            # from kwcoco.util.util_delayed_poc import DelayedWarp
+            from ndsampler.delayed import DelayedWarp
+            chan = DelayedWarp(data, warp_aux_to_img, dsize=img_dsize)
+        elif mode == 1:
+            from kwcoco.util.delayed_ops import DelayedIdentity2
+            data_dsize = (data.shape[1], data.shape[0])
+            chan = DelayedIdentity2(data, dsize=data_dsize)
+            chan = chan.warp(warp_aux_to_img, dsize=img_dsize)
         return chan
 
     def _coerce_channels(self, channels=ub.NoParam):
@@ -744,7 +756,10 @@ class AlignableImageData(object):
             # Load full image in "virtual" image space
             im = self._load_delayed_channel(chan_name)
             # if img_region is not None:
-            im = im.delayed_crop(img_region)
+            im = im.crop(img_region)
+            mode = 1
+            if mode == 1:
+                im = im.optimize()
 
             subregion = {
                 'im': im,
