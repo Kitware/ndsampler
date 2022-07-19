@@ -925,7 +925,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             # TODO: Handle channel encodings more ellegantly
             for time_idx, gid in enumerate(time_gids):
                 # New method
-                mode = 1
+                mode = tr_.get('new_delayed_sampler', 1)
                 coco_img = self.dset.coco_image(gid)
                 if mode == 1:
                     delayed_frame = coco_img.delay(
