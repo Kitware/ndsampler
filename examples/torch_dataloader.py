@@ -58,6 +58,8 @@ def demo():
     image_dpath = dpath / 'images'
     workdir = dpath / 'workdir'
 
+    num_passes = 10
+
     rng = None
     rng = kwarray.ensure_rng(rng)
 
@@ -73,7 +75,7 @@ def demo():
             imdata = kwimage.ensure_uint255(rng.rand(h, w, 3))
             image_name = f'demo_image_{image_idx:03d}.png'
             gpath = image_dpath / image_name
-            kwimage.imwrite(gpath, imdata, backend='gdal')
+            kwimage.imwrite(gpath, imdata)
         stamp.renew()
 
     print('')
@@ -84,17 +86,21 @@ def demo():
     torch_dset = DemoDataset(image_dpath, backend='cog', workdir=workdir)
     loader = torch_data.DataLoader(torch_dset, batch_size=1)
     with ub.Timer('With COG') as cog_timer:
-        for item in ub.ProgIter(loader, desc='loading data'):
-            pass
+        # Make N passes through the dataloader
+        for _ in range(num_passes):
+            for item in ub.ProgIter(loader, desc='loading data'):
+                pass
 
     print('')
     print('===============================')
     print('Test ndsampler without COG backend')
     torch_dset = DemoDataset(image_dpath, backend=None)
     with ub.Timer('Without COG') as default_timer:
-        loader = torch_data.DataLoader(torch_dset, batch_size=1)
-        for item in ub.ProgIter(loader, desc='loading data'):
-            pass
+        # Make N passes through the dataloader
+        for _ in range(num_passes):
+            loader = torch_data.DataLoader(torch_dset, batch_size=1)
+            for item in ub.ProgIter(loader, desc='loading data'):
+                pass
 
     print('')
     print('===============================')
