@@ -868,6 +868,22 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> tr['channels'] = '<all>'
             >>> sample = self.load_sample(tr)
             >>> assert sample['im'].shape == (3, 128, 128, 5)
+
+        Example:
+            >>> # Multispectral video sample example
+            >>> from ndsampler.coco_sampler import *
+            >>> self = CocoSampler.demo('vidshapes1-multisensor', num_frames=5)
+            >>> sample_grid = self.new_sample_grid('video_detection', (3, 128, 128))
+            >>> tr = sample_grid['positives'][0]
+            >>> tr['channels'] = 'B1|B8'
+            >>> tr['as_xarray'] = False
+            >>> sample = self.load_sample(tr)
+            >>> print(ub.repr2(sample['tr'], nl=1))
+            >>> print(sample['im'].shape)
+            >>> assert sample['im'].shape == (3, 128, 128, 2)
+            >>> tr['channels'] = '<all>'
+            >>> sample = self.load_sample(tr)
+            >>> assert sample['im'].shape == (3, 128, 128, 5)
         """
         import skimage
         import kwarray
