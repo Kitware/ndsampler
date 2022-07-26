@@ -501,6 +501,15 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
                 nodata: override function level nodata
 
+                use_native_scale (bool): If True, the "im" field is returned
+                    as a jagged list of data that are as close to native
+                    resolution as possible while still maintaining alignment up
+                    to a scale factor. Currently only available for video
+                    sampling.
+
+                scale (float | Tuple[float, float]):
+                    if specified, add an extra scale factor to the data.
+
             with_annots (bool | str, default=True):
                 if True, also extracts information about any annotation that
                 overlaps the region of interest (subject to visibility_thresh).
@@ -652,6 +661,31 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> tr['channels'] = '<all>'
             >>> sample = self.load_sample(tr)
             >>> assert sample['im'].shape == (3, 128, 128, 5)
+
+        Example:
+            >>> # Multispectral-multisensor jagged video sample example
+            >>> from ndsampler.coco_sampler import *
+            >>> self = CocoSampler.demo('vidshapes1-msi-multisensor', num_frames=5)
+            >>> sample_grid = self.new_sample_grid('video_detection', (3, 128, 128))
+            >>> tr = sample_grid['positives'][0]
+            >>> tr['channels'] = 'B1|B8'
+            >>> tr['as_xarray'] = False
+            >>> sample1 = self.load_sample(tr)
+            >>> tr['scale'] = 2
+            >>> sample2 = self.load_sample(tr)
+            >>> tr['use_native_scale'] = True
+            >>> sample3 = self.load_sample(tr)
+            >>> ####
+            >>> assert sample1['im'].shape == (3, 128, 128, 2)
+            >>> assert sample2['im'].shape == (3, 256, 256, 2)
+            >>> box1 = sample1['annots']['frame_dets'][0].boxes
+            >>> box2 = sample2['annots']['frame_dets'][0].boxes
+            >>> box3 = sample3['annots']['frame_dets'][0].boxes
+            >>> assert np.allclose((box2.width / box1.width), 2)
+            >>> # Jagged annotations are still in video space
+            >>> assert np.allclose((box3.width / box1.width), 2)
+            >>> jagged_shape = [[p.shape for p in f] for f in sample3['im']]
+            >>> jagged_align = [[a for a in m['align']] for m in sample3['params']['jagged_meta']]
         """
         sample = self._load_slice(tr, pad, padkw, dtype, nodata)
 
@@ -868,6 +902,42 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> tr['channels'] = '<all>'
             >>> sample = self.load_sample(tr)
             >>> assert sample['im'].shape == (3, 128, 128, 5)
+
+        Example:
+            >>> # Multispectral video sample example
+            >>> from ndsampler.coco_sampler import *
+            >>> self = CocoSampler.demo('vidshapes1-multisensor-msi', num_frames=5)
+            >>> sample_grid = self.new_sample_grid('video_detection', (3, 128, 128))
+            >>> tr = sample_grid['positives'][0]
+            >>> tr['channels'] = 'B1|B8'
+            >>> tr['as_xarray'] = False
+            >>> sample = self.load_sample(tr)
+            >>> print(ub.repr2(sample['tr'], nl=1))
+            >>> print(sample['im'].shape)
+            >>> assert sample['im'].shape == (3, 128, 128, 2)
+            >>> tr['channels'] = '<all>'
+            >>> sample = self.load_sample(tr)
+            >>> assert sample['im'].shape[2] > 5  # probably 16
+
+            >>> # Test jagged naitive scale sampling
+            >>> tr['use_native_scale'] = True
+            >>> tr['as_xarray'] = True
+            >>> tr['channels'] = 'B1|B8|r|g|b|disparity|gauss'
+            >>> sample = self.load_sample(tr)
+            >>> jagged_meta = sample['params']['jagged_meta']
+            >>> frames = sample['im']
+            >>> jagged_shape = [[p.shape for p in f] for f in frames]
+            >>> jagged_chans = [[p.coords['c'].values.tolist() for p in f] for f in frames]
+            >>> jagged_chans2 = [m['chans'] for m in jagged_meta]
+            >>> jagged_align = [[a.concise() for a in m['align']] for m in jagged_meta]
+            >>> # all frames should have the same number of channels
+            >>> assert len(frames) == 3
+            >>> assert all(sum(p.shape[2] for p in f) == 7 for f in frames)
+            >>> frames[0] == 3
+            >>> print('jagged_chans = {}'.format(ub.repr2(jagged_chans, nl=1)))
+            >>> print('jagged_shape = {}'.format(ub.repr2(jagged_shape, nl=1)))
+            >>> print('jagged_chans2 = {}'.format(ub.repr2(jagged_chans2, nl=1)))
+            >>> print('jagged_align = {}'.format(ub.repr2(jagged_align, nl=1)))
         """
         import skimage
         import kwarray
@@ -901,6 +971,12 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         if antialias == 'auto':
             antialias = interpolation not in {'nearest'}
 
+        # Special arg that will let us use "native resolution" or as
+        # close to it.
+        scale = tr_.get('scale', None)  # extra scaling
+        use_native_scale = tr_.get('use_native_scale', False)
+        jagged_meta = []
+
         vidid = tr_.get('vidid', None)
         if vidid is not None:
             ndim = 3  # number of space-time dimensions (ignore channel)
@@ -922,21 +998,57 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             space = 'video'
             # space = 'asset'
 
-            # TODO: Handle channel encodings more ellegantly
+            # TODO: Handle channel encodings more ellegantly [done, just refactor]
             for time_idx, gid in enumerate(time_gids):
                 # New method
-                mode = tr_.get('new_delayed_sampler', 1)
+                new_delayed_sampler = tr_.get('new_delayed_sampler', 1)
                 coco_img = self.dset.coco_image(gid)
-                if mode == 1:
+                if new_delayed_sampler == 1:
                     delayed_frame = coco_img.delay(
                         channels=request_chanspec, space=space,
                         interpolation=interpolation, nodata_method=nodata,
                         antialias=antialias, mode=1
                     )
                     delayed_crop = delayed_frame.crop(space_slice)
+                    delayed_crop = delayed_crop.prepare()
                     delayed_crop = delayed_crop.optimize()
-                    xr_frame = delayed_crop.as_xarray().finalize()
-                elif mode == 0:
+
+                    if use_native_scale:
+                        undone_parts, jagged_align = delayed_crop.undo_warps(
+                            remove=['scale'], squash_nans=True,
+                            return_warps=True)
+                        # print(undone_parts)
+                        jagged_parts = []
+                        jagged_chans = []
+                        for part in undone_parts:
+                            if scale is not None:
+                                part = part.warp({'scale': scale})
+                            if tr_.get('as_xarray', False):
+                                xr_part = part.optimize().as_xarray().finalize()
+                            else:
+                                xr_part = part.optimize().finalize()
+                            jagged_parts.append(xr_part)
+                            jagged_chans.append(part.channels)
+                        space_frames.append(jagged_parts)
+                        jagged_meta.append({
+                            'align': jagged_align,
+                            'chans': jagged_chans,
+                        })
+                    else:
+                        if scale is not None:
+                            delayed_crop = delayed_crop.warp({'scale': scale})
+                        xr_frame = delayed_crop.as_xarray().finalize()
+                        if dtype is not None:
+                            xr_frame = xr_frame.astype(dtype)
+                        space_frames.append(xr_frame)
+                elif new_delayed_sampler == 0:
+                    if scale is not None:
+                        raise NotImplementedError
+                    # This should be able to be removed in the future.
+                    # Once we are sure new delayed ops is stable.
+                    if use_native_scale:
+                        raise NotImplementedError(
+                            'only new delayed ops supports undoing scaling')
                     delayed_frame = coco_img.delay(
                         channels=request_chanspec, space=space)
                     xr_frame = delayed_crop.finalize(
@@ -944,43 +1056,51 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                         interpolation=interpolation,
                         antialias=antialias,
                     )
+                    if dtype is not None:
+                        xr_frame = xr_frame.astype(dtype)
+                    space_frames.append(xr_frame)
                 else:
-                    raise KeyError(mode)
-
-                if dtype is not None:
-                    xr_frame = xr_frame.astype(dtype)
-                space_frames.append(xr_frame)
+                    raise KeyError(new_delayed_sampler)
 
             # Concat aligned frames together (add nans for non-existing
             # channels)
-
-            _data_clipped = xr.concat(space_frames, dim='t')
-            if all_chan:
-                # This is not the right thing to do for rgb data
-                c = sorted(_data_clipped.coords['c'].values.tolist())
-                _data_clipped = _data_clipped.sel(c=c)
+            if use_native_scale:
+                _data_clipped = space_frames
             else:
-                # have = set(_data_clipped.coords['c'].values.tolist())
-                # if len(have & requeset_chan_coords):
-                #     c = list(requeset_chan_coords)
-                #     _data_clipped = _data_clipped.sel(c=c)
-                # else:
-                exist = ub.oset(_data_clipped.coords['c'].values.tolist())
-                missing = requeset_chan_coords - exist
-                if len(missing):
-                    _data_clipped = _data_clipped.pad({'c': (0, len(missing))})
-                    _data_clipped.coords['c'] = list(exist) + list(missing)
-                c = list(requeset_chan_coords)
-                _data_clipped = _data_clipped.sel(c=c)
+                _data_clipped = xr.concat(space_frames, dim='t')
+
+            if not new_delayed_sampler:
+                # This is only relevant for the old delayed ops.
+                # This can be removed. later.
+                if all_chan:
+                    # This is not the right thing to do for rgb data
+                    c = sorted(_data_clipped.coords['c'].values.tolist())
+                    _data_clipped = _data_clipped.sel(c=c)
+                else:
+                    # have = set(_data_clipped.coords['c'].values.tolist())
+                    # if len(have & requeset_chan_coords):
+                    #     c = list(requeset_chan_coords)
+                    #     _data_clipped = _data_clipped.sel(c=c)
+                    # else:
+                    exist = ub.oset(_data_clipped.coords['c'].values.tolist())
+                    missing = requeset_chan_coords - exist
+                    if len(missing):
+                        _data_clipped = _data_clipped.pad({'c': (0, len(missing))})
+                        _data_clipped.coords['c'] = list(exist) + list(missing)
+                    c = list(requeset_chan_coords)
+                    _data_clipped = _data_clipped.sel(c=c)
 
             # Hack to return some info about dims and not returning the xarray
             # itself. In the future we will likely return the xarray itself.
-            if not tr_.get('as_xarray', False):
-                data_clipped = _data_clipped.values
-                tr_['_coords'] = _data_clipped.coords
-                tr_['_dims'] = _data_clipped.dims
-            else:
+            if use_native_scale:
                 data_clipped = _data_clipped
+            else:
+                if not tr_.get('as_xarray', False):
+                    data_clipped = _data_clipped.values
+                    tr_['_coords'] = _data_clipped.coords
+                    tr_['_dims'] = _data_clipped.dims
+                else:
+                    data_clipped = _data_clipped
 
             # TODO: gids should be padded if it goes oob.
             # tr_['_data_gids'] = time_gids
@@ -991,6 +1111,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             data_slice, extra_padding = kwarray.embed_slice(
                 requested_slice, data_dims, pad)
 
+            if scale is not None:
+                raise NotImplementedError
+
+            # TODO: ensure we are using the kwcoco mechanisms here
             data_clipped = self.frames.load_region(
                 image_id=gid, region=data_slice, channels=channels)
 
@@ -1016,6 +1140,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             # No padding was requested
             data_sliced = data_clipped
         else:
+            if use_native_scale:
+                raise NotImplementedError('Cant pad when undoing scaling')
+
             trailing_dims = len(data_clipped.shape) - len(extra_padding)
             if trailing_dims > 0:
                 extra_padding = extra_padding + ([(0, 0)] * trailing_dims)
@@ -1068,6 +1195,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 'pad': pad,
             },
         }
+        if use_native_scale:
+            sample['params']['jagged_meta'] = jagged_meta
         return sample
 
     @profile
@@ -1112,6 +1241,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
         # accumulate information over all frames
         frame_dets = []
+        scale = sample['tr'].get('scale', None)  # extra scaling
 
         for rel_frame_idx, gid in enumerate(gids):
 
@@ -1125,7 +1255,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 tf_img_to_abs = kwimage.Affine.coerce(
                     img.get('warp_img_to_vid', None))
                 tf_abs_to_img = tf_img_to_abs.inv()
+                in_video_space = True
             else:
+                in_video_space = False
                 tf_img_to_abs = None
 
             # check overlap in image space
@@ -1200,12 +1332,16 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             )
 
             # Translate the absolute detections to relative sample coordinates
-            if tf_img_to_abs is not None:
+            if in_video_space:
                 # hack to align annots from image space to video space
                 tf_abs_to_rel = kwimage.Affine.translate(offset) @ tf_img_to_abs
                 rel_dets = abs_dets.warp(tf_abs_to_rel.matrix)
             else:
                 rel_dets = abs_dets.translate(offset)
+
+            if scale is not None:
+                # Could fold this into previous warp as an optimization
+                rel_dets = rel_dets.scale(scale)
 
             frame_dets.append(rel_dets)
 

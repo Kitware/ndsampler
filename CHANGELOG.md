@@ -3,7 +3,14 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
-## Version 0.6.9 - Unreleased
+## Version 0.6.10 - Unreleased
+
+### Added
+* Ability to specify `use_native_scale` in the tr dict, which returns jagged data at its original resolution
+* Ability to specify `scale` which augments the scale of the data.
+
+
+## Version 0.6.9 - Released 2022-07-19
 
 
 ## Version 0.6.8 - Released 2022-07-18
