@@ -1,3 +1,6 @@
+import numpy as np
+
+
 def nestshape(data):
     """
     Examine nested shape of the data
@@ -14,7 +17,6 @@ def nestshape(data):
             import torch
         except ImportError:
             torch = None
-        import numpy as np
         if isinstance(d, dict):
             return ub.odict(sorted([(k, _recurse(v)) for k, v in d.items()]))
 
