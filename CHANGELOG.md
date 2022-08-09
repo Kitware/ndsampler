@@ -3,7 +3,12 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
-## Version 0.6.11 - Unreleased
+## Version 0.7.0 - Unreleased
+
+### Changed
+
+* We are renaming the "tr" variable to "target". 
+* Removing some old backup sampling methods.
 
 
 ## Version 0.6.10 - Released 2022-07-26
