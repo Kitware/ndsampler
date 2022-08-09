@@ -34,7 +34,7 @@ Example:
     >>> # patch
     ...
     >>> print(sorted(sample.keys()))
-    ['annots', 'classes', 'im', 'kp_classes', 'params', 'tr']
+    ['annots', 'classes', 'im', 'kp_classes', 'params', 'target', 'tr']
     >>> im = sample['im']
     >>> print(im.shape)
     (100, 100, 3)
@@ -236,15 +236,14 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 anns: the coco annotations in this image
 
         Example:
-            >>> from ndsampler.coco_sampler import *
-            >>> self = CocoSampler.demo()
-            >>> rng = None
+            >>> import ndsampler
+            >>> self = ndsampler.CocoSampler.demo()
             >>> img, anns = self.load_image_with_annots(1)
             >>> dets = kwimage.Detections.from_coco_annots(anns, dset=self.dset)
             >>> # xdoc: +REQUIRES(--show)
             >>> import kwplot
             >>> kwplot.autompl()
-            >>> kwplot.imshow(img['imdata'][:])
+            >>> kwplot.imshow(img['imdata'][:], doclf=1)
             >>> dets.draw()
             >>> kwplot.show_if_requested()
         """
@@ -321,9 +320,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         Returns:
             Dict: sample: dict containing keys
                 im (ndarray): image data
-                tr (dict): contains the same input items as tr but additionally
-                    specifies rel_cx and rel_cy, which gives the center
-                    of the target w.r.t the returned **padded** sample.
+                target (dict): contains the same input items as the input
+                    target but additionally specifies inferred information like
+                    rel_cx and rel_cy, which gives the center of the target
+                    w.r.t the returned **padded** sample.
                 annots (dict): Dict of aids, cids, and rel/abs boxes
         """
         if index < self.n_positives:
@@ -337,18 +337,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                                         with_annots=with_annots)
         return sample
 
-    def load_positive(self, index=None, with_annots=True, tr=None, pad=None,
-                      rng=None, **kw):
+    def load_positive(self, index=None, with_annots=True, target=None, rng=None,
+                      **kw):
         """
         Load an item from the the positive pool of regions.
 
         Args:
             index (int): index of positive target
-
-            pad (tuple): (height, width) extra context to add to each size.
-                This helps prevent augmentation from producing boundary effects
-
-            tr (Dict): Extra target arguments like window_dims.
 
             with_annots (bool | str, default=True):
                 if True, also extracts information about any annotation that
@@ -356,6 +351,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 Can also be a List[str] that specifies which specific subinfo
                 should be extracted. Valid strings in this list are: boxes,
                 keypoints, and segmentation.
+
+            target (Dict): Extra target arguments that update the positive target,
+                like window_dims, pad, etc.... See :func:`load_sample` for
+                details on allowed keywords.
 
         Returns:
             Dict: sample: dict containing keys
@@ -366,24 +365,30 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 annots (dict): Dict of aids, cids, and rel/abs boxes
 
         Example:
-            >>> from ndsampler.coco_sampler import *
-            >>> self = CocoSampler.demo()
-            >>> rng = None
+            >>> import ndsampler
+            >>> self = ndsampler.CocoSampler.demo()
             >>> sample = self.load_positive(pad=(10, 10), tr=dict(window_dims=(3, 3)))
             >>> assert sample['im'].shape[0] == 23
             >>> # xdoc: +REQUIRES(--show)
             >>> import kwplot
             >>> kwplot.autompl()
-            >>> kwplot.imshow(sample['im'])
+            >>> kwplot.imshow(sample['im'], doclf=1)
             >>> kwplot.show_if_requested()
         """
-        tr_ = self.regions.get_positive(index, rng=rng)
-        if tr:
-            tr_ = ub.dict_union(tr_, tr)
-        sample = self.load_sample(tr_, with_annots=with_annots, pad=pad, **kw)
+        if 'tr' in kw:
+            ub.schedule_deprecation('ndsampler', 'tr', 'keyword arg of load_positive',
+                                    migration='use target instead',
+                                    deprecate='0.7.0', error='1.0.0', remove='1.1.0')
+            if target is not None:
+                warnings.warn('deprecated tr is overriding target')
+            target = kw.pop('tr')
+        target_ = self.regions.get_positive(index, rng=rng)
+        if target:
+            target_ = ub.dict_union(target_, target)
+        sample = self.load_sample(target_, with_annots=with_annots, **kw)
         return sample
 
-    def load_negative(self, index=None, with_annots=True, tr=None, pad=None,
+    def load_negative(self, index=None, with_annots=True, target=None,
                       rng=None, **kw):
         """
         Load an item from the the negative pool of regions.
@@ -400,10 +405,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 should be extracted. Valid strings in this list are: boxes,
                 keypoints, and segmentation.
 
-            tr (Dict): Extra target arguments like window_dims.
-
-            pad (tuple): (height, width) extra context to add to each size.
-                This helps prevent augmentation from producing boundary effects
+            target (Dict): Extra target arguments that update the positive target,
+                like window_dims, pad, etc.... See :func:`load_sample` for
+                details on allowed keywords.
 
         Returns:
             Dict: sample: dict containing keys
@@ -414,35 +418,56 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 annots (dict): Dict of aids, cids, and rel/abs boxes
 
         Example:
-            >>> from ndsampler.coco_sampler import *
-            >>> self = CocoSampler.demo()
+            >>> import ndsampler
+            >>> self = ndsampler.CocoSampler.demo()
             >>> rng = None
             >>> sample = self.load_negative(rng=rng, pad=(0, 0))
             >>> # xdoc: +REQUIRES(--show)
             >>> import kwplot
+            >>> import kwimage
             >>> kwplot.autompl()
-            >>> box = kwimage.Boxes(tr.reindex(['rel_cx', 'rel_cy', 'width', 'height']).values, 'cxywh')
-            >>> kwplot.imshow(sample)
-            >>> kwplot.draw_boxes(box)
+            >>> abs_sample_box = sample['params']['sample_tlbr']
+            >>> tf_rel_from_abs = kwimage.Affine.coerce(sample['params']['tf_rel_to_abs']).inv()
+            >>> wh, ww = sample['target']['window_dims']
+            >>> abs_window_box = kwimage.Boxes([[sample['target']['cx'], sample['target']['cy'], ww, wh]], 'cxywh')
+            >>> rel_window_box = abs_window_box.warp(tf_rel_from_abs)
+            >>> rel_sample_box = abs_sample_box.warp(tf_rel_from_abs)
+            >>> kwplot.imshow(sample['im'], fnum=1, doclf=True)
+            >>> rel_sample_box.draw(color='kw_green', lw=10)
+            >>> rel_window_box.draw(color='kw_blue', lw=8)
             >>> kwplot.show_if_requested()
 
         Example:
-            >>> from ndsampler.coco_sampler import *
-            >>> self = CocoSampler.demo()
+            >>> import ndsampler
+            >>> self = ndsampler.CocoSampler.demo()
             >>> rng = None
-            >>> sample = self.load_negative(rng=rng, pad=(0, 0), tr=dict(window_dims=(64, 64)))
+            >>> sample = self.load_negative(rng=rng, pad=(10, 20), target=dict(window_dims=(64, 64)))
             >>> # xdoc: +REQUIRES(--show)
             >>> import kwplot
+            >>> import kwimage
             >>> kwplot.autompl()
-            >>> box = kwimage.Boxes(tr.reindex(['rel_cx', 'rel_cy', 'width', 'height']).values, 'cxywh')
-            >>> kwplot.imshow(sample, fnum=1, doclf=True)
-            >>> kwplot.draw_boxes(box)
+            >>> abs_sample_box = sample['params']['sample_tlbr']
+            >>> tf_rel_from_abs = kwimage.Affine.coerce(sample['params']['tf_rel_to_abs']).inv()
+            >>> wh, ww = sample['target']['window_dims']
+            >>> abs_window_box = kwimage.Boxes([[sample['target']['cx'], sample['target']['cy'], ww, wh]], 'cxywh')
+            >>> rel_window_box = abs_window_box.warp(tf_rel_from_abs)
+            >>> rel_sample_box = abs_sample_box.warp(tf_rel_from_abs)
+            >>> kwplot.imshow(sample['im'], fnum=1, doclf=True)
+            >>> rel_sample_box.draw(color='kw_green', lw=10)
+            >>> rel_window_box.draw(color='kw_blue', lw=8)
             >>> kwplot.show_if_requested()
         """
-        tr_ = self.regions.get_negative(index, rng=rng)
-        if tr:
-            tr_ = ub.dict_union(tr_, tr)
-        sample = self.load_sample(tr_, with_annots=with_annots, pad=pad, **kw)
+        if 'tr' in kw:
+            ub.schedule_deprecation('ndsampler', 'tr', 'keyword arg of load_negative',
+                                    migration='use target instead',
+                                    deprecate='0.7.0', error='1.0.0', remove='1.1.0')
+            if target is not None:
+                warnings.warn('deprecated tr is overriding target')
+            target = kw.pop('tr')
+        target_ = self.regions.get_negative(index, rng=rng)
+        if target:
+            target_ = ub.dict_union(target_, target)
+        sample = self.load_sample(target_, with_annots=with_annots, **kw)
         return sample
 
     def load_sample(self, target=None, with_annots=True, visible_thresh=0.0,
@@ -456,10 +481,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 coordinate region to sample from.  Unspecified coordinate
                 regions default to the extent of the source object.
 
-                For 2D image source objects, tr must contain or be able to
+                For 2D image source objects, target must contain or be able to
                 infer the key `gid (int)`, to specify an image id.
 
-                For 3D video source objects, tr must contain the key
+                For 3D video source objects, target must contain the key
                 `vidid (int)`, to specify a video id (NEW in 0.6.1) or
                 `gids List[int]`, as a list of images in a video (NEW in 0.6.2)
 
@@ -543,9 +568,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         Returns:
             Dict: sample: dict containing keys
                 im (ndarray | DataArray): image / video data
-                tr (dict): contains the same input items as tr but additionally
-                    specifies rel_cx and rel_cy, which gives the center
-                    of the target w.r.t the returned **padded** sample.
+                target (dict): contains the same input items as the input
+                    target but additionally specifies inferred information like
+                    rel_cx and rel_cy, which gives the center of the target
+                    w.r.t the returned **padded** sample.
                 annots (dict): containing items:
                     frame_dets (List[kwimage.Detections]): a list of detection
                         objects containing the requested annotation info for each
@@ -562,11 +588,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             xdoctest -m ndsampler.coco_sampler CocoSampler.load_sample:3 --show
 
         Example:
-            >>> from ndsampler.coco_sampler import *
-            >>> self = CocoSampler.demo()
-            >>> # The target (tr) lets you specify an arbitrary window
-            >>> tr = {'gid': 1, 'cx': 5, 'cy': 2, 'width': 6, 'height': 6}
-            >>> sample = self.load_sample(tr)
+            >>> import ndsampler
+            >>> self = ndsampler.CocoSampler.demo()
+            >>> # The target (target) lets you specify an arbitrary window
+            >>> target = {'gid': 1, 'cx': 5, 'cy': 2, 'width': 6, 'height': 6}
+            >>> sample = self.load_sample(target)
             ...
             >>> print('sample.shape = {!r}'.format(sample['im'].shape))
             sample.shape = (6, 6, 3)
@@ -576,8 +602,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> import ndsampler
             >>> sampler = ndsampler.CocoSampler.demo()
             >>> # Sample a region that contains at least one annotation
-            >>> tr = {'gid': 1, 'cx': 5, 'cy': 2, 'width': 600, 'height': 600}
-            >>> sample = sampler.load_sample(tr)
+            >>> target = {'gid': 1, 'cx': 5, 'cy': 2, 'width': 600, 'height': 600}
+            >>> sample = sampler.load_sample(target)
             >>> annotation_ids = sample['annots']['aids']
             >>> aid = annotation_ids[0]
             >>> # Method1: Access ann dict directly via the coco index
@@ -587,17 +613,17 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> print('dets.data = {}'.format(ub.repr2(dets.data, nl=1)))
 
         Example:
-            >>> from ndsampler.coco_sampler import *
-            >>> self = CocoSampler.demo()
-            >>> tr = self.regions.get_positive(0)
-            >>> pad = (25, 25)
-            >>> tr['window_dims'] = 'square'
-            >>> sample = self.load_sample(tr, pad=pad)
+            >>> import ndsampler
+            >>> self = ndsampler.CocoSampler.demo()
+            >>> target = self.regions.get_positive(0)
+            >>> target['window_dims'] = 'square'
+            >>> target['pad'] = (25, 25)
+            >>> sample = self.load_sample(target)
             >>> print('im.shape = {!r}'.format(sample['im'].shape))
             im.shape = (135, 135, 3)
-            >>> pad = (0, 0)
-            >>> tr['window_dims'] = None
-            >>> sample = self.load_sample(tr, pad=pad)
+            >>> target['window_dims'] = None
+            >>> target['pad'] = (0, 0)
+            >>> sample = self.load_sample(target)
             >>> print('im.shape = {!r}'.format(sample['im'].shape))
             im.shape = (52, 85, 3)
             >>> # xdoc: +REQUIRES(--show)
@@ -610,16 +636,16 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> # sample an out of bounds target
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo()
-            >>> tr = self.regions.get_positive(0)
-            >>> tr['window_dims'] = (364, 364)
-            >>> sample = self.load_sample(tr)
+            >>> target = self.regions.get_positive(0)
+            >>> target['window_dims'] = (364, 364)
+            >>> sample = self.load_sample(target)
             >>> annots = sample['annots']
             >>> assert len(annots['aids']) > 0
             >>> #assert len(annots['rel_cxywh']) == len(annots['aids'])
             >>> # xdoc: +REQUIRES(--show)
             >>> import kwplot
             >>> kwplot.autompl()
-            >>> abs_frame = self.frames.load_image(sample['tr']['gid'])[:]
+            >>> abs_frame = self.frames.load_image(sample['target']['gid'])[:]
             >>> tf_rel_to_abs = sample['params']['tf_rel_to_abs']
             >>> abs_boxes = annots['rel_boxes'].warp(tf_rel_to_abs)
             >>> abs_ssegs = annots['rel_ssegs'].warp(tf_rel_to_abs)
@@ -639,11 +665,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         Example:
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo('photos')
-            >>> tr = self.regions.get_positive(1)
-            >>> pad = None
-            >>> tr['window_dims'] = (300, 150)
-            >>> sample = self.load_sample(tr, pad)
-            >>> assert sample['im'].shape[0:2] == tr['window_dims']
+            >>> target = self.regions.get_positive(1)
+            >>> target['window_dims'] = (300, 150)
+            >>> target['pad'] = None
+            >>> sample = self.load_sample(target)
+            >>> assert sample['im'].shape[0:2] == target['window_dims']
             >>> # xdoc: +REQUIRES(--show)
             >>> import kwplot
             >>> kwplot.autompl()
@@ -655,15 +681,15 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo('vidshapes1-multispectral', num_frames=5)
             >>> sample_grid = self.new_sample_grid('video_detection', (3, 128, 128))
-            >>> tr = sample_grid['positives'][0]
-            >>> tr['channels'] = 'B1|B8'
-            >>> tr['as_xarray'] = False
-            >>> sample = self.load_sample(tr)
-            >>> print(ub.repr2(sample['tr'], nl=1))
+            >>> target = sample_grid['positives'][0]
+            >>> target['channels'] = 'B1|B8'
+            >>> target['as_xarray'] = False
+            >>> sample = self.load_sample(target)
+            >>> print(ub.repr2(sample['target'], nl=1))
             >>> print(sample['im'].shape)
             >>> assert sample['im'].shape == (3, 128, 128, 2)
-            >>> tr['channels'] = '<all>'
-            >>> sample = self.load_sample(tr)
+            >>> target['channels'] = '<all>'
+            >>> sample = self.load_sample(target)
             >>> assert sample['im'].shape == (3, 128, 128, 5)
 
         Example:
@@ -671,14 +697,14 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo('vidshapes1-msi-multisensor', num_frames=5)
             >>> sample_grid = self.new_sample_grid('video_detection', (3, 128, 128))
-            >>> tr = sample_grid['positives'][0]
-            >>> tr['channels'] = 'B1|B8'
-            >>> tr['as_xarray'] = False
-            >>> sample1 = self.load_sample(tr)
-            >>> tr['scale'] = 2
-            >>> sample2 = self.load_sample(tr)
-            >>> tr['use_native_scale'] = True
-            >>> sample3 = self.load_sample(tr)
+            >>> target = sample_grid['positives'][0]
+            >>> target['channels'] = 'B1|B8'
+            >>> target['as_xarray'] = False
+            >>> sample1 = self.load_sample(target)
+            >>> target['scale'] = 2
+            >>> sample2 = self.load_sample(target)
+            >>> target['use_native_scale'] = True
+            >>> sample3 = self.load_sample(target)
             >>> ####
             >>> assert sample1['im'].shape == (3, 128, 128, 2)
             >>> assert sample2['im'].shape == (3, 256, 256, 2)
@@ -696,9 +722,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         if target is None:
             raise ValueError('The target dictionary must be specified')
 
-        tr = self._infer_target_attributes(target, **kwargs)
-
-        sample = self._load_slice(tr)
+        target_ = self._infer_target_attributes(target, **kwargs)
+        sample = self._load_slice(target_)
 
         if with_annots or ub.iterable(with_annots):
             self._populate_overlap(sample, visible_thresh, with_annots)
@@ -716,29 +741,29 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> # sample using only an annotation id
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo()
-            >>> tr = {'aid': 1, 'as_xarray': True}
-            >>> tr_ = self._infer_target_attributes(tr)
-            >>> print('tr_ = {}'.format(ub.repr2(tr_, nl=1)))
-            >>> assert tr_['gid'] == 1
-            >>> assert all(k in tr_ for k in ['cx', 'cy', 'width', 'height'])
+            >>> target = {'aid': 1, 'as_xarray': True}
+            >>> target_ = self._infer_target_attributes(target)
+            >>> print('target_ = {}'.format(ub.repr2(target_, nl=1)))
+            >>> assert target_['gid'] == 1
+            >>> assert all(k in target_ for k in ['cx', 'cy', 'width', 'height'])
 
             >>> self = CocoSampler.demo('vidshapes8-multispectral')
-            >>> tr = {'aid': 1, 'as_xarray': True}
-            >>> tr_ = self._infer_target_attributes(tr)
-            >>> assert tr_['gid'] == 1
-            >>> assert all(k in tr_ for k in ['cx', 'cy', 'width', 'height'])
+            >>> target = {'aid': 1, 'as_xarray': True}
+            >>> target_ = self._infer_target_attributes(target)
+            >>> assert target_['gid'] == 1
+            >>> assert all(k in target_ for k in ['cx', 'cy', 'width', 'height'])
 
-            >>> tr = {'vidid': 1, 'as_xarray': True}
-            >>> tr_ = self._infer_target_attributes(tr)
-            >>> print('tr_ = {}'.format(ub.repr2(tr_, nl=1)))
-            >>> assert 'gids' in tr_
+            >>> target = {'vidid': 1, 'as_xarray': True}
+            >>> target_ = self._infer_target_attributes(target)
+            >>> print('target_ = {}'.format(ub.repr2(target_, nl=1)))
+            >>> assert 'gids' in target_
 
-            >>> tr = {'gids': [1, 2], 'as_xarray': True}
-            >>> tr_ = self._infer_target_attributes(tr)
-            >>> print('tr_ = {}'.format(ub.repr2(tr_, nl=1)))
+            >>> target = {'gids': [1, 2], 'as_xarray': True}
+            >>> target_ = self._infer_target_attributes(target)
+            >>> print('target_ = {}'.format(ub.repr2(target_, nl=1)))
         """
         # we might modify the target
-        tr_ = target.copy()
+        target_ = target.copy()
 
         # Handle moving old keyword arguments into the target dictionary
         deprecated_kwargs_defaults = ub.udict(
@@ -749,43 +774,43 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     'ndsampler', key, 'keyword arg to load_slice',
                     migration=f'specify {key} as an item in the target dictionary',
                     deprecate='0.7.0', error='1.0.0', remove='1.1.0')
-                if key in tr_:
+                if key in target_:
                     warnings.warn(
                         f'{key} was specified in both kwargs and the target dictionary, '
                         'the deprecated kwarg will take precedence')
-                tr_[key] = kwargs[key]
+                target_[key] = kwargs[key]
 
-        if 'aid' in tr_:
+        if 'aid' in target_:
             # If the annotation id is specified, infer other unspecified fields
-            aid = tr_['aid']
+            aid = target_['aid']
             try:
                 ann = self.dset.anns[aid]
             except KeyError:
                 pass
             else:
-                if 'gid' not in tr_:
-                    tr_['gid'] = ann['image_id']
-                if len({'cx', 'cy', 'width', 'height'} & set(tr_)) != 4:
+                if 'gid' not in target_:
+                    target_['gid'] = ann['image_id']
+                if len({'cx', 'cy', 'width', 'height'} & set(target_)) != 4:
                     box = kwimage.Boxes([ann['bbox']], 'xywh')
                     cx, cy, width, height = box.to_cxywh().data[0]
-                    if 'cx' not in tr_:
-                        tr_['cx'] = cx
-                    if 'cy' not in tr_:
-                        tr_['cy'] = cy
-                    if 'width' not in tr_:
-                        tr_['width'] = width
-                    if 'height' not in tr_:
-                        tr_['height'] = height
-                if 'category_id' not in tr_:
-                    tr_['category_id'] = ann['category_id']
+                    if 'cx' not in target_:
+                        target_['cx'] = cx
+                    if 'cy' not in target_:
+                        target_['cy'] = cy
+                    if 'width' not in target_:
+                        target_['width'] = width
+                    if 'height' not in target_:
+                        target_['height'] = height
+                if 'category_id' not in target_:
+                    target_['category_id'] = ann['category_id']
 
-        gid = tr_.get('gid', None)
-        vidid = tr_.get('vidid', None)
-        gids = tr_.get('gids', None)
-        slices = tr_.get('slices', None)
-        time_slice = tr_.get('time_slice', None)
-        space_slice = tr_.get('space_slice', None)
-        window_dims = tr_.get('window_dims', None)
+        gid = target_.get('gid', None)
+        vidid = target_.get('vidid', None)
+        gids = target_.get('gids', None)
+        slices = target_.get('slices', None)
+        time_slice = target_.get('time_slice', None)
+        space_slice = target_.get('space_slice', None)
+        window_dims = target_.get('window_dims', None)
         vid_gids = None
         ndim = None
 
@@ -799,8 +824,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     if not ub.allsame(_vidids):
                         warnings.warn('sampled gids from different videos')
                 vidid = ub.peek(_vidids)
-                tr_['vidid'] = vidid
-            assert vidid == tr_['vidid']
+                target_['vidid'] = vidid
+            assert vidid == target_['vidid']
             ndim = 3
         elif gid is not None:
             # Image sample
@@ -821,89 +846,89 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         else:
             raise NotImplementedError
 
-        tr_['space_dims'] = space_dims
-        tr_['data_dims'] = data_dims
+        target_['space_dims'] = space_dims
+        target_['data_dims'] = data_dims
 
         # other spatial specifiers allowed if slices is not given
         alternate_keys = {'cx', 'cy', 'height', 'width'}
-        has_alternate = bool(set(tr_) & alternate_keys)
+        has_alternate = bool(set(target_) & alternate_keys)
 
         if slices is not None:
             if space_slice is None:
                 if ndim == 3:
-                    space_slice = tr_['space_slice'] = slices[1:3]
+                    space_slice = target_['space_slice'] = slices[1:3]
                 elif ndim == 2:
-                    space_slice = tr_['space_slice'] = slices[0:2]
+                    space_slice = target_['space_slice'] = slices[0:2]
                 else:
                     raise NotImplementedError
             if ndim == 3 and gids is None and time_slice is None:
-                time_slice = tr_['time_slice'] = slices[0]
+                time_slice = target_['time_slice'] = slices[0]
 
         if space_slice is None:
             if has_alternate:
                 # A center / width / height was specified
-                center = (tr_['cy'], tr_['cx'])
+                center = (target_['cy'], target_['cx'])
                 # Determine the requested window size
                 if window_dims is None:
                     window_dims = 'extent'
 
                 if isinstance(window_dims, str):
                     if window_dims == 'extent':
-                        window_dims = (tr_['height'], tr_['width'])
+                        window_dims = (target_['height'], target_['width'])
                         window_dims = np.ceil(np.array(window_dims)).astype(np.int)
                         window_dims = tuple(window_dims.tolist())
                     elif window_dims == 'square':
-                        window_dims = (tr_['height'], tr_['width'])
+                        window_dims = (target_['height'], target_['width'])
                         window_dims = np.ceil(np.array(window_dims)).astype(np.int)
                         window_dims = tuple(window_dims.tolist())
                         maxdim = max(window_dims)
                         window_dims = (maxdim, maxdim)
                     else:
                         raise KeyError(window_dims)
-                tr_['window_dims'] = window_dims
+                target_['window_dims'] = window_dims
                 space_slice = _center_extent_to_slice(center, window_dims)
             else:
                 height, width = space_dims
                 space_slice = (slice(0, height), slice(0, width))
-            tr_['space_slice'] = space_slice
+            target_['space_slice'] = space_slice
 
         if ndim == 2:
-            tr_['slices'] = slices = space_slice
+            target_['slices'] = slices = space_slice
         elif ndim == 3:
             if time_slice is None:
-                time_slice = tr_['time_slice'] = slice(0, len(vid_gids))
+                time_slice = target_['time_slice'] = slice(0, len(vid_gids))
             if gids is None:
-                gids = tr_['gids'] = vid_gids[time_slice]
-            tr_['slices'] = slices = (time_slice,) + space_slice
+                gids = target_['gids'] = vid_gids[time_slice]
+            target_['slices'] = slices = (time_slice,) + space_slice
         else:
             raise NotImplementedError(ndim)
-        return tr_
+        return target_
 
     @profile
-    def _load_slice(self, tr):
+    def _load_slice(self, target):
         """
         Example:
             >>> # sample an out of bounds target
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo()
-            >>> tr = self.regions.get_positive(0)
-            >>> tr = self._infer_target_attributes(tr)
-            >>> tr['as_xarray'] = True
-            >>> sample = self._load_slice(tr)
+            >>> target = self.regions.get_positive(0)
+            >>> target = self._infer_target_attributes(target)
+            >>> target['as_xarray'] = True
+            >>> sample = self._load_slice(target)
             >>> print('sample = {!r}'.format(ub.map_vals(type, sample)))
 
             >>> # sample an out of bounds target
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo('vidshapes2')
-            >>> tr = self._infer_target_attributes({'vidid': 1})
-            >>> tr = self._infer_target_attributes(tr)
-            >>> tr['as_xarray'] = True
-            >>> sample = self._load_slice(tr)
+            >>> target = self._infer_target_attributes({'vidid': 1})
+            >>> target = self._infer_target_attributes(target)
+            >>> target['as_xarray'] = True
+            >>> sample = self._load_slice(target)
             >>> print('sample = {!r}'.format(ub.map_vals(type, sample)))
 
-            >>> tr = self._infer_target_attributes({'gids': [1, 2, 3]})
-            >>> tr['as_xarray'] = True
-            >>> sample = self._load_slice(tr)
+            >>> target = self._infer_target_attributes({'gids': [1, 2, 3]})
+            >>> target['as_xarray'] = True
+            >>> sample = self._load_slice(target)
             >>> print('sample = {!r}'.format(ub.map_vals(type, sample)))
 
         CommandLine:
@@ -921,16 +946,16 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo('vidshapes1-multispectral', num_frames=5)
             >>> sample_grid = self.new_sample_grid('video_detection', (3, 128, 128))
-            >>> tr = sample_grid['positives'][0]
-            >>> tr = self._infer_target_attributes(tr)
-            >>> tr['channels'] = 'B1|B8'
-            >>> tr['as_xarray'] = False
-            >>> sample = self.load_sample(tr)
-            >>> print(ub.repr2(sample['tr'], nl=1))
+            >>> target = sample_grid['positives'][0]
+            >>> target = self._infer_target_attributes(target)
+            >>> target['channels'] = 'B1|B8'
+            >>> target['as_xarray'] = False
+            >>> sample = self.load_sample(target)
+            >>> print(ub.repr2(sample['target'], nl=1))
             >>> print(sample['im'].shape)
             >>> assert sample['im'].shape == (3, 128, 128, 2)
-            >>> tr['channels'] = '<all>'
-            >>> sample = self.load_sample(tr)
+            >>> target['channels'] = '<all>'
+            >>> sample = self.load_sample(target)
             >>> assert sample['im'].shape == (3, 128, 128, 5)
 
         Example:
@@ -938,23 +963,23 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo('vidshapes1-multisensor-msi', num_frames=5)
             >>> sample_grid = self.new_sample_grid('video_detection', (3, 128, 128))
-            >>> tr = sample_grid['positives'][0]
-            >>> tr = self._infer_target_attributes(tr)
-            >>> tr['channels'] = 'B1|B8'
-            >>> tr['as_xarray'] = False
-            >>> sample = self.load_sample(tr)
-            >>> print(ub.repr2(sample['tr'], nl=1))
+            >>> target = sample_grid['positives'][0]
+            >>> target = self._infer_target_attributes(target)
+            >>> target['channels'] = 'B1|B8'
+            >>> target['as_xarray'] = False
+            >>> sample = self.load_sample(target)
+            >>> print(ub.repr2(sample['target'], nl=1))
             >>> print(sample['im'].shape)
             >>> assert sample['im'].shape == (3, 128, 128, 2)
-            >>> tr['channels'] = '<all>'
-            >>> sample = self.load_sample(tr)
+            >>> target['channels'] = '<all>'
+            >>> sample = self.load_sample(target)
             >>> assert sample['im'].shape[2] > 5  # probably 16
 
             >>> # Test jagged naitive scale sampling
-            >>> tr['use_native_scale'] = True
-            >>> tr['as_xarray'] = True
-            >>> tr['channels'] = 'B1|B8|r|g|b|disparity|gauss'
-            >>> sample = self.load_sample(tr)
+            >>> target['use_native_scale'] = True
+            >>> target['as_xarray'] = True
+            >>> target['channels'] = 'B1|B8|r|g|b|disparity|gauss'
+            >>> sample = self.load_sample(target)
             >>> jagged_meta = sample['params']['jagged_meta']
             >>> frames = sample['im']
             >>> jagged_shape = [[p.shape for p in f] for f in frames]
@@ -971,23 +996,23 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> print('jagged_align = {}'.format(ub.repr2(jagged_align, nl=1)))
 
             >>> # Test realigned native scale sampling
-            >>> tr['use_native_scale'] = True
-            >>> tr['realign_native'] = 'largest'
-            >>> tr['as_xarray'] = True
+            >>> target['use_native_scale'] = True
+            >>> target['realign_native'] = 'largest'
+            >>> target['as_xarray'] = True
             >>> gid = None
             >>> for coco_img in self.dset.images().coco_images:
             >>>     if coco_img.channels & 'r|g|b':
             >>>         gid = coco_img.img['id']
             >>>         break
             >>> assert gid is not None, 'need specific image'
-            >>> tr['gids'] = [gid]
+            >>> target['gids'] = [gid]
             >>> # Test channels that are good early fused groups
-            >>> tr['channels'] = 'r|g|b'
-            >>> sample1 = self.load_sample(tr)
-            >>> tr['channels'] = 'B8|B11'
-            >>> sample2 = self.load_sample(tr)
-            >>> tr['channels'] = 'r|g|b|B11'
-            >>> sample3 = self.load_sample(tr)
+            >>> target['channels'] = 'r|g|b'
+            >>> sample1 = self.load_sample(target)
+            >>> target['channels'] = 'B8|B11'
+            >>> sample2 = self.load_sample(target)
+            >>> target['channels'] = 'r|g|b|B11'
+            >>> sample3 = self.load_sample(target)
             >>> shape1 = sample1['im'].shape[1:3]
             >>> shape2 = sample2['im'].shape[1:3]
             >>> shape3 = sample3['im'].shape[1:3]
@@ -1002,20 +1027,20 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         import xarray as xr
         from kwcoco import channel_spec
 
-        tr_ = tr
-        pad = tr_.get('pad', None)
-        padkw = tr_.get('padkw', {'mode': 'constant'})
-        dtype = tr_.get('dtype', None)
-        nodata = tr_.get('nodata', None)
+        target_ = target
+        pad = target_.get('pad', None)
+        padkw = target_.get('padkw', {'mode': 'constant'})
+        dtype = target_.get('dtype', None)
+        nodata = target_.get('nodata', None)
 
         if pad is None:
             pad = 0
 
-        assert 'space_slice' in tr_
-        data_dims = tr_['data_dims']
+        assert 'space_slice' in target_
+        data_dims = target_['data_dims']
 
-        requested_slice = tr_['slices']
-        channels = tr_.get('channels', ub.NoParam)
+        requested_slice = target_['slices']
+        channels = target_.get('channels', ub.NoParam)
 
         if channels is ub.NoParam or isinstance(channels, str) and channels == '<all>':
             # Do something special
@@ -1024,9 +1049,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             request_chanspec = channel_spec.ChannelSpec.coerce(channels)
 
         # TODO: disable function level nodata param
-        nodata = tr_.get('nodata', nodata)
-        interpolation = tr_.get('interpolation', 'auto')
-        antialias = tr_.get('antialias', 'auto')
+        nodata = target_.get('nodata', nodata)
+        interpolation = target_.get('interpolation', 'auto')
+        antialias = target_.get('antialias', 'auto')
         if interpolation == 'auto':
             interpolation = 'linear'
         if antialias == 'auto':
@@ -1034,12 +1059,12 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
         # Special arg that will let us use "native resolution" or as
         # close to it.
-        scale = tr_.get('scale', None)  # extra scaling
-        use_native_scale = tr_.get('use_native_scale', False)
-        realign_native = tr_.get('realign_native', False)
+        scale = target_.get('scale', None)  # extra scaling
+        use_native_scale = target_.get('use_native_scale', False)
+        realign_native = target_.get('realign_native', False)
         jagged_meta = []
 
-        vidid = tr_.get('vidid', None)
+        vidid = target_.get('vidid', None)
         if vidid is not None:
             ndim = 3  # number of space-time dimensions (ignore channel)
             pad = tuple(_ensure_iterablen(pad, ndim))
@@ -1053,7 +1078,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             time_slice, *space_slice = data_slice
             space_slice = tuple(space_slice)
 
-            time_gids = tr_['gids']
+            time_gids = target_['gids']
             space_frames = []
 
             # TODO: need to be able to sample the video at an arbitrary scale.
@@ -1109,7 +1134,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     for part in undone_parts:
                         if scale is not None:
                             part = part.warp({'scale': scale})
-                        if tr_.get('as_xarray', False):
+                        if target_.get('as_xarray', False):
                             xr_part = part.optimize().as_xarray().finalize()
                         else:
                             xr_part = part.optimize().finalize()
@@ -1141,17 +1166,17 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             if frame_use_native_scale:
                 data_clipped = _data_clipped
             else:
-                if not tr_.get('as_xarray', False):
+                if not target_.get('as_xarray', False):
                     data_clipped = _data_clipped.values
-                    tr_['_coords'] = _data_clipped.coords
-                    tr_['_dims'] = _data_clipped.dims
+                    target_['_coords'] = _data_clipped.coords
+                    target_['_dims'] = _data_clipped.dims
                 else:
                     data_clipped = _data_clipped
 
             # TODO: gids should be padded if it goes oob.
-            # tr_['_data_gids'] = time_gids
+            # target_['_data_gids'] = time_gids
         else:
-            gid = tr_['gid']
+            gid = target_['gid']
             ndim = 2  # number of space-time dimensions (ignore channel)
             pad = tuple(_ensure_iterablen(pad, ndim))
             data_slice, extra_padding = kwarray.embed_slice(
@@ -1164,8 +1189,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             data_clipped = self.frames.load_region(
                 image_id=gid, region=data_slice, channels=channels)
 
-            if tr_.get('as_xarray', False):
-                # TODO: respect the channels arg in tr_
+            if target_.get('as_xarray', False):
+                # TODO: respect the channels arg in target_
                 if len(data_clipped.shape) == 1:
                     num_bands = 1
                 else:
@@ -1192,7 +1217,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             trailing_dims = len(data_clipped.shape) - len(extra_padding)
             if trailing_dims > 0:
                 extra_padding = extra_padding + ([(0, 0)] * trailing_dims)
-            if tr_.get('as_xarray', False):
+            if target_.get('as_xarray', False):
                 coord_pad = dict(zip(data_clipped.dims, extra_padding))
                 # print('data_clipped.dims = {!r}'.format(data_clipped.dims))
                 if 'constant_values' not in padkw:
@@ -1231,7 +1256,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
         sample = {
             'im': data_sliced,
-            'tr': tr_,
+            'tr': target_,  # will be deprecated
+            'target': target_,
             'params': {
                 'offset': offset,
                 'tf_rel_to_abs': tf_rel_to_abs,
@@ -1257,8 +1283,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> # sample an out of bounds target
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo()
-            >>> tr = self.regions.get_item(0)
-            >>> sample = self._load_slice(tr)
+            >>> target = self.regions.get_item(0)
+            >>> target = self._infer_target_attributes(target)
+            >>> sample = self._load_slice(target)
             >>> sample = self._populate_overlap(sample)
             >>> print('sample = {}'.format(ub.repr2(ub.util_dict.dict_diff(sample, ['im']), nl=-1)))
         """
@@ -1272,12 +1299,12 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             for k in with_annots:
                 assert k in ['segmentation', 'keypoints', 'boxes'], 'k={!r}'.format(k)
 
-        tr = sample['tr']
+        target = sample['target']
 
-        if 'gids' in tr:
-            gids = tr['gids']
+        if 'gids' in target:
+            gids = target['gids']
         else:
-            gids = [tr['gid']]
+            gids = [target['gid']]
 
         params = sample['params']
         sample_tlbr = params['sample_tlbr']
@@ -1287,14 +1314,14 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
         # accumulate information over all frames
         frame_dets = []
-        scale = sample['tr'].get('scale', None)  # extra scaling
+        scale = sample['target'].get('scale', None)  # extra scaling
 
         for rel_frame_idx, gid in enumerate(gids):
 
             # Check to see if there is a transform between the image-space and
             # the sampling-space (currently this can only be done by a video,
             # but in the future the user might be able to adjust sample scale)
-            if tr.get('vidid', None) is not None:
+            if target.get('vidid', None) is not None:
                 # hack to align annots from image space to video space
                 img = self.dset.imgs[gid]
                 # Build transform from image to absolute sample space.
@@ -1411,21 +1438,21 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         annots['rel_kpts'].meta['classes'] = self.kp_classes
 
         # Note the center coordinates in the padded sample reference frame
-        tr_ = sample['tr']
+        target_ = sample['target']
 
-        main_aid = tr_.get('aid', None)
+        main_aid = target_.get('aid', None)
         if main_aid is not None:
             # Determine which (if any) index in "annots" corresponds to the
             # main aid (if we even have a main aid)
             cand_idxs = np.where(annots['aids'] == main_aid)[0]
             if len(cand_idxs) == 0:
-                tr_['annot_idx'] = -1
+                target_['annot_idx'] = -1
             elif len(cand_idxs) == 1:
-                tr_['annot_idx'] = cand_idxs[0]
+                target_['annot_idx'] = cand_idxs[0]
             else:
                 raise AssertionError('impossible state: len(cand_idxs)={}'.format(len(cand_idxs)))
         else:
-            tr_['annot_idx'] = -1
+            target_['annot_idx'] = -1
 
         sample['annots'] = annots
         return sample
