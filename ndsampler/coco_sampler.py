@@ -1,4 +1,10 @@
 """
+The CocoSampler is the ndsampler interface for efficiently sampling windowed
+data from a :class:`kwcoco.CocoDataset`.
+
+CommandLine:
+    xdoctest -m ndsampler.coco_sampler __doc__ --show
+
 Example:
     >>> # Imagine you have some images
     >>> import kwimage
@@ -6,28 +12,32 @@ Example:
     >>>     kwimage.grab_test_image_fpath('astro'),
     >>>     kwimage.grab_test_image_fpath('carl'),
     >>>     kwimage.grab_test_image_fpath('airport'),
-    >>> ]  # xdoc: +IGNORE_WANT
+    >>> ]  # xdoctest: +IGNORE_WANT
     ['~/.cache/kwimage/demodata/KXhKM72.png',
      '~/.cache/kwimage/demodata/flTHWFD.png',
      '~/.cache/kwimage/demodata/Airport.jpg']
     >>> # And you want to randomly load subregions of them in O(1) time
     >>> import ndsampler
     >>> import kwcoco
-    >>> # First make a COCO dataset that refers to your images (and possibly annotations)
+    >>> # First make a COCO dataset that refers to your images
     >>> dataset = {
     >>>     'images': [{'id': i, 'file_name': fpath} for i, fpath in enumerate(image_paths)],
     >>>     'annotations': [],
     >>>     'categories': [],
     >>> }
     >>> coco_dset = kwcoco.CocoDataset(dataset)
+    >>> # (and possibly annotations)
+    >>> category_id = coco_dset.ensure_category('face')
+    >>> image_id = 0
+    >>> coco_dset.add_annotation(image_id=image_id, category_id=category_id, bbox=kwimage.Boxes([[140, 10, 180, 180]], 'xywh'))
     >>> print(coco_dset)
-    <CocoDataset(tag=None, n_anns=0, n_imgs=3, ...n_cats=0)>
+    <CocoDataset(tag=None, n_anns=1, n_imgs=3, ... n_cats=1)>
     >>> # Now pass the dataset to a sampler and tell it where it can store temporary files
     >>> workdir = ub.ensure_app_cache_dir('ndsampler/demo')
     >>> sampler = ndsampler.CocoSampler(coco_dset, workdir=workdir)
     >>> # Now you can load arbirary samples by specifing a target dictionary
     >>> # with an image_id (gid) center location (cx, cy) and width, height.
-    >>> target = {'gid': 0, 'cx': 200, 'cy': 200, 'width': 100, 'height': 100}
+    >>> target = {'gid': 0, 'cx': 220, 'cy': 100, 'width': 300, 'height': 300}
     >>> sample = sampler.load_sample(target)
     >>> # The sample contains the image data, any visible annotations, a reference
     >>> # to the original target, and params of the transform used to sample this
@@ -36,8 +46,25 @@ Example:
     >>> print(sorted(sample.keys()))
     ['annots', 'classes', 'im', 'kp_classes', 'params', 'target', 'tr']
     >>> im = sample['im']
-    >>> print(im.shape)
-    (100, 100, 3)
+    >>> print(f'im.shape={im.shape}')
+    im.shape=(300, 300, 3)
+    >>> dets = sample['annots']['frame_dets'][0]
+    >>> print(f'dets={dets}')
+    >>> print('dets.data = {}'.format(ub.repr2(dets.data, nl=1, sv=1)))
+    dets=<Detections(1)>
+    dets.data = {
+        'aids': [1],
+        'boxes': <Boxes(xywh, array([[ 70.,  60., 180., 180.]]))>,
+        'cids': [1],
+        'keypoints': <PointsList(n=1)>,
+        'segmentations': <SegmentationList(n=1)>,
+    }
+    >>> # xdoctest: +REQUIRES(--show)
+    >>> import kwplot
+    >>> kwplot.autompl()
+    >>> kwplot.imshow(im)
+    >>> dets.draw(labels=False)
+    >>> kwplot.show_if_requested()
     >>> # The load sample function is at the core of what ndsampler does
     >>> # There are other helper functions like load_positive / load_negative
     >>> # which deal with annotations. See those for more details.
@@ -240,7 +267,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> self = ndsampler.CocoSampler.demo()
             >>> img, anns = self.load_image_with_annots(1)
             >>> dets = kwimage.Detections.from_coco_annots(anns, dset=self.dset)
-            >>> # xdoc: +REQUIRES(--show)
+            >>> # xdoctest: +REQUIRES(--show)
             >>> import kwplot
             >>> kwplot.autompl()
             >>> kwplot.imshow(img['imdata'][:], doclf=1)
@@ -369,7 +396,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> self = ndsampler.CocoSampler.demo()
             >>> sample = self.load_positive(pad=(10, 10), tr=dict(window_dims=(3, 3)))
             >>> assert sample['im'].shape[0] == 23
-            >>> # xdoc: +REQUIRES(--show)
+            >>> # xdoctest: +REQUIRES(--show)
             >>> import kwplot
             >>> kwplot.autompl()
             >>> kwplot.imshow(sample['im'], doclf=1)
@@ -422,7 +449,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> self = ndsampler.CocoSampler.demo()
             >>> rng = None
             >>> sample = self.load_negative(rng=rng, pad=(0, 0))
-            >>> # xdoc: +REQUIRES(--show)
+            >>> # xdoctest: +REQUIRES(--show)
             >>> import kwplot
             >>> import kwimage
             >>> kwplot.autompl()
@@ -442,7 +469,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> self = ndsampler.CocoSampler.demo()
             >>> rng = None
             >>> sample = self.load_negative(rng=rng, pad=(10, 20), target=dict(window_dims=(64, 64)))
-            >>> # xdoc: +REQUIRES(--show)
+            >>> # xdoctest: +REQUIRES(--show)
             >>> import kwplot
             >>> import kwimage
             >>> kwplot.autompl()
@@ -626,7 +653,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> sample = self.load_sample(target)
             >>> print('im.shape = {!r}'.format(sample['im'].shape))
             im.shape = (52, 85, 3)
-            >>> # xdoc: +REQUIRES(--show)
+            >>> # xdoctest: +REQUIRES(--show)
             >>> import kwplot
             >>> kwplot.autompl()
             >>> kwplot.imshow(sample['im'])
@@ -642,7 +669,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> annots = sample['annots']
             >>> assert len(annots['aids']) > 0
             >>> #assert len(annots['rel_cxywh']) == len(annots['aids'])
-            >>> # xdoc: +REQUIRES(--show)
+            >>> # xdoctest: +REQUIRES(--show)
             >>> import kwplot
             >>> kwplot.autompl()
             >>> abs_frame = self.frames.load_image(sample['target']['gid'])[:]
@@ -670,7 +697,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> target['pad'] = None
             >>> sample = self.load_sample(target)
             >>> assert sample['im'].shape[0:2] == target['window_dims']
-            >>> # xdoc: +REQUIRES(--show)
+            >>> # xdoctest: +REQUIRES(--show)
             >>> import kwplot
             >>> kwplot.autompl()
             >>> kwplot.imshow(sample['im'], colorspace='rgb')
@@ -1296,8 +1323,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
         Example:
             >>> # sample an out of bounds target
-            >>> from ndsampler.coco_sampler import *
-            >>> self = CocoSampler.demo()
+            >>> import ndsampler
+            >>> self = ndsampler.CocoSampler.demo()
             >>> target = self.regions.get_item(0)
             >>> target = self._infer_target_attributes(target)
             >>> sample = self._load_slice(target)
@@ -1462,23 +1489,23 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             })
             annots['rel_kpts'].meta['classes'] = self.kp_classes
 
+            main_aid = target.get('aid', None)
+            if main_aid is not None:
+                # Determine which (if any) index in "annots" corresponds to the
+                # main aid (if we even have a main aid)
+                cand_idxs = np.where(annots['aids'] == main_aid)[0]
+                if len(cand_idxs) == 0:
+                    target['annot_idx'] = -1
+                elif len(cand_idxs) == 1:
+                    target['annot_idx'] = cand_idxs[0]
+                else:
+                    raise AssertionError('impossible state: len(cand_idxs)={}'.format(len(cand_idxs)))
+            else:
+                target['annot_idx'] = -1
+
         annots.update({
             'frame_dets': frame_dets,
         })
-
-        main_aid = target.get('aid', None)
-        if main_aid is not None:
-            # Determine which (if any) index in "annots" corresponds to the
-            # main aid (if we even have a main aid)
-            cand_idxs = np.where(annots['aids'] == main_aid)[0]
-            if len(cand_idxs) == 0:
-                target['annot_idx'] = -1
-            elif len(cand_idxs) == 1:
-                target['annot_idx'] = cand_idxs[0]
-            else:
-                raise AssertionError('impossible state: len(cand_idxs)={}'.format(len(cand_idxs)))
-        else:
-            target['annot_idx'] = -1
 
         sample['annots'] = annots
         return sample
