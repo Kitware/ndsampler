@@ -1024,7 +1024,6 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         """
         import skimage
         import kwarray
-        import xarray as xr
         from kwcoco import channel_spec
 
         target_ = target
@@ -1081,13 +1080,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             time_gids = target_['gids']
             space_frames = []
 
-            # TODO: need to be able to sample the video at an arbitrary scale.
             space = 'video'
             # space = 'asset'
 
             frame_use_native_scale = use_native_scale
 
-            # TODO: Handle channel encodings more ellegantly [done, just refactor]
             for time_idx, gid in enumerate(time_gids):
                 # New method
                 coco_img = self.dset.coco_image(gid)
@@ -1159,6 +1156,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             if frame_use_native_scale:
                 _data_clipped = space_frames
             else:
+                import xarray as xr
                 _data_clipped = xr.concat(space_frames, dim='t')
 
             # Hack to return some info about dims and not returning the xarray
@@ -1190,6 +1188,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 image_id=gid, region=data_slice, channels=channels)
 
             if target_.get('as_xarray', False):
+                import xarray as xr
                 # TODO: respect the channels arg in target_
                 if len(data_clipped.shape) == 1:
                     num_bands = 1
@@ -1212,7 +1211,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             data_sliced = data_clipped
         else:
             if use_native_scale:
-                raise NotImplementedError('Cant pad when undoing scaling')
+                raise NotImplementedError('Cant pad when undoing scaling yet.')
 
             trailing_dims = len(data_clipped.shape) - len(extra_padding)
             if trailing_dims > 0:
@@ -1256,7 +1255,6 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
         sample = {
             'im': data_sliced,
-            'tr': target_,  # will be deprecated
             'target': target_,
             'params': {
                 'offset': offset,
@@ -1267,6 +1265,23 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 'pad': pad,
             },
         }
+
+        legacy_target = target.get('legacy_target', None)
+        if legacy_target is None:
+            legacy_target = True
+
+        if legacy_target:
+            ub.schedule_deprecation(
+                'ndsampler', 'tr', 'key in the returned sample dictionary',
+                migration=ub.paragraph(
+                    '''
+                    Opt-in to new behavior by specifying legacy_target=False in
+                    the target dictionary.
+                    '''),
+                deprecate='0.7.0', error='1.0.0', remove='1.1.0',
+            )
+            sample['tr'] = target_
+
         if use_native_scale:
             sample['params']['jagged_meta'] = jagged_meta
         return sample
@@ -1307,10 +1322,17 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             gids = [target['gid']]
 
         params = sample['params']
-        sample_tlbr = params['sample_tlbr']
+
+        # The sample box is in "absolute sample space",
+        # which is either video or image space.
+        sample_box = params['sample_tlbr']
         offset = params['offset']
         data_dims = params['data_dims']
         space_dims = data_dims[-2:]
+
+        coco_dset = self.dset
+        kp_classes = self.kp_classes
+        classes = self.classes
 
         # accumulate information over all frames
         frame_dets = []
@@ -1322,38 +1344,32 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             # the sampling-space (currently this can only be done by a video,
             # but in the future the user might be able to adjust sample scale)
             if target.get('vidid', None) is not None:
-                # hack to align annots from image space to video space
-                img = self.dset.imgs[gid]
-                # Build transform from image to absolute sample space.
-                tf_img_to_abs = kwimage.Affine.coerce(
-                    img.get('warp_img_to_vid', None))
-                tf_abs_to_img = tf_img_to_abs.inv()
                 in_video_space = True
+                # hack to align annots from image space to video space
+                coco_img = coco_dset.coco_image(gid)
+                tf_abs_from_img = coco_img.warp_vid_from_img
+                tf_img_from_abs = tf_abs_from_img.inv()
             else:
                 in_video_space = False
-                tf_img_to_abs = None
+                tf_abs_from_img = None
 
             # check overlap in image space
-            if tf_img_to_abs is None:
-                sample_tlbr_ = sample_tlbr
+            if tf_abs_from_img is None:
+                imgspace_sample_box = sample_box
             else:
-                sample_tlbr_ = sample_tlbr.warp(tf_abs_to_img.matrix).quantize()
+                imgspace_sample_box = sample_box.warp(tf_img_from_abs.matrix).quantize()
 
             # Find which bounding boxes are visible in this region
             overlap_aids = self.regions.overlapping_aids(
-                gid, sample_tlbr_, visible_thresh=visible_thresh)
+                gid, imgspace_sample_box, visible_thresh=visible_thresh)
 
             # Get info about all annotations inside this window
-
-            overlap_anns = [self.dset.anns[aid] for aid in overlap_aids]
+            overlap_anns = [coco_dset.anns[aid] for aid in overlap_aids]
             overlap_cids = [ann['category_id'] for ann in overlap_anns]
             abs_boxes = kwimage.Boxes(
                 [ann['bbox'] for ann in overlap_anns], 'xywh')
 
             # Handle segmentations and keypoints if they exist
-            coco_dset = self.dset
-            kp_classes = self.kp_classes
-            classes = self.classes
             sseg_list = []
             kpts_list = []
             for ann in overlap_anns:
@@ -1379,8 +1395,6 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 if 'segmentation' in with_annots:
                     coco_sseg = ann.get('segmentation', None)
                     if coco_sseg is not None:
-                        # x = _coerce_coco_segmentation(coco_sseg, space_dims)
-                        # abs_sseg = kwimage.Mask.coerce(coco_sseg, dims=space_dims)
                         abs_sseg = kwimage.MultiPolygon.coerce(coco_sseg, dims=space_dims)
                 sseg_list.append(abs_sseg)
                 kpts_list.append(abs_points)
@@ -1407,7 +1421,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             # Translate the absolute detections to relative sample coordinates
             if in_video_space:
                 # hack to align annots from image space to video space
-                tf_abs_to_rel = kwimage.Affine.translate(offset) @ tf_img_to_abs
+                tf_abs_to_rel = kwimage.Affine.translate(offset) @ tf_abs_from_img
                 rel_dets = abs_dets.warp(tf_abs_to_rel.matrix)
             else:
                 rel_dets = abs_dets.translate(offset)
@@ -1418,41 +1432,53 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
             frame_dets.append(rel_dets)
 
-        # if len(frame_dets) == 1:
-        #     annots = frame_dets[0].data
-        # else:
-        # Hack to get multi-frame annots without too much developer effort.
-        # Could be more efficient
-        annots = {
-            ###
-            # TODO: deprecate everything except for frame dets
-            'aids': np.hstack([x.data['aids'] for x in frame_dets]),
-            'cids': np.hstack([x.data['cids'] for x in frame_dets]),
-            'rel_frame_index': np.hstack([[x.meta['rel_frame_index']] * len(x) for x in frame_dets]),
-            'rel_boxes': kwimage.Boxes.concatenate([x.data['boxes'] for x in frame_dets]),
-            'rel_ssegs': kwimage.PolygonList(list(ub.flatten([x.data['segmentations'].data for x in frame_dets]))),
-            'rel_kpts': kwimage.PointsList(list(ub.flatten([x.data['keypoints'].data for x in frame_dets]))),
-            ###
+        annots = {}
+
+        legacy_annots = target.get('legacy_annots', None)
+        if legacy_annots is None:
+            legacy_annots = True
+
+        if legacy_annots:
+            ub.schedule_deprecation(
+                'ndsampler', 'non-frame_dets', 'return information in sample["annots"]',
+                migration=ub.paragraph(
+                    '''
+                    Opt-in to new behavior by specifying legacy_annots=False in
+                    the target dictionary.
+                    '''),
+                deprecate='0.7.0', error='1.0.0', remove='1.1.0',
+            )
+
+            annots.update({
+                ###
+                # TODO: deprecate everything except for frame dets
+                'aids': np.hstack([x.data['aids'] for x in frame_dets]),
+                'cids': np.hstack([x.data['cids'] for x in frame_dets]),
+                'rel_frame_index': np.hstack([[x.meta['rel_frame_index']] * len(x) for x in frame_dets]),
+                'rel_boxes': kwimage.Boxes.concatenate([x.data['boxes'] for x in frame_dets]),
+                'rel_ssegs': kwimage.PolygonList(list(ub.flatten([x.data['segmentations'].data for x in frame_dets]))),
+                'rel_kpts': kwimage.PointsList(list(ub.flatten([x.data['keypoints'].data for x in frame_dets]))),
+                ###
+            })
+            annots['rel_kpts'].meta['classes'] = self.kp_classes
+
+        annots.update({
             'frame_dets': frame_dets,
-        }
-        annots['rel_kpts'].meta['classes'] = self.kp_classes
+        })
 
-        # Note the center coordinates in the padded sample reference frame
-        target_ = sample['target']
-
-        main_aid = target_.get('aid', None)
+        main_aid = target.get('aid', None)
         if main_aid is not None:
             # Determine which (if any) index in "annots" corresponds to the
             # main aid (if we even have a main aid)
             cand_idxs = np.where(annots['aids'] == main_aid)[0]
             if len(cand_idxs) == 0:
-                target_['annot_idx'] = -1
+                target['annot_idx'] = -1
             elif len(cand_idxs) == 1:
-                target_['annot_idx'] = cand_idxs[0]
+                target['annot_idx'] = cand_idxs[0]
             else:
                 raise AssertionError('impossible state: len(cand_idxs)={}'.format(len(cand_idxs)))
         else:
-            target_['annot_idx'] = -1
+            target['annot_idx'] = -1
 
         sample['annots'] = annots
         return sample
