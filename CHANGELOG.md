@@ -9,6 +9,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 * We are renaming the "tr" variable to "target". 
 * Removing some old backup sampling methods.
+* Removed old "ndsampler.delayed" logic in favor of kwcoco's version
 
 
 ## Version 0.6.10 - Released 2022-07-26

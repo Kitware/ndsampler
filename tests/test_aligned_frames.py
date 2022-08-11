@@ -132,5 +132,6 @@ def test_vid_channel_alignment_api():
     sample = sampler.load_sample({'vidid': 1, 'slices': (slice(0, 3), slice(0, 10), slice(0, 10)), 'channels': '<all>'})
     assert sample['im'].shape == (3, 10, 10, 5)
 
-    sample = sampler.load_sample({'vidid': 1, 'slices': (slice(0, 8), slice(0, 10), slice(0, 10)), 'channels': '<all>'})
-    assert sample['im'].shape == (8, 10, 10, 5)
+    # Dont try to pad time yet
+    # sample = sampler.load_sample({'vidid': 1, 'slices': (slice(0, 8), slice(0, 10), slice(0, 10)), 'channels': '<all>'})
+    # assert sample['im'].shape == (8, 10, 10, 5)
