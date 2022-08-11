@@ -412,7 +412,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         if 'tr' in kw:
             ub.schedule_deprecation('ndsampler', 'tr', 'keyword arg of load_positive',
                                     migration='use target instead',
-                                    deprecate='0.7.0', error='1.0.0', remove='1.1.0')
+                                    deprecate='0.7.1', error='1.0.0', remove='1.1.0')
             if target is not None:
                 warnings.warn('deprecated tr is overriding target')
             target = kw.pop('tr')
@@ -497,7 +497,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         if 'tr' in kw:
             ub.schedule_deprecation('ndsampler', 'tr', 'keyword arg of load_negative',
                                     migration='use target instead',
-                                    deprecate='0.7.0', error='1.0.0', remove='1.1.0')
+                                    deprecate='0.7.1', error='1.0.0', remove='1.1.0')
             if target is not None:
                 warnings.warn('deprecated tr is overriding target')
             target = kw.pop('tr')
@@ -810,7 +810,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 ub.schedule_deprecation(
                     'ndsampler', key, 'keyword arg to load_slice',
                     migration=f'specify {key} as an item in the target dictionary',
-                    deprecate='0.7.0', error='1.0.0', remove='1.1.0')
+                    deprecate='0.7.1', error='1.0.0', remove='1.1.0')
                 if key in target_:
                     warnings.warn(
                         f'{key} was specified in both kwargs and the target dictionary, '
@@ -1078,7 +1078,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     Opt-in to new behavior by specifying legacy_target=False in
                     the target dictionary.
                     '''),
-                deprecate='0.7.0', error='1.0.0', remove='1.1.0',
+                deprecate='0.7.1', error='1.0.0', remove='1.1.0',
             )
             sample['tr'] = sample['target']
         return sample
@@ -1586,7 +1586,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     Opt-in to new behavior by specifying legacy_annots=False in
                     the target dictionary.
                     '''),
-                deprecate='0.7.0', error='1.0.0', remove='1.1.0',
+                deprecate='0.7.1', error='1.0.0', remove='1.1.0',
             )
 
             annots.update({
