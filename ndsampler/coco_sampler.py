@@ -678,7 +678,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo('vidshapes8')
             >>> target = self.regions.get_positive(0)
-            >>> test_vidspace = 1
+            >>> test_vidspace = 0
             >>> # Toggle to see if this test works in both cases
             >>> if test_vidspace:
             >>>     target = target.copy()
@@ -948,10 +948,16 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         if ndim == 2:
             target_['slices'] = slices = space_slice
         elif ndim == 3:
+            if gids is None:
+                if time_slice is None:
+                    if vid_gids is None:
+                        raise ValueError('no gids or ability to infer them')
+                    else:
+                        gids = target_['gids'] = vid_gids
+                else:
+                    gids = target_['gids'] = vid_gids[time_slice]
             if time_slice is None:
                 time_slice = target_['time_slice'] = slice(0, len(gids))
-            if gids is None:
-                gids = target_['gids'] = vid_gids[time_slice]
             target_['slices'] = slices = (time_slice,) + space_slice
         else:
             raise NotImplementedError(ndim)
@@ -1122,7 +1128,6 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         # Resolve any Nones in the requested slice (without the padding)
         # Probably could do this more efficienty
         import kwarray
-        print(f'requested_slice={requested_slice}')
         if data_dims is None:
             _req_real_slice = requested_slice
             _req_extra_pad = [(0, 0), (0, 0)]
@@ -1228,21 +1233,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 interpolation=interpolation, nodata_method=nodata,
                 antialias=antialias, mode=1
             )
-            print('load')
-            delayed_frame.write_network_text()
 
             delayed_crop = delayed_frame.crop(requested_space_slice,
                                               clip=False, wrap=False,
                                               pad=space_pad)
 
             delayed_crop = delayed_crop.prepare()
-
-            print('prep')
-            delayed_crop.write_network_text()
             delayed_crop = delayed_crop.optimize()
-
-            print('opt')
-            delayed_crop.write_network_text()
 
             frame_use_native_scale = use_native_scale
             if frame_use_native_scale:
@@ -1315,7 +1312,6 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     frame = delayed_crop.as_xarray().finalize()
                 else:
                     delayed_crop = delayed_crop.optimize()
-                    delayed_crop.write_network_text()
                     frame = delayed_crop.finalize()
                 if dtype is not None:
                     frame = frame.astype(dtype)
