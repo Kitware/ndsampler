@@ -677,12 +677,18 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> # sample an out of bounds target
             >>> from ndsampler.coco_sampler import *
             >>> self = CocoSampler.demo('vidshapes8')
+            >>> test_vidspace = 1
             >>> target = self.regions.get_positive(0)
-            >>> test_vidspace = 0
             >>> # Toggle to see if this test works in both cases
+            >>> space = 'image'
             >>> if test_vidspace:
+            >>>     space = 'video'
             >>>     target = target.copy()
             >>>     target['gids'] = [target.pop('gid')]
+            >>>     target['scale'] = 1.3
+            >>>     #target['scale'] = 0.8
+            >>>     #target['use_native_scale'] = True
+            >>>     #target['realign_native'] = 'largest'
             >>> target['window_dims'] = (364, 364)
             >>> sample = self.load_sample(target)
             >>> annots = sample['annots']
@@ -691,24 +697,24 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> # xdoctest: +REQUIRES(--show)
             >>> import kwplot
             >>> kwplot.autompl()
-            >>> abs_frame = self.frames.load_image(sample['target']['gid'])[:]
             >>> tf_rel_to_abs = sample['params']['tf_rel_to_abs']
-            >>> abs_boxes = annots['rel_boxes'].warp(tf_rel_to_abs)
-            >>> abs_ssegs = annots['rel_ssegs'].warp(tf_rel_to_abs)
-            >>> abs_kpts = annots['rel_kpts'].warp(tf_rel_to_abs)
+            >>> rel_dets = annots['frame_dets'][0]
+            >>> abs_dets = rel_dets.warp(tf_rel_to_abs)
             >>> # Draw box in original image context
+            >>> #abs_frame = self.frames.load_image(sample['target']['gid'], space=space)[:]
+            >>> abs_frame = self.dset.coco_image(sample['target']['gid']).delay(space=space).finalize()
             >>> kwplot.imshow(abs_frame, pnum=(1, 2, 1), fnum=1)
-            >>> abs_boxes.translate([-.5, -.5]).draw()
-            >>> abs_kpts.draw(color='green', radius=10)
-            >>> abs_ssegs.draw(color='red', alpha=.5)
+            >>> abs_dets.data['boxes'].translate([-.5, -.5]).draw()
+            >>> abs_dets.data['keypoints'].draw(color='green', radius=10)
+            >>> abs_dets.data['segmentations'].draw(color='red', alpha=.5)
             >>> # Draw box in relative sample context
             >>> if test_vidspace:
             >>>     kwplot.imshow(sample['im'][0], pnum=(1, 2, 2), fnum=1)
             >>> else:
             >>>     kwplot.imshow(sample['im'], pnum=(1, 2, 2), fnum=1)
-            >>> annots['rel_boxes'].translate([-.5, -.5]).draw()
-            >>> annots['rel_ssegs'].draw(color='red', alpha=.6)
-            >>> annots['rel_kpts'].draw(color='green', alpha=.4, radius=10)
+            >>> rel_dets.data['boxes'].translate([-.5, -.5]).draw()
+            >>> rel_dets.data['segmentations'].draw(color='red', alpha=.6)
+            >>> rel_dets.data['keypoints'].draw(color='green', alpha=.4, radius=10)
             >>> kwplot.show_if_requested()
 
         Example:
@@ -1155,7 +1161,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
         # Special arg that will let us use "native resolution" or as
         # close to it.
-        scale = target_.get('scale', None)  # extra scaling
+        extra_scale = target_.get('scale', None)  # extra scaling
         use_native_scale = target_.get('use_native_scale', False)
         realign_native = target_.get('realign_native', False)
 
@@ -1225,8 +1231,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
         for time_idx, coco_img in enumerate(coco_img_list):
 
+            # Build up the transform from the grid to the final sample
+            # TODO: We should be able to use delayed image to do this.
+            # It may require a reference image, or reference delayed operation
+            # points (which could be a load). For now just do it here.
+
             warp_sample_from_grid = tf_rel_from_abs
-            # .inv()
+
             delayed_frame = coco_img.delay(
                 channels=request_chanspec, space=space,
                 interpolation=interpolation, nodata_method=nodata,
@@ -1285,9 +1296,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 jagged_chans = []
                 jagged_warps = []
                 for part in undone_parts:
-                    if scale is not None:
-                        part = part.warp({'scale': scale})
-                        warp_grid_to_part = kwimage.Affine.scale(scale) @ warp_sample_from_grid
+                    if extra_scale is not None:
+                        part = part.warp({'scale': extra_scale})
+                        warp_grid_to_part = kwimage.Affine.scale(extra_scale) @ warp_sample_from_grid
                     else:
                         warp_grid_to_part = warp_sample_from_grid
                     if as_xarray:
@@ -1304,9 +1315,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     'grid_to_part_warps': jagged_warps,
                 })
             else:
-                if scale is not None:
-                    delayed_crop = delayed_crop.warp({'scale': scale})
-                    warp_sample_from_grid = kwimage.Affine.scale(scale) @ warp_sample_from_grid
+                if extra_scale is not None:
+                    tf_scale = kwimage.Affine.scale(extra_scale)
+                    delayed_crop = delayed_crop.warp({'scale': extra_scale})
+                    warp_sample_from_grid = tf_scale @ warp_sample_from_grid
+                    # warp_sample_from_grid =  warp_sample_from_grid @ tf_scale
                 if as_xarray:
                     frame = delayed_crop.as_xarray().finalize()
                 else:
@@ -1331,6 +1344,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         # TODO: gids should be padded if it goes oob.
         # target_['_data_gids'] = time_gids
 
+        if frame_sample_from_grid_warps:
+            # only works when there is one image
+            tf_abs_from_rel = frame_sample_from_grid_warps[0].inv()
+
         sample = {
             'im': data_sliced,
             'target': target_,
@@ -1339,7 +1356,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 # their behavior changed to respect the "window/grid space" and
                 # "input/sample space".
                 'offset': offset,
-                'tf_rel_to_abs': tf_abs_from_rel.matrix,
+                'tf_rel_to_abs': tf_abs_from_rel.matrix,  # doesnt make sense here
                 'sample_tlbr': sample_tlbr,
                 'st_dims': st_dims,
                 'data_dims': data_dims,
