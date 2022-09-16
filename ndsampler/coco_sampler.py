@@ -961,7 +961,6 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             target_['slices'] = slices = (time_slice,) + space_slice
         else:
             raise NotImplementedError(ndim)
-        print(f'target_={target_}')
         return target_
 
     @profile
@@ -986,7 +985,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> sample = self._load_slice(target)
             >>> print('sample = {!r}'.format(ub.map_vals(type, sample)))
 
-            >>> target = self._infer_target_attributes({'gids': [1, 2, 3]})
+            >>> target = self._infer_target_attributes({'gids': [1, 2]})
             >>> target['as_xarray'] = True
             >>> sample = self._load_slice(target)
             >>> print('sample = {!r}'.format(ub.map_vals(type, sample)))
@@ -1630,8 +1629,6 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 tf_vid_from_img = tf_abs_from_img
                 if frame_sample_from_grid_warps:
                     tf_rel_from_vid = frame_sample_from_grid_warps[rel_frame_idx]
-                    print('tf_rel_from_vid = {}'.format(ub.repr2(tf_rel_from_vid, nl=1)))
-                    print(f'tf_rel_from_vid={tf_rel_from_vid}')
                 else:
                     # FIXME: the only case where frame_sample_from_grid_warps
                     # would be zero is the jagged case, in which case we should
