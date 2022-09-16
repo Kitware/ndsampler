@@ -570,7 +570,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     sampling.
 
                 scale (float | Tuple[float, float]):
-                    if specified, add an extra scale factor to the data.
+                    if specified, the same window is sampled, but the data is
+                    returned warped by the extra scale factor. This augments
+                    the existing image or video scale factor. Any annotations
+                    are also warped according to this factor such that they
+                    align with the returned data.
 
                 pad (tuple): (height, width) extra context to add to window dims.
                     This helps prevent augmentation from producing boundary effects
@@ -672,8 +676,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         Example:
             >>> # sample an out of bounds target
             >>> from ndsampler.coco_sampler import *
-            >>> self = CocoSampler.demo()
+            >>> self = CocoSampler.demo('vidshapes8')
             >>> target = self.regions.get_positive(0)
+            >>> test_vidspace = 1
+            >>> # Toggle to see if this test works in both cases
+            >>> if test_vidspace:
+            >>>     target = target.copy()
+            >>>     target['gids'] = [target.pop('gid')]
             >>> target['window_dims'] = (364, 364)
             >>> sample = self.load_sample(target)
             >>> annots = sample['annots']
@@ -693,7 +702,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> abs_kpts.draw(color='green', radius=10)
             >>> abs_ssegs.draw(color='red', alpha=.5)
             >>> # Draw box in relative sample context
-            >>> kwplot.imshow(sample['im'], pnum=(1, 2, 2), fnum=1)
+            >>> if test_vidspace:
+            >>>     kwplot.imshow(sample['im'][0], pnum=(1, 2, 2), fnum=1)
+            >>> else:
+            >>>     kwplot.imshow(sample['im'], pnum=(1, 2, 2), fnum=1)
             >>> annots['rel_boxes'].translate([-.5, -.5]).draw()
             >>> annots['rel_ssegs'].draw(color='red', alpha=.6)
             >>> annots['rel_kpts'].draw(color='green', alpha=.4, radius=10)
@@ -856,13 +868,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             if vidid is None:
                 if gids is None:
                     raise ValueError('ambiguous image or video object id(s)')
-                _vidids = self.dset.images(gids).lookup('video_id')
+                _vidids = self.dset.images(gids).lookup('video_id', None)
                 if __debug__:
                     if not ub.allsame(_vidids):
                         warnings.warn('sampled gids from different videos')
                 vidid = ub.peek(_vidids)
                 target_['vidid'] = vidid
-            assert vidid == target_['vidid']
+            # assert vidid == target_['vidid']
             ndim = 3
         elif gid is not None:
             # Image sample
@@ -876,10 +888,14 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             space_dims = (img['height'], img['width'])
             data_dims = space_dims
         elif ndim == 3:
-            video = self.dset.index.videos[vidid]
-            space_dims = (video['height'], video['width'])
-            vid_gids = self.dset.index.vidid_to_gids[vidid]
-            data_dims = (len(vid_gids),) + space_dims
+            if vidid is not None:
+                video = self.dset.index.videos[vidid]
+                space_dims = (video['height'], video['width'])
+                vid_gids = self.dset.index.vidid_to_gids[vidid]
+                data_dims = (len(vid_gids),) + space_dims
+            else:
+                space_dims = None
+                data_dims = None
         else:
             raise NotImplementedError
 
@@ -933,12 +949,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             target_['slices'] = slices = space_slice
         elif ndim == 3:
             if time_slice is None:
-                time_slice = target_['time_slice'] = slice(0, len(vid_gids))
+                time_slice = target_['time_slice'] = slice(0, len(gids))
             if gids is None:
                 gids = target_['gids'] = vid_gids[time_slice]
             target_['slices'] = slices = (time_slice,) + space_slice
         else:
             raise NotImplementedError(ndim)
+        print(f'target_={target_}')
         return target_
 
     @profile
@@ -1060,8 +1077,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> assert shape1 != shape2
             >>> assert shape2 == shape3
         """
-        vidid = target.get('vidid', None)
-        if vidid is not None:
+        gids = target.get('gids', None)
+        if gids is not None:
             sample = self._load_slice_3d(target)
         else:
             sample = self._load_slice_2d(target)
@@ -1105,7 +1122,12 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         # Resolve any Nones in the requested slice (without the padding)
         # Probably could do this more efficienty
         import kwarray
-        _req_real_slice, _req_extra_pad = kwarray.embed_slice(requested_slice, data_dims)
+        print(f'requested_slice={requested_slice}')
+        if data_dims is None:
+            _req_real_slice = requested_slice
+            _req_extra_pad = [(0, 0), (0, 0)]
+        else:
+            _req_real_slice, _req_extra_pad = kwarray.embed_slice(requested_slice, data_dims)
         resolved_slice = tuple([
             slice(s.start - p_lo, s.stop + p_hi, s.step)
             for s, (p_lo, p_hi) in zip(_req_real_slice, _req_extra_pad)
@@ -1133,16 +1155,16 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         use_native_scale = target_.get('use_native_scale', False)
         realign_native = target_.get('realign_native', False)
 
-        vidid = target_.get('vidid', None)
-        if vidid is None:
-            raise AssertionError
+        # vidid = target_.get('vidid', None)
+        # if vidid is None:
+        #     raise AssertionError
 
         ndim = 3  # number of space-time dimensions (ignore channel)
 
         # padkw = target_.get('padkw', {'mode': 'constant'})  # TODO
         pad_slice = _coerce_pad(pad, ndim)
 
-        data_time_dim = data_dims[0]
+        data_time_dim = None if data_dims is None else data_dims[0]
         # data_space_dims = data_dims[1:]
         requested_time_slice = resolved_slice[0]
         requested_space_slice = resolved_slice[1:]
@@ -1151,7 +1173,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
         # if time_pad.start is None:
 
-        if time_pad[0] != 0 or time_pad[1] != 0 or requested_time_slice.start < 0 or requested_time_slice.stop > data_time_dim:
+        if time_pad[0] != 0 or time_pad[1] != 0 or requested_time_slice.start < 0 or (data_time_dim is not None and requested_time_slice.stop > data_time_dim):
             raise NotImplementedError(ub.paragraph(
                 '''
                 padding in time is not yet supported, but is an easy TODO
@@ -1179,18 +1201,48 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             if len(unique_chan):
                 request_chanspec = kwcoco.FusedChannelSpec.coerce(sorted(sum(unique_chan).fuse().unique()))
 
+        # New: for each frame, we need to keep track of the transform from the
+        # grid space to sample space, possibly for each channel
+        frame_sample_from_grid_warps = []
+
+        # Start off by making the transform assuming no special scaling.
+        request_space_box = kwimage.Boxes.from_slice(
+            requested_space_slice, clip=False, wrap=False).to_ltrb()
+        hpad, wpad = space_pad
+        final_space_box = request_space_box.pad(
+            x_left=wpad[0], y_top=hpad[0], x_right=wpad[1], y_bot=hpad[1])
+        sample_tlbr = final_space_box
+        st_dims = [(s.start, s.stop) for s in final_space_box.to_slices()[0]]
+        x_start = sample_tlbr.tl_x.ravel()[0]
+        y_start = sample_tlbr.tl_y.ravel()[0]
+        offset = np.array([-x_start, -y_start])
+        tf_abs_from_rel = kwimage.Affine.affine(offset=-offset)
+        tf_rel_from_abs = tf_abs_from_rel.inv()
+
         for time_idx, coco_img in enumerate(coco_img_list):
 
+            warp_sample_from_grid = tf_rel_from_abs
+            # .inv()
             delayed_frame = coco_img.delay(
                 channels=request_chanspec, space=space,
                 interpolation=interpolation, nodata_method=nodata,
                 antialias=antialias, mode=1
             )
+            print('load')
+            delayed_frame.write_network_text()
+
             delayed_crop = delayed_frame.crop(requested_space_slice,
                                               clip=False, wrap=False,
                                               pad=space_pad)
+
             delayed_crop = delayed_crop.prepare()
+
+            print('prep')
+            delayed_crop.write_network_text()
             delayed_crop = delayed_crop.optimize()
+
+            print('opt')
+            delayed_crop.write_network_text()
 
             frame_use_native_scale = use_native_scale
             if frame_use_native_scale:
@@ -1202,6 +1254,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     # User requested to realign all parts back up to a
                     # comparable scale.
                     if realign_native == 'largest':
+                        old_dsize = delayed_crop.dsize
+
                         dsizes = []
                         for part in undone_parts:
                             dsizes.append(part.dsize)
@@ -1214,6 +1268,16 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                         from kwcoco.util.delayed_ops.delayed_nodes import DelayedChannelConcat
                         delayed_crop = DelayedChannelConcat(rescaled_parts, dsize=max_dsize)
                         delayed_crop = delayed_crop.optimize()
+
+                        # Find the scale factor to add into the sample_from_grid
+                        # transform
+                        # TODO: can get a finer-grained scale factor here if we
+                        # avoid dsize divides and instead track the scale
+                        # factors used in the delayed tree. For now just
+                        # get something working.
+                        new_dsize = delayed_crop.dsize
+                        realign_scale = np.array(new_dsize) / np.array(old_dsize)
+                        warp_sample_from_grid = kwimage.Affine.scale(realign_scale) @ warp_sample_from_grid
                     else:
                         raise NotImplementedError
                     # disable this for the rest of the frame
@@ -1223,30 +1287,40 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 # print(undone_parts)
                 jagged_parts = []
                 jagged_chans = []
+                jagged_warps = []
                 for part in undone_parts:
                     if scale is not None:
                         part = part.warp({'scale': scale})
+                        warp_grid_to_part = kwimage.Affine.scale(scale) @ warp_sample_from_grid
+                    else:
+                        warp_grid_to_part = warp_sample_from_grid
                     if as_xarray:
                         frame = part.optimize().as_xarray().finalize()
                     else:
                         frame = part.optimize().finalize()
                     jagged_parts.append(frame)
                     jagged_chans.append(part.channels)
+                    jagged_warps.append(warp_grid_to_part)
                 space_frames.append(jagged_parts)
                 jagged_meta.append({
                     'align': jagged_align,
                     'chans': jagged_chans,
+                    'grid_to_part_warps': jagged_warps,
                 })
             else:
                 if scale is not None:
                     delayed_crop = delayed_crop.warp({'scale': scale})
+                    warp_sample_from_grid = kwimage.Affine.scale(scale) @ warp_sample_from_grid
                 if as_xarray:
                     frame = delayed_crop.as_xarray().finalize()
                 else:
+                    delayed_crop = delayed_crop.optimize()
+                    delayed_crop.write_network_text()
                     frame = delayed_crop.finalize()
                 if dtype is not None:
                     frame = frame.astype(dtype)
                 space_frames.append(frame)
+                frame_sample_from_grid_warps.append(warp_sample_from_grid)
 
         # Concat aligned frames together (add nans for non-existing
         # channels)
@@ -1262,30 +1336,21 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         # TODO: gids should be padded if it goes oob.
         # target_['_data_gids'] = time_gids
 
-        request_space_box = kwimage.Boxes.from_slice(
-            requested_space_slice, clip=False, wrap=False).to_ltrb()
-        hpad, wpad = space_pad
-        final_space_box = request_space_box.pad(
-            x_left=wpad[0], y_top=hpad[0], x_right=wpad[1], y_bot=hpad[1])
-        sample_tlbr = final_space_box
-        st_dims = [(s.start, s.stop) for s in final_space_box.to_slices()[0]]
-
-        x_start = sample_tlbr.tl_x.ravel()[0]
-        y_start = sample_tlbr.tl_y.ravel()[0]
-        offset = (-x_start, -y_start)
-        tf_rel_to_abs = kwimage.Affine.affine(offset=offset).matrix
-
         sample = {
             'im': data_sliced,
             'target': target_,
             'params': {
+                # TODO: some of these params need to be deprecated or have
+                # their behavior changed to respect the "window/grid space" and
+                # "input/sample space".
                 'offset': offset,
-                'tf_rel_to_abs': tf_rel_to_abs,
+                'tf_rel_to_abs': tf_abs_from_rel.matrix,
                 'sample_tlbr': sample_tlbr,
                 'st_dims': st_dims,
                 'data_dims': data_dims,
                 'pad': pad,
                 'request_chanspec': request_chanspec,
+                'frame_sample_from_grid_warps': frame_sample_from_grid_warps,
             },
         }
 
@@ -1478,6 +1543,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         frame_dets = []
         scale = sample['target'].get('scale', None)  # extra scaling
 
+        frame_sample_from_grid_warps = params.get('frame_sample_from_grid_warps', [])
+
         for rel_frame_idx, gid in enumerate(gids):
 
             # Check to see if there is a transform between the image-space and
@@ -1545,7 +1612,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
             # Construct a detections object containing absolute annotation
             # positions
-            abs_dets = kwimage.Detections(
+            imgspace_dets = kwimage.Detections(
                 aids=np.array(overlap_aids),
                 cids=np.array(overlap_cids),
                 boxes=abs_boxes,
@@ -1559,16 +1626,29 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             )
 
             # Translate the absolute detections to relative sample coordinates
+            if scale is None:
+                scale = 1.0
+
             if in_video_space:
                 # hack to align annots from image space to video space
-                tf_abs_to_rel = kwimage.Affine.translate(offset) @ tf_abs_from_img
-                rel_dets = abs_dets.warp(tf_abs_to_rel.matrix)
+                tf_vid_from_img = tf_abs_from_img
+                if frame_sample_from_grid_warps:
+                    tf_rel_from_vid = frame_sample_from_grid_warps[rel_frame_idx]
+                    print('tf_rel_from_vid = {}'.format(ub.repr2(tf_rel_from_vid, nl=1)))
+                    print(f'tf_rel_from_vid={tf_rel_from_vid}')
+                else:
+                    # FIXME: the only case where frame_sample_from_grid_warps
+                    # would be zero is the jagged case, in which case we should
+                    # probably align these to something different, right now it
+                    # just aligns it to the scaled window (but does not account
+                    # for jagged scaling)
+                    tf_rel_from_vid = kwimage.Affine.affine(scale=scale) @ kwimage.Affine.affine(offset=offset)
+                tf_rel_from_img = tf_rel_from_vid @ tf_vid_from_img
+                rel_dets = imgspace_dets.warp(tf_rel_from_img.matrix)
             else:
-                rel_dets = abs_dets.translate(offset)
-
-            if scale is not None:
-                # Could fold this into previous warp as an optimization
-                rel_dets = rel_dets.scale(scale)
+                rel_dets = imgspace_dets.translate(offset)
+                if scale != 1.0:
+                    rel_dets = rel_dets.scale(scale)
 
             frame_dets.append(rel_dets)
 

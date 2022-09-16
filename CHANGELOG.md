@@ -5,6 +5,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Version 0.7.1 - Unreleased
 
+### Fixed
+* The annotations are now returned in the same space as the sample in all cases
+  except for the jagged case, which is still not fully developed.
+
 
 ## Version 0.7.0 - Released 2022-08-11
 
