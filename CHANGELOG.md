@@ -3,7 +3,14 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
-## Version 0.7.0 - Unreleased
+## Version 0.7.1 - Unreleased
+
+### Fixed
+* The annotations are now returned in the same space as the sample in all cases
+  except for the jagged case, which is still not fully developed.
+
+
+## Version 0.7.0 - Released 2022-08-11
 
 ### Changed
 
