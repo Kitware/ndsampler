@@ -40,4 +40,4 @@ pyqtree >= 1.0.0
 
 kwimage >= 0.9.3
 kwarray >= 0.6.0
-kwcoco >= 0.4.0
+kwcoco >= 0.5.0
