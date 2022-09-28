@@ -11,6 +11,7 @@ repo_name = "ndsampler"
 rel_mod_parent_dpath = "."
 os = [ "all", "osx", "win", "linux",]
 min_python = 3.6
+ci_cpython_versions = ["3.6", "3.7", "3.8", "3.9", "3.10"]
 author = "Jon Crall"
 author_email = "jon.crall@kitware.com"
 description = "Fast sampling from large images"

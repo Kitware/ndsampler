@@ -1065,6 +1065,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> target['use_native_scale'] = True
             >>> target['realign_native'] = 'largest'
             >>> target['as_xarray'] = True
+            >>> target = self._infer_target_attributes(target)
             >>> gid = None
             >>> for coco_img in self.dset.images().coco_images:
             >>>     if coco_img.channels & 'r|g|b':
@@ -1241,18 +1242,22 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             delayed_frame = coco_img.delay(
                 channels=request_chanspec, space=space,
                 interpolation=interpolation, nodata_method=nodata,
-                antialias=antialias, mode=1
+                antialias=antialias
             )
 
             delayed_crop = delayed_frame.crop(requested_space_slice,
                                               clip=False, wrap=False,
                                               pad=space_pad)
-
             delayed_crop = delayed_crop.prepare()
             delayed_crop = delayed_crop.optimize()
 
+            # This alt should work, but unsure if the extra floating point
+            # error from inverses will matter.
+            # alt_tf_rel_from_abs = delayed_crop.get_transform_from(delayed_frame)
+
             frame_use_native_scale = use_native_scale
             if frame_use_native_scale:
+                non_native_crop = delayed_crop
                 undone_parts, jagged_align = delayed_crop.undo_warps(
                     remove=['scale'], squash_nans=True,
                     return_warps=True)
@@ -1272,7 +1277,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                             rescale_factor = np.array(max_dsize) / np.array(part.dsize)
                             rescaled = part.warp({'scale': rescale_factor}, dsize=max_dsize)
                             rescaled_parts.append(rescaled)
-                        from kwcoco.util.delayed_ops.delayed_nodes import DelayedChannelConcat
+                        from kwcoco.util.delayed_ops import DelayedChannelConcat
                         delayed_crop = DelayedChannelConcat(rescaled_parts, dsize=max_dsize)
                         delayed_crop = delayed_crop.optimize()
 
@@ -1280,11 +1285,21 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                         # transform
                         # TODO: can get a finer-grained scale factor here if we
                         # avoid dsize divides and instead track the scale
-                        # factors used in the delayed tree. For now just
-                        # get something working.
-                        new_dsize = delayed_crop.dsize
-                        realign_scale = np.array(new_dsize) / np.array(old_dsize)
-                        warp_sample_from_grid = kwimage.Affine.scale(realign_scale) @ warp_sample_from_grid
+                        # factors used in the delayed tree. For now just get
+                        # something working.
+
+                        FIND_SCALE_VIA_DSIZE = 0
+                        if FIND_SCALE_VIA_DSIZE:
+                            new_dsize = delayed_crop.dsize
+                            realign_scale = np.array(new_dsize) / np.array(old_dsize)
+                            realign_tf = kwimage.Affine.scale(realign_scale)
+                        else:
+                            # Determine the transform from the original space
+                            # sample, to the rescaled sample.
+                            realign_tf = delayed_crop.get_transform_from(non_native_crop)
+
+                        warp_sample_from_grid = realign_tf @ warp_sample_from_grid
+
                     else:
                         raise NotImplementedError
                     # disable this for the rest of the frame
@@ -1328,6 +1343,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 if dtype is not None:
                     frame = frame.astype(dtype)
                 space_frames.append(frame)
+
+                # warp_sample_from_grid_alt = delayed_crop.get_transform_from(delayed_frame)
+                # print('warp_sample_from_grid_alt = {}'.format(ub.repr2(warp_sample_from_grid_alt, nl=1)))
+                # print('warp_sample_from_grid = {}'.format(ub.repr2(warp_sample_from_grid, nl=1)))
+
                 frame_sample_from_grid_warps.append(warp_sample_from_grid)
 
         # Concat aligned frames together (add nans for non-existing
