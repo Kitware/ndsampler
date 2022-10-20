@@ -1542,7 +1542,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> print('sample = {}'.format(ub.repr2(ub.util_dict.dict_diff(sample, ['im']), nl=-1)))
         """
 
-        if with_annots is True:
+        if isinstance(with_annots, int) and with_annots:
             with_annots = ['segmentation', 'keypoints', 'boxes']
         elif isinstance(with_annots, str):
             with_annots = with_annots.split('+')
