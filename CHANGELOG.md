@@ -5,6 +5,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Version 0.7.3 - Unreleased
 
+### Added
+* Add CocoSampler.coerce
+
 
 ## Version 0.7.2 - Released 2022-09-28
 
