@@ -164,6 +164,34 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         if autoinit:
             self._init()
 
+    @classmethod
+    def coerce(cls, data, **kwargs):
+        """
+        Attempt to coerce the input data into a sampler. Generally this can be
+        anything that is already a sampler, or somthing that can be coerced
+        into a kwcoco dataset.
+
+        Args:
+            data (str | PathLike | CocoDataset | CocoSampler):
+                something that can be coerced into a CocoSampler.
+
+        Returns:
+            CocoSampler
+        """
+        if isinstance(data, cls):
+            # Either it is already a sampler
+            self = data
+            if kwargs:
+                raise NotImplementedError(
+                    'data is already a sampler, '
+                    'cannot change kwargs')
+        else:
+            # Or if it can be coerce to a kwcoco dataset, then
+            # it is already a sampler
+            dset = kwcoco.CocoDataset.coerce(data)
+            self = cls(dset, **kwargs)
+        return self
+
     def _init(self):
         if hasattr(self.dset, '_ensure_imgsize'):
             self.dset._ensure_imgsize()
