@@ -1250,10 +1250,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         hpad, wpad = space_pad
         final_space_box = request_space_box.pad(
             x_left=wpad[0], y_top=hpad[0], x_right=wpad[1], y_bot=hpad[1])
-        sample_tlbr = final_space_box
+        sample_ltrb = final_space_box
         st_dims = [(s.start, s.stop) for s in final_space_box.to_slices()[0]]
-        x_start = sample_tlbr.tl_x.ravel()[0]
-        y_start = sample_tlbr.tl_y.ravel()[0]
+        x_start = sample_ltrb.tl_x.ravel()[0]
+        y_start = sample_ltrb.tl_y.ravel()[0]
         offset = np.array([-x_start, -y_start])
         tf_abs_from_rel = kwimage.Affine.affine(offset=-offset)
         tf_rel_from_abs = tf_abs_from_rel.inv()
@@ -1405,7 +1405,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 # "input/sample space".
                 'offset': offset,
                 'tf_rel_to_abs': tf_abs_from_rel.matrix,  # doesnt make sense here
-                'sample_tlbr': sample_tlbr,
+                'sample_tlbr': sample_ltrb,
                 'st_dims': st_dims,
                 'data_dims': data_dims,
                 'pad': pad,
@@ -1531,7 +1531,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         st_dims = [(sl.start - pad_[0], sl.stop + pad_[1])
                    for sl, pad_ in zip(data_slice, extra_padding)]
         (y_start, y_stop), (x_start, x_stop) = st_dims[-2:]
-        sample_tlbr = kwimage.Boxes([x_start, y_start, x_stop, y_stop], 'ltrb')
+        sample_ltrb = kwimage.Boxes([x_start, y_start, x_stop, y_stop], 'ltrb')
         offset = np.array([-x_start, -y_start])
         tf_rel_to_abs = skimage.transform.AffineTransform(
             translation=-offset
@@ -1543,7 +1543,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             'params': {
                 'offset': offset,
                 'tf_rel_to_abs': tf_rel_to_abs,
-                'sample_tlbr': sample_tlbr,
+                'sample_tlbr': sample_ltrb,
                 'st_dims': st_dims,
                 'data_dims': data_dims,
                 'pad': pad,

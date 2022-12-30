@@ -90,7 +90,7 @@ class FrameIntersectionIndex(ub.NiceRepr):
                                    desc='init qtrees', verbose=verbose)
         }
         for qtree in qtrees.values():
-            qtree.aid_to_tlbr = {}  # Add extra index to track boxes
+            qtree.aid_to_ltrb = {}  # Add extra index to track boxes
         for ann in ub.ProgIter(dset.dataset['annotations'],
                                desc='populate qtrees', verbose=verbose):
             bbox = ann.get('bbox', None)
@@ -98,9 +98,9 @@ class FrameIntersectionIndex(ub.NiceRepr):
                 aid = ann['id']
                 qtree = qtrees[ann['image_id']]
                 xywh_box = kwimage.Boxes(bbox, 'xywh')
-                tlbr_box = xywh_box.to_tlbr().data
-                qtree.insert(aid, tlbr_box)
-                qtree.aid_to_tlbr[aid] = tlbr_box
+                ltrb_box = xywh_box.to_ltrb().data
+                qtree.insert(aid, ltrb_box)
+                qtree.aid_to_ltrb[aid] = ltrb_box
         return qtrees
 
     @profile
@@ -124,7 +124,7 @@ class FrameIntersectionIndex(ub.NiceRepr):
         """
         boxes1 = box[None, :] if len(box.shape) == 1 else box
         qtree = self.qtrees[gid]
-        query = boxes1.to_tlbr().data[0]
+        query = boxes1.to_ltrb().data[0]
         isect_aids = sorted(set(qtree.intersect(query)))
         return isect_aids
 
@@ -146,8 +146,8 @@ class FrameIntersectionIndex(ub.NiceRepr):
         isect_aids = self.overlapping_aids(gid, box)
         if len(isect_aids):
             boxes1 = box[None, :]
-            boxes2 = [self.qtrees[gid].aid_to_tlbr[aid] for aid in isect_aids]
-            boxes2 = kwimage.Boxes(np.array(boxes2), 'tlbr')
+            boxes2 = [self.qtrees[gid].aid_to_ltrb[aid] for aid in isect_aids]
+            boxes2 = kwimage.Boxes(np.array(boxes2), 'ltrb')
             ious = boxes1.ious(boxes2)[0]
         else:
             ious = np.empty(0)
@@ -168,8 +168,8 @@ class FrameIntersectionIndex(ub.NiceRepr):
         boxes1 = box[None, :] if len(box.shape) == 1 else box
         isect_aids = self.overlapping_aids(gid, box)
         if len(isect_aids):
-            boxes2 = [self.qtrees[gid].aid_to_tlbr[aid] for aid in isect_aids]
-            boxes2 = kwimage.Boxes(np.array(boxes2), 'tlbr')
+            boxes2 = [self.qtrees[gid].aid_to_ltrb[aid] for aid in isect_aids]
+            boxes2 = kwimage.Boxes(np.array(boxes2), 'ltrb')
             isect = boxes1.isect_area(boxes2)
             denom = boxes2.area.T
             eps = 1e-6
@@ -261,7 +261,7 @@ class FrameIntersectionIndex(ub.NiceRepr):
 
         def _generate_rel(n):
             # Generate n candidate boxes in the normalized 0-1 domain
-            cand_boxes = kwimage.Boxes.random(num=n, scale=1.0, format='tlbr',
+            cand_boxes = kwimage.Boxes.random(num=n, scale=1.0, format='ltrb',
                                               anchors=anchors, anchor_std=0,
                                               rng=rng)
 
@@ -296,7 +296,7 @@ class FrameIntersectionIndex(ub.NiceRepr):
                 if np.any(anchors_ > 1.0):
                     continue
                 img_boxes = kwimage.Boxes.random(
-                    num=nboxes, scale=1.0, format='tlbr', anchors=anchors_,
+                    num=nboxes, scale=1.0, format='ltrb', anchors=anchors_,
                     anchor_std=0, rng=rng)
                 img_boxes = img_boxes.scale(scale)
                 for box in img_boxes:
@@ -360,7 +360,7 @@ class FrameIntersectionIndex(ub.NiceRepr):
             neg_gids, neg_boxes = _generate(n=num)
 
         neg_gids = np.array(neg_gids)
-        neg_boxes = kwimage.Boxes(np.array(neg_boxes), 'tlbr')
+        neg_boxes = kwimage.Boxes(np.array(neg_boxes), 'ltrb')
         return neg_gids, neg_boxes
 
     def _debug_index(self):
@@ -369,7 +369,7 @@ class FrameIntersectionIndex(ub.NiceRepr):
         def _to_shapely(boxes):
             from shapely.geometry import Polygon
             from kwimage.structs.boxes import _cat
-            x1, y1, x2, y2 = boxes.to_tlbr(copy=False).components
+            x1, y1, x2, y2 = boxes.to_ltrb(copy=False).components
             a = _cat([x1, y1]).tolist()
             b = _cat([x1, y2]).tolist()
             c = _cat([x2, y2]).tolist()
@@ -378,10 +378,10 @@ class FrameIntersectionIndex(ub.NiceRepr):
             return polygons
 
         for gid, qtree in self.qtrees.items():
-            boxes = kwimage.Boxes(np.array(list(qtree.aid_to_tlbr.values())), 'tlbr')
+            boxes = kwimage.Boxes(np.array(list(qtree.aid_to_ltrb.values())), 'ltrb')
             polygons = _to_shapely(boxes)
 
-            bounds = kwimage.Boxes([[0, 0, qtree.width, qtree.height]], 'tlbr')
+            bounds = kwimage.Boxes([[0, 0, qtree.width, qtree.height]], 'ltrb')
             bounds = _to_shapely(bounds)[0]
             merged_polygon = cascaded_union(polygons)
             uncovered = (bounds - merged_polygon)
@@ -411,6 +411,6 @@ class FrameIntersectionIndex(ub.NiceRepr):
 
     def _support(self, gid):
         qtree = self.qtrees[gid]
-        support_boxes = kwimage.Boxes(list(qtree.aid_to_tlbr.values()), 'tlbr')
+        support_boxes = kwimage.Boxes(list(qtree.aid_to_ltrb.values()), 'ltrb')
 
         return support_boxes
