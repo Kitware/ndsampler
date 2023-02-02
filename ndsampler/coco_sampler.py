@@ -1292,7 +1292,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
             delayed_frame = coco_img.delay(
                 channels=request_chanspec, space=space,
-                interpolation=interpolation, nodata_method=nodata,
+                interpolation=interpolation,
+                nodata_method=nodata,
                 antialias=antialias
             )
 
@@ -1356,6 +1357,17 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     # disable this for the rest of the frame
                     frame_use_native_scale = False
 
+            finalizekw = dict(
+                # We shouldn't need to pass these args, but
+                # optimize is bugged and clobbers them, so
+                # we add them in as a fix.
+                prepare=False,
+                optimize=False,
+                interpolation=interpolation,
+                nodata_method=nodata,
+                antialias=antialias
+            )
+
             if frame_use_native_scale:
                 # print(undone_parts)
                 jagged_parts = []
@@ -1368,9 +1380,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     else:
                         warp_grid_to_part = warp_sample_from_grid
                     if as_xarray:
-                        frame = part.optimize().as_xarray().finalize()
+                        frame = part.optimize().as_xarray().finalize(**finalizekw)
                     else:
-                        frame = part.optimize().finalize()
+                        frame = part.optimize().finalize(**finalizekw)
                     jagged_parts.append(frame)
                     jagged_chans.append(part.channels)
                     jagged_warps.append(warp_grid_to_part)
@@ -1387,10 +1399,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     warp_sample_from_grid = tf_scale @ warp_sample_from_grid
                     # warp_sample_from_grid =  warp_sample_from_grid @ tf_scale
                 if as_xarray:
-                    frame = delayed_crop.as_xarray().finalize()
+                    frame = delayed_crop.as_xarray().finalize(**finalizekw)
                 else:
                     delayed_crop = delayed_crop.optimize()
-                    frame = delayed_crop.finalize()
+                    frame = delayed_crop.finalize(**finalizekw)
                 if dtype is not None:
                     frame = frame.astype(dtype)
                 space_frames.append(frame)

@@ -8,6 +8,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 * Add CocoSampler.coerce
 
+### Fixed:
+* Work around issue in delayed image where it is not handling interpolation
+  correctly.
+
 
 ## Version 0.7.2 - Released 2022-09-28
 
