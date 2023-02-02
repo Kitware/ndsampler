@@ -724,7 +724,7 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
             extra_deps['self_hashid'] = self.hashid
             depends = extra_deps
 
-        cacher = ub.Cacher(fname, depends=depends, dpath=dpath,
+        cacher = ub.Cacher(fname + '_v2', depends=depends, dpath=dpath,
                            verbose=self.verbose, enabled=enabled)
         return cacher
 
