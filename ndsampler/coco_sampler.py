@@ -1149,6 +1149,16 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         logic
 
         Or at least the differences between them are more clear.
+
+        Example:
+            >>> # Test time padding case
+            >>> # xdoctest: +SKIP('not implemented')
+            >>> from ndsampler.coco_sampler import *
+            >>> self = CocoSampler.demo('vidshapes-multisensor-msi', num_frames=1, num_videos=1, image_size=(32, 32))
+            >>> sample_grid = self.new_sample_grid('video_detection', (2, 32, 32))
+            >>> target = sample_grid['positives'][0]
+            >>> target = self._infer_target_attributes(target)
+            >>> sample = self.load_sample(target)
         """
         target_ = target
         pad = target_.get('pad', None)
@@ -1210,12 +1220,25 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         space_pad = pad_slice[1:]
         time_pad = pad_slice[0]
 
-        # if time_pad.start is None:
+        # Determine if we need to pad out temporal samples on the end
+        if (data_time_dim is not None and requested_time_slice.stop > data_time_dim):
+            end_time_padding = requested_time_slice.stop - data_time_dim
+        else:
+            end_time_padding = 0
 
-        if time_pad[0] != 0 or time_pad[1] != 0 or requested_time_slice.start < 0 or (data_time_dim is not None and requested_time_slice.stop > data_time_dim):
+        if end_time_padding > 0:
             raise NotImplementedError(ub.paragraph(
                 '''
-                padding in time is not yet supported, but is an easy TODO
+                Requested a time slice that is larger the the number of
+                available time samples.  Padding in time is not yet supported
+                in all cases yet.
+                '''))
+
+        if time_pad[0] != 0 or time_pad[1] != 0 or requested_time_slice.start < 0:
+
+            raise NotImplementedError(ub.paragraph(
+                '''
+                Padding in time is not yet supported in all cases yet.
                 '''))
 
         # TODO: we may want to build a efficient temporal sampling
