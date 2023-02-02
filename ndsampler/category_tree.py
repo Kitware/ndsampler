@@ -756,7 +756,7 @@ class Mixin_CategoryTree_Torch:
                         # which is likely a problem with this criterion.
                         refine_flags[:] = 1
 
-                    refine_flags = kwarray.ArrayAPI.numpy(refine_flags).astype(np.bool)
+                    refine_flags = kwarray.ArrayAPI.numpy(refine_flags).astype(bool)
 
                     if DEBUG:
                         print('-----------')

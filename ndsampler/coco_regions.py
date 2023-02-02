@@ -724,7 +724,7 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
             extra_deps['self_hashid'] = self.hashid
             depends = extra_deps
 
-        cacher = ub.Cacher(fname, depends=depends, dpath=dpath,
+        cacher = ub.Cacher(fname + '_v2', depends=depends, dpath=dpath,
                            verbose=self.verbose, enabled=enabled)
         return cacher
 
@@ -830,7 +830,7 @@ def select_positive_regions(targets, window_dims=(300, 300), thresh=0.0,
     wws = np.full(n, ww, dtype=np.float32)
     whs = np.full(n, wh, dtype=np.float32)
     cxywh = np.hstack([a[:, None] for a in [cxs, cys, wws, whs]])
-    boxes = kwimage.Boxes(cxywh, 'cxywh').to_tlbr()
+    boxes = kwimage.Boxes(cxywh, 'cxywh').to_ltrb()
 
     iter_ = ub.ProgIter(gid_to_groupx.items(),
                         enabled=verbose,

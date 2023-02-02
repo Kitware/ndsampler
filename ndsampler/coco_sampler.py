@@ -164,6 +164,34 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         if autoinit:
             self._init()
 
+    @classmethod
+    def coerce(cls, data, **kwargs):
+        """
+        Attempt to coerce the input data into a sampler. Generally this can be
+        anything that is already a sampler, or somthing that can be coerced
+        into a kwcoco dataset.
+
+        Args:
+            data (str | PathLike | CocoDataset | CocoSampler):
+                something that can be coerced into a CocoSampler.
+
+        Returns:
+            CocoSampler
+        """
+        if isinstance(data, cls):
+            # Either it is already a sampler
+            self = data
+            if kwargs:
+                raise NotImplementedError(
+                    'data is already a sampler, '
+                    'cannot change kwargs')
+        else:
+            # Or if it can be coerce to a kwcoco dataset, then
+            # it is already a sampler
+            dset = kwcoco.CocoDataset.coerce(data)
+            self = cls(dset, **kwargs)
+        return self
+
     def _init(self):
         if hasattr(self.dset, '_ensure_imgsize'):
             self.dset._ensure_imgsize()
@@ -934,11 +962,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 if isinstance(window_dims, str):
                     if window_dims == 'extent':
                         window_dims = (target_['height'], target_['width'])
-                        window_dims = np.ceil(np.array(window_dims)).astype(np.int)
+                        window_dims = np.ceil(np.array(window_dims)).astype(int)
                         window_dims = tuple(window_dims.tolist())
                     elif window_dims == 'square':
                         window_dims = (target_['height'], target_['width'])
-                        window_dims = np.ceil(np.array(window_dims)).astype(np.int)
+                        window_dims = np.ceil(np.array(window_dims)).astype(int)
                         window_dims = tuple(window_dims.tolist())
                         maxdim = max(window_dims)
                         window_dims = (maxdim, maxdim)
@@ -1121,6 +1149,16 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         logic
 
         Or at least the differences between them are more clear.
+
+        Example:
+            >>> # Test time padding case
+            >>> # xdoctest: +SKIP('not implemented')
+            >>> from ndsampler.coco_sampler import *
+            >>> self = CocoSampler.demo('vidshapes-multisensor-msi', num_frames=1, num_videos=1, image_size=(32, 32))
+            >>> sample_grid = self.new_sample_grid('video_detection', (2, 32, 32))
+            >>> target = sample_grid['positives'][0]
+            >>> target = self._infer_target_attributes(target)
+            >>> sample = self.load_sample(target)
         """
         target_ = target
         pad = target_.get('pad', None)
@@ -1182,12 +1220,25 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         space_pad = pad_slice[1:]
         time_pad = pad_slice[0]
 
-        # if time_pad.start is None:
+        # Determine if we need to pad out temporal samples on the end
+        if (data_time_dim is not None and requested_time_slice.stop > data_time_dim):
+            end_time_padding = requested_time_slice.stop - data_time_dim
+        else:
+            end_time_padding = 0
 
-        if time_pad[0] != 0 or time_pad[1] != 0 or requested_time_slice.start < 0 or (data_time_dim is not None and requested_time_slice.stop > data_time_dim):
+        if end_time_padding > 0:
             raise NotImplementedError(ub.paragraph(
                 '''
-                padding in time is not yet supported, but is an easy TODO
+                Requested a time slice that is larger the the number of
+                available time samples.  Padding in time is not yet supported
+                in all cases yet.
+                '''))
+
+        if time_pad[0] != 0 or time_pad[1] != 0 or requested_time_slice.start < 0:
+
+            raise NotImplementedError(ub.paragraph(
+                '''
+                Padding in time is not yet supported in all cases yet.
                 '''))
 
         # TODO: we may want to build a efficient temporal sampling
@@ -1222,10 +1273,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         hpad, wpad = space_pad
         final_space_box = request_space_box.pad(
             x_left=wpad[0], y_top=hpad[0], x_right=wpad[1], y_bot=hpad[1])
-        sample_tlbr = final_space_box
+        sample_ltrb = final_space_box
         st_dims = [(s.start, s.stop) for s in final_space_box.to_slices()[0]]
-        x_start = sample_tlbr.tl_x.ravel()[0]
-        y_start = sample_tlbr.tl_y.ravel()[0]
+        x_start = sample_ltrb.tl_x.ravel()[0]
+        y_start = sample_ltrb.tl_y.ravel()[0]
         offset = np.array([-x_start, -y_start])
         tf_abs_from_rel = kwimage.Affine.affine(offset=-offset)
         tf_rel_from_abs = tf_abs_from_rel.inv()
@@ -1241,7 +1292,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
             delayed_frame = coco_img.delay(
                 channels=request_chanspec, space=space,
-                interpolation=interpolation, nodata_method=nodata,
+                interpolation=interpolation,
+                nodata_method=nodata,
                 antialias=antialias
             )
 
@@ -1305,6 +1357,17 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     # disable this for the rest of the frame
                     frame_use_native_scale = False
 
+            finalizekw = dict(
+                # We shouldn't need to pass these args, but
+                # optimize is bugged and clobbers them, so
+                # we add them in as a fix.
+                prepare=False,
+                optimize=False,
+                interpolation=interpolation,
+                nodata_method=nodata,
+                antialias=antialias
+            )
+
             if frame_use_native_scale:
                 # print(undone_parts)
                 jagged_parts = []
@@ -1317,9 +1380,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     else:
                         warp_grid_to_part = warp_sample_from_grid
                     if as_xarray:
-                        frame = part.optimize().as_xarray().finalize()
+                        frame = part.optimize().as_xarray().finalize(**finalizekw)
                     else:
-                        frame = part.optimize().finalize()
+                        frame = part.optimize().finalize(**finalizekw)
                     jagged_parts.append(frame)
                     jagged_chans.append(part.channels)
                     jagged_warps.append(warp_grid_to_part)
@@ -1336,10 +1399,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     warp_sample_from_grid = tf_scale @ warp_sample_from_grid
                     # warp_sample_from_grid =  warp_sample_from_grid @ tf_scale
                 if as_xarray:
-                    frame = delayed_crop.as_xarray().finalize()
+                    frame = delayed_crop.as_xarray().finalize(**finalizekw)
                 else:
                     delayed_crop = delayed_crop.optimize()
-                    frame = delayed_crop.finalize()
+                    frame = delayed_crop.finalize(**finalizekw)
                 if dtype is not None:
                     frame = frame.astype(dtype)
                 space_frames.append(frame)
@@ -1377,7 +1440,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 # "input/sample space".
                 'offset': offset,
                 'tf_rel_to_abs': tf_abs_from_rel.matrix,  # doesnt make sense here
-                'sample_tlbr': sample_tlbr,
+                'sample_tlbr': sample_ltrb,
                 'st_dims': st_dims,
                 'data_dims': data_dims,
                 'pad': pad,
@@ -1503,7 +1566,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         st_dims = [(sl.start - pad_[0], sl.stop + pad_[1])
                    for sl, pad_ in zip(data_slice, extra_padding)]
         (y_start, y_stop), (x_start, x_stop) = st_dims[-2:]
-        sample_tlbr = kwimage.Boxes([x_start, y_start, x_stop, y_stop], 'ltrb')
+        sample_ltrb = kwimage.Boxes([x_start, y_start, x_stop, y_stop], 'ltrb')
         offset = np.array([-x_start, -y_start])
         tf_rel_to_abs = skimage.transform.AffineTransform(
             translation=-offset
@@ -1515,7 +1578,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             'params': {
                 'offset': offset,
                 'tf_rel_to_abs': tf_rel_to_abs,
-                'sample_tlbr': sample_tlbr,
+                'sample_tlbr': sample_ltrb,
                 'st_dims': st_dims,
                 'data_dims': data_dims,
                 'pad': pad,
@@ -1542,7 +1605,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> print('sample = {}'.format(ub.repr2(ub.util_dict.dict_diff(sample, ['im']), nl=-1)))
         """
 
-        if with_annots is True:
+        if isinstance(with_annots, int) and with_annots:
             with_annots = ['segmentation', 'keypoints', 'boxes']
         elif isinstance(with_annots, str):
             with_annots = with_annots.split('+')

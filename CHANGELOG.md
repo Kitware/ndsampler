@@ -3,7 +3,18 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
-## Version 0.7.2 - Unreleased
+## Version 0.7.3 - Unreleased
+
+### Added
+* Add CocoSampler.coerce
+
+### Fixed:
+* Work around issue in delayed image where it is not handling interpolation
+  correctly.
+* Fixed np.int, np.float, np.bool
+
+
+## Version 0.7.2 - Released 2022-09-28
 
 
 ## Version 0.7.1 - Released 2022-09-16
