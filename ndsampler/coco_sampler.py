@@ -962,11 +962,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 if isinstance(window_dims, str):
                     if window_dims == 'extent':
                         window_dims = (target_['height'], target_['width'])
-                        window_dims = np.ceil(np.array(window_dims)).astype(np.int)
+                        window_dims = np.ceil(np.array(window_dims)).astype(int)
                         window_dims = tuple(window_dims.tolist())
                     elif window_dims == 'square':
                         window_dims = (target_['height'], target_['width'])
-                        window_dims = np.ceil(np.array(window_dims)).astype(np.int)
+                        window_dims = np.ceil(np.array(window_dims)).astype(int)
                         window_dims = tuple(window_dims.tolist())
                         maxdim = max(window_dims)
                         window_dims = (maxdim, maxdim)

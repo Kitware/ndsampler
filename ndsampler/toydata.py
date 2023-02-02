@@ -260,7 +260,7 @@ class DynamicToySampler(abstract_sampler.AbstractSampler):
 
         # TODO: if window_dims was None, then crop the image to the size of the
         # annotation and remove non-visible other annots!
-        sample = {'im': im, 'tr': tr_, 'annots': annots}
+        sample = {'im': im, 'target': tr_, 'annots': annots}
         return sample
 
     def load_positive(self, index=None, pad=None, window_dims=None, rng=None):
