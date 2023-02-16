@@ -5,6 +5,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Version 0.7.4 - Unreleased
 
+### Added
+* Experimental support for `rtree` in `isect_indexer`
+* Add `verbose_ndsample` option to the target dictionary for debugging 
+
 
 ## Version 0.7.3 - Released 2023-02-02
 

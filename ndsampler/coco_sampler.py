@@ -681,6 +681,16 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> dets = sampler.dset.annots(annotation_ids).detections
             >>> print('dets.data = {}'.format(ub.repr2(dets.data, nl=1)))
 
+        Ignore:
+
+            import rtree
+            tree = rtree.Index()
+            tree.insert(0, [10, 10, 20, 20])
+            tree.insert(0, [20, 20, 30, 30])
+            tree.insert(0, [20, 50, 80, 80])
+
+            qtree = sampler.regions.isect_index.qtrees[1]
+
         Example:
             >>> import ndsampler
             >>> self = ndsampler.CocoSampler.demo()
@@ -1165,6 +1175,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         dtype = target_.get('dtype', None)
         nodata = target_.get('nodata', None)
 
+        verbose_ndsample = target_.get('verbose_ndsample', False)
+
         assert 'space_slice' in target_
         data_dims = target_['data_dims']
         requested_slice = target_['slices']
@@ -1281,6 +1293,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         tf_abs_from_rel = kwimage.Affine.affine(offset=-offset)
         tf_rel_from_abs = tf_abs_from_rel.inv()
 
+        if verbose_ndsample:
+            print('[ndsampler] Sampling')
+            print('target_ = {}'.format(ub.urepr(target_, nl=1)))
+            print('request_chanspec = {}'.format(ub.urepr(request_chanspec, nl=1)))
+            print('tf_abs_from_rel = {}'.format(ub.urepr(tf_abs_from_rel, nl=1)))
+            print('tf_rel_from_abs = {}'.format(ub.urepr(tf_rel_from_abs, nl=1)))
+
         for time_idx, coco_img in enumerate(coco_img_list):
 
             # Build up the transform from the grid to the final sample
@@ -1308,6 +1327,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             # alt_tf_rel_from_abs = delayed_crop.get_transform_from(delayed_frame)
 
             frame_use_native_scale = use_native_scale
+            undone_parts = None
             if frame_use_native_scale:
                 non_native_crop = delayed_crop
                 undone_parts, jagged_align = delayed_crop.undo_warps(
@@ -1368,6 +1388,15 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 antialias=antialias
             )
 
+            if verbose_ndsample:
+                print('Sample Single Frame')
+                print(f'frame_use_native_scale={frame_use_native_scale}')
+                print(f'realign_native={realign_native}')
+                print('time_idx = {}'.format(ub.urepr(time_idx, nl=1)))
+                print('coco_img = {}'.format(ub.urepr(coco_img, nl=1)))
+                print(f'frame_use_native_scale={frame_use_native_scale}')
+                print(f'warp_sample_from_grid={warp_sample_from_grid}')
+
             if frame_use_native_scale:
                 # print(undone_parts)
                 jagged_parts = []
@@ -1379,6 +1408,12 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                         warp_grid_to_part = kwimage.Affine.scale(extra_scale) @ warp_sample_from_grid
                     else:
                         warp_grid_to_part = warp_sample_from_grid
+
+                    if verbose_ndsample:
+                        print('* Native sampler part')
+                        print(f'warp_grid_to_part={warp_grid_to_part}')
+                        part.print_graph()
+
                     if as_xarray:
                         frame = part.optimize().as_xarray().finalize(**finalizekw)
                     else:
@@ -1398,6 +1433,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     delayed_crop = delayed_crop.warp({'scale': extra_scale})
                     warp_sample_from_grid = tf_scale @ warp_sample_from_grid
                     # warp_sample_from_grid =  warp_sample_from_grid @ tf_scale
+                if verbose_ndsample:
+                    print('* Aligned sample')
+                    print(f'warp_sample_from_grid={warp_sample_from_grid}')
+                    delayed_crop.print_graph()
                 if as_xarray:
                     frame = delayed_crop.as_xarray().finalize(**finalizekw)
                 else:
