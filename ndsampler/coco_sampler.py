@@ -1309,7 +1309,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
             warp_sample_from_grid = tf_rel_from_abs
 
-            delayed_frame = coco_img.delay(
+            delayed_frame = coco_img.imdelay(
                 channels=request_chanspec, space=space,
                 interpolation=interpolation,
                 nodata_method=nodata,
@@ -1441,6 +1441,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     frame = delayed_crop.as_xarray().finalize(**finalizekw)
                 else:
                     delayed_crop = delayed_crop.optimize()
+                    # delayed_crop._set_nested_params(**kwargs)
                     frame = delayed_crop.finalize(**finalizekw)
                 if dtype is not None:
                     frame = frame.astype(dtype)
