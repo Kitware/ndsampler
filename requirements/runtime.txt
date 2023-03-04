@@ -37,6 +37,6 @@ Pillow>=8.0.0     ; python_version < '3.10' and python_version >= '3.6'    # Pyt
 
 pyqtree >= 1.0.0
 
-kwimage >= 0.9.3
+kwimage >= 0.9.7
 kwarray >= 0.6.7
 kwcoco >= 0.5.6
