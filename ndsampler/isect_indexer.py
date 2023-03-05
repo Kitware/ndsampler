@@ -1,11 +1,21 @@
 import numpy as np
-import pyqtree
 import ubelt as ub
 import itertools as it
 import warnings
 import kwarray
 import kwimage
+import os
 
+try:
+    USE_RTREE = os.environ.get('USE_RTREE', '').lower()
+    USE_RTREE = USE_RTREE in {'0', 'false'} or USE_RTREE
+    if not USE_RTREE:
+        raise ImportError
+    import rtree
+    pyqtree = None
+except ImportError:
+    import pyqtree
+    rtree = None
 
 try:
     from xdev import profile
@@ -79,28 +89,67 @@ class FrameIntersectionIndex(ub.NiceRepr):
         return self
 
     @staticmethod
+    @profile
     def _build_index(dset, verbose=0):
         """
         """
         if verbose:
             print('Building isect index')
-        qtrees = {
-            img['id']: pyqtree.Index((0, 0, img['width'], img['height']))
-            for img in ub.ProgIter(dset.dataset['images'],
-                                   desc='init qtrees', verbose=verbose)
-        }
-        for qtree in qtrees.values():
-            qtree.aid_to_ltrb = {}  # Add extra index to track boxes
-        for ann in ub.ProgIter(dset.dataset['annotations'],
-                               desc='populate qtrees', verbose=verbose):
-            bbox = ann.get('bbox', None)
-            if bbox is not None:
-                aid = ann['id']
-                qtree = qtrees[ann['image_id']]
-                xywh_box = kwimage.Boxes(bbox, 'xywh')
-                ltrb_box = xywh_box.to_ltrb().data
-                qtree.insert(aid, ltrb_box)
-                qtree.aid_to_ltrb[aid] = ltrb_box
+        if rtree is not None:
+            # Try using trees first
+            qtrees = {}
+            for img in ub.ProgIter(dset.dataset['images'], desc='init rtrees', verbose=verbose):
+                gid = img['id']
+                qtree = rtree.Index()
+                qtree.width = img['width']
+                qtree.height = img['height']
+                qtrees[gid] = qtree
+                # qtrees[gid].bounds = [0, 0, img['width'], img['height']]
+            for qtree in qtrees.values():
+                qtree.aid_to_ltrb = {}  # Add extra index to track boxes
+
+            if dset.index is not None:
+                for gid, aids in ub.ProgIter(dset.index.gid_to_aids.items(),
+                                             total=len(dset.index.gid_to_aids),
+                                             desc='populate qtrees',
+                                             verbose=verbose):
+                    annots = dset.annots(aids)
+                    qtree = qtrees[gid]
+                    ltrb_boxes = annots.boxes.to_ltrb().data
+                    qtree.aid_to_ltrb = ub.dzip(aids, ltrb_boxes)
+                    for aid, ltrb_box in qtree.aid_to_ltrb.items():
+                        qtree.insert(aid, ltrb_box)
+            else:
+
+                for ann in ub.ProgIter(dset.dataset['annotations'],
+                                       desc='populate qtrees', verbose=verbose):
+
+                    bbox = ann.get('bbox', None)
+                    if bbox is not None:
+                        aid = ann['id']
+                        qtree = qtrees[ann['image_id']]
+                        xywh_box = kwimage.Boxes(bbox, 'xywh')
+                        ltrb_box = xywh_box.to_ltrb().data
+                        qtree.insert(aid, ltrb_box)
+                        qtree.aid_to_ltrb[aid] = ltrb_box
+        else:
+            qtrees = {
+                img['id']: pyqtree.Index((0, 0, img['width'], img['height']))
+                for img in ub.ProgIter(dset.dataset['images'],
+                                       desc='init qtrees', verbose=verbose)
+            }
+            for qtree in qtrees.values():
+                qtree.aid_to_ltrb = {}  # Add extra index to track boxes
+            for ann in ub.ProgIter(dset.dataset['annotations'],
+                                   desc='populate qtrees', verbose=verbose):
+                bbox = ann.get('bbox', None)
+                if bbox is not None:
+                    aid = ann['id']
+                    qtree = qtrees[ann['image_id']]
+                    xywh_box = kwimage.Boxes(bbox, 'xywh')
+                    ltrb_box = xywh_box.to_ltrb().data
+                    qtree.insert(aid, ltrb_box)
+                    qtree.aid_to_ltrb[aid] = ltrb_box
         return qtrees
 
     @profile
@@ -116,16 +165,24 @@ class FrameIntersectionIndex(ub.NiceRepr):
         Returns:
             List[int]: list of annotation ids
 
+        CommandLine:
+            USE_RTREE=0 xdoctest -m ndsampler.isect_indexer FrameIntersectionIndex.overlapping_aids
+            USE_RTREE=1 xdoctest -m ndsampler.isect_indexer FrameIntersectionIndex.overlapping_aids
+
         Example:
+            >>> from ndsampler.isect_indexer import *  # NOQA
             >>> self = FrameIntersectionIndex.demo('shapes128')
             >>> for gid, qtree in self.qtrees.items():
             >>>     box = kwimage.Boxes([0, 0, qtree.width, qtree.height], 'xywh')
-            >>>     self.overlapping_aids(gid, box)
+            >>>     print(self.overlapping_aids(gid, box))
         """
         boxes1 = box[None, :] if len(box.shape) == 1 else box
         qtree = self.qtrees[gid]
         query = boxes1.to_ltrb().data[0]
-        isect_aids = sorted(set(qtree.intersect(query)))
+        if rtree is None:
+            isect_aids = sorted(set(qtree.intersect(query)))
+        else:
+            isect_aids = sorted(set(qtree.intersection(query)))
         return isect_aids
 
     def ious(self, gid, box):

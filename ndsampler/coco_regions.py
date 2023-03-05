@@ -218,7 +218,9 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
             # FIXME! Any use of cacher here should be wrapped in an
             # InterProcessLock! The sampler often exists in a multiprocessing
             # context!
-            cacher = self._cacher('isect_index', verbose=verbose)
+            # TODO: serialize rtree
+            cacher = self._cacher('isect_index', verbose=verbose, disable=isect_indexer.USE_RTREE,
+                                  extra_deps=ub.odict({'use_rtree': isect_indexer.USE_RTREE}))
             _isect_index = cacher.tryload(on_error='clear')
             if _isect_index is None:
                 _isect_index = isect_indexer.FrameIntersectionIndex.from_coco(self.dset)

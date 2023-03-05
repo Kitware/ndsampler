@@ -3,7 +3,17 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
-## Version 0.7.3 - Unreleased
+## Version 0.7.4 - Unreleased
+
+### Added
+* Experimental support for `rtree` in `isect_indexer`
+* Add `verbose_ndsample` option to the target dictionary for debugging 
+
+### Changed
+* Small speedups
+
+
+## Version 0.7.3 - Released 2023-02-02
 
 ### Added
 * Add CocoSampler.coerce
