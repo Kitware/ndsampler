@@ -35,7 +35,7 @@ def _cog_cache_write(gpath, cache_gpath, config=None):
         >>> import ndsampler
         >>> from ndsampler.abstract_frames import *
         >>> import kwcoco
-        >>> workdir = ub.ensure_app_cache_dir('ndsampler')
+        >>> workdir = ub.Path.appdir('ndsampler').ensuredir()
         >>> dset = kwcoco.CocoDataset.demo()
         >>> imgs = dset.images()
         >>> id_to_name = imgs.lookup('file_name', keepid=True)

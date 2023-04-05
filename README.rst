@@ -1,7 +1,7 @@
 ndsampler
 =========
 
-|GitlabCIPipeline| |GitlabCICoverage| |Pypi| |Downloads| 
+|GitlabCIPipeline| |GitlabCICoverage| |Pypi| |Downloads|
 
 
 +------------------+---------------------------------------------------------+
@@ -16,7 +16,7 @@ ndsampler
 
 The main webpage for this project is: https://gitlab.kitware.com/computer-vision/ndsampler
 
-Fast random access to small regions in large images. 
+Fast random access to small regions in large images.
 
 Random access is amortized by converting images into an efficient backend
 format (current backends include cloud-optimized geotiffs (cog) or numpy array
@@ -83,18 +83,18 @@ Also installs the kwcoco package and CLI tool.
 Usage
 -----
 
-The main pattern of usage is: 
+The main pattern of usage is:
 
 1. Use kwcoco to load a json-based COCO dataset (or create a ``kwcoco.CocoDataset``
    programatically).
 
 2. Pass that dataset to an ``ndsampler.CocoSampler`` object, and that
    effectively wraps the json structure that holds your images and annotations
-   and it allows you to sample patches from those images efficiently. 
+   and it allows you to sample patches from those images efficiently.
 
 3. You can either manually specify image + region or you can specify an
    annotation id, in which case it loads the region corresponding to the
-   annotation.   
+   annotation.
 
 
 Example
@@ -127,7 +127,7 @@ This example shows how you can efficiently load subregions from images.
     >>> print(coco_dset)
     <CocoDataset(tag=None, n_anns=0, n_imgs=3, n_cats=0)>
     >>> # Now pass the dataset to a sampler and tell it where it can store temporary files
-    >>> workdir = ub.ensure_app_cache_dir('ndsampler/demo')
+    >>> workdir = ub.Path.appdir('ndsampler/demo').ensuredir()
     >>> sampler = ndsampler.CocoSampler(coco_dset, workdir=workdir)
     >>> # Now you can load arbirary samples by specifing a target dictionary
     >>> # with an image_id (gid) center location (cx, cy) and width, height.
@@ -149,16 +149,16 @@ This example shows how you can efficiently load subregions from images.
 A Note On COGs
 --------------
 COGs (cloud optimized geotiffs) are the backbone efficient sampling in the
-ndsampler library. 
+ndsampler library.
 
 To preform deep learning efficiently you need to be able to effectively
 randomly sample cropped regions from images, so when ``ndsampler.Sampler``
 (more acurately the ``FramesSampler`` belonging to the base ``Sampler`` object)
-is in "cog" mode, it caches all images larger than 512x512 in cog format. 
+is in "cog" mode, it caches all images larger than 512x512 in cog format.
 
 I've noticed a significant speedups even for "small" 1024x1024 images.  I
 haven't made effective use of the overviews feature yet, but in the future I
-plan to, as I want to allow ndsampler to sample in scale as well as in space. 
+plan to, as I want to allow ndsampler to sample in scale as well as in space.
 
 Its possible to obtain this speedup with the "npy" backend, which supports true
 random sampling, but this is an uncompressed format, which can require a large
@@ -193,7 +193,7 @@ Also possible to use system packages
     sudo apt install libgdal-dev
 
     GDAL_VERSION=`gdal-config --version`
-    echo "GDAL_VERSION = $GDAL_VERSION" 
+    echo "GDAL_VERSION = $GDAL_VERSION"
     pip install --global-option=build_ext --global-option="-I/usr/include/gdal" GDAL==$GDAL_VERSION
 
 
@@ -216,7 +216,7 @@ TODO
   video, so ndimensions is builtin to most places in the code. However, there are
   currently no test cases that demonstrate that this library does work with video.
   So we should (a) port the video toydata code from irharn to test ndcases and (b)
-  fix the code to work for both still images and video where things break. 
+  fix the code to work for both still images and video where things break.
 
 - [ ] Currently we are good at loading many small objects in 2d images.
   However, we are bad at loading images with one single large object that needs

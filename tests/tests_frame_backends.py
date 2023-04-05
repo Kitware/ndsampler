@@ -53,7 +53,7 @@ def test_variable_backend():
     import ndsampler
     import kwcoco
     import ubelt as ub
-    dpath = ub.ensure_app_cache_dir('ndsampler/tests/test_variable_backend')
+    dpath = ub.Path.appdir('ndsampler/tests/test_variable_backend').ensuredir()
     ub.delete(dpath)
     ub.ensuredir(dpath)
 

@@ -82,7 +82,7 @@ def _benchmark_cog_conversions():
     data = np.random.randint(0, 255, shape, dtype=np.uint16)
     print('Test data size = {}'.format(xdev.byte_str(data.size * data.dtype.itemsize)))
 
-    dpath = ub.ensure_app_cache_dir('ndsampler', 'cog_benchmark')
+    dpath = ub.Path.appdir('ndsampler', 'cog_benchmark').ensuredir()
     src_fpath = join(dpath, 'src.png')
     kwimage.imwrite(src_fpath, data)
 
@@ -604,7 +604,7 @@ class LazyGDalFrameFile(ub.NiceRepr):
             >>> from ndsampler.utils.util_gdal import *  # NOQA
             >>> self = LazyGDalFrameFile.demo(dsize=(6600, 4400))
         """
-        cache_dpath = ub.ensure_app_cache_dir('ndsampler/demo')
+        cache_dpath = ub.Path.appdir('ndsampler/demo').ensuredir()
         fpath = join(cache_dpath, key + '.cog.tiff')
         depends = ub.odict(dsize=dsize)
         stamp = ub.CacheStamp(fname=key, depends=depends, dpath=cache_dpath,

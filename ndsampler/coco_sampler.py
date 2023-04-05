@@ -33,7 +33,7 @@ Example:
     >>> print(coco_dset)
     <CocoDataset(tag=None, n_anns=1, n_imgs=3, ... n_cats=1)>
     >>> # Now pass the dataset to a sampler and tell it where it can store temporary files
-    >>> workdir = ub.ensure_app_cache_dir('ndsampler/demo')
+    >>> workdir = ub.Path.appdir('ndsampler/demo').ensuredir()
     >>> sampler = ndsampler.CocoSampler(coco_dset, workdir=workdir)
     >>> # Now you can load arbirary samples by specifing a target dictionary
     >>> # with an image_id (gid) center location (cx, cy) and width, height.
@@ -143,7 +143,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             dset.remove_annotations(toremove)
             dset.add_category('background', id=0)
         if workdir is None:
-            workdir = ub.ensure_app_cache_dir('ndsampler')
+            workdir = ub.Path.appdir('ndsampler').ensuredir()
         self = CocoSampler(dset, workdir=workdir, backend=backend)
         return self
 

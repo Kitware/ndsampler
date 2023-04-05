@@ -470,7 +470,7 @@ class Frames(object):
 
         Example:
             >>> from ndsampler.abstract_frames import *
-            >>> workdir = ub.ensure_app_cache_dir('ndsampler/tests/test_cog_precomp')
+            >>> workdir = ub.Path.appdir('ndsampler/tests/test_cog_precomp').ensuredir()
             >>> print('workdir = {!r}'.format(workdir))
             >>> ub.delete(workdir)
             >>> ub.ensuredir(workdir)
@@ -594,7 +594,7 @@ class SimpleFrames(Frames):
             gid: dset.get_image_fpath(gid) for gid in dset.imgs.keys()
         }
         if kw.get('workdir', None) is None:
-            kw['workdir'] = ub.ensure_app_cache_dir('ndsampler')
+            kw['workdir'] = ub.Path.appdir('ndsampler').ensuredir()
         self = SimpleFrames(id_to_path, **kw)
         return self
 

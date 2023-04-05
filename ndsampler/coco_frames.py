@@ -23,7 +23,7 @@ class CocoFrames(abstract_frames.Frames, util_misc.HashIdentifiable):
         >>> import ndsampler
         >>> import kwcoco
         >>> import ubelt as ub
-        >>> workdir = ub.ensure_app_cache_dir('ndsampler')
+        >>> workdir = ub.Path.appdir('ndsampler').ensuredir()
         >>> dset = kwcoco.CocoDataset.demo(workdir=workdir)
         >>> dset._ensure_imgsize()
         >>> self = CocoFrames(dset, workdir=workdir)
