@@ -282,9 +282,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         Args:
             image_id (int): the coco image id
 
-            cache (bool, default=True): if True returns the fast
+            cache (bool): if True returns the fast
                 subregion-indexable file reference. Otherwise, eagerly loads
-                the entire image.
+                the entire image. Defaults to True.
 
         Returns:
             Tuple[Dict, List[Dict]]:
@@ -332,9 +332,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         Args:
             image_id (int): the coco image id
 
-            cache (bool, default=True): if True returns the fast
+            cache (bool): if True returns the fast
                 subregion-indexable file reference. Otherwise, eagerly loads
-                the entire image.
+                the entire image. Defaults to True.
 
         Returns:
             ArrayLike: either ndarray data or a indexable reference
@@ -360,12 +360,12 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         Args:
             index (int): index of target region
 
-            with_annots (bool | str, default=True):
+            with_annots (bool | str):
                 if True, also extracts information about any annotation that
                 overlaps the region of interest (subject to visibility_thresh).
                 Can also be a List[str] that specifies which specific subinfo
                 should be extracted. Valid strings in this list are: boxes,
-                keypoints, and segmenation.
+                keypoints, and segmenation. Defaults to True.
 
             target (Dict): Extra target arguments that update the positive target,
                 like window_dims, pad, etc.... See :func:`load_sample` for
@@ -402,12 +402,12 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         Args:
             index (int): index of positive target
 
-            with_annots (bool | str, default=True):
+            with_annots (bool | str):
                 if True, also extracts information about any annotation that
                 overlaps the region of interest (subject to visibility_thresh).
                 Can also be a List[str] that specifies which specific subinfo
                 should be extracted. Valid strings in this list are: boxes,
-                keypoints, and segmentation.
+                keypoints, and segmentation. Defaults to True.
 
             target (Dict): Extra target arguments that update the positive target,
                 like window_dims, pad, etc.... See :func:`load_sample` for
@@ -460,12 +460,12 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 presampled pool, otherwise the next negative in the pool is
                 returned.
 
-            with_annots (bool | str, default=True):
+            with_annots (bool | str):
                 if True, also extracts information about any annotation that
                 overlaps the region of interest (subject to visibility_thresh).
                 Can also be a List[str] that specifies which specific subinfo
                 should be extracted. Valid strings in this list are: boxes,
-                keypoints, and segmentation.
+                keypoints, and segmentation.  Defaults to True.
 
             target (Dict): Extra target arguments that update the positive target,
                 like window_dims, pad, etc.... See :func:`load_sample` for
@@ -580,14 +580,15 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 The `channels` key can be specified as a channel code or
                     :class:`kwcoco.ChannelSpec` object.  (NEW in 0.6.1)
 
-                as_xarray (bool, default=False):
-                    if True, return the image data as an xarray object
+                as_xarray (bool):
+                    if True, return the image data as an xarray object.
+                    default=False
 
-                interpolation (str, default='auto'):
-                    type of resample interpolation
+                interpolation (str):
+                    type of resample interpolation. Defaults to 'auto'.
 
-                antialias (str, default='auto'):
-                    antialias sample or not
+                antialias (str):
+                    antialias sample or not. Defaults to 'auto'.
 
                 nodata: override function level nodata
 
@@ -614,19 +615,19 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     Cast the loaded data to this type. If unspecified returns the
                     data as-is.
 
-                nodata (int | None, default=None):
+                nodata (int | None):
                     If specified, for integer data with nodata values, this is
                     passed to kwcoco delayed image finalize. The data is converted
                     to float32 and nodata values are replaced with nan. These
                     nan values are handled correctly in subsequent warping
-                    operations.
+                    operations. Defaults to None.
 
-            with_annots (bool | str, default=True):
+            with_annots (bool | str):
                 if True, also extracts information about any annotation that
                 overlaps the region of interest (subject to visibility_thresh).
                 Can also be a List[str] that specifies which specific subinfo
                 should be extracted. Valid strings in this list are: boxes,
-                keypoints, and segmentation.
+                keypoints, and segmentation. Defaults to True.
 
             visible_thresh (float): does not return annotations with visibility
                 less than this threshold.
