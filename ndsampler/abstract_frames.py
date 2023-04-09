@@ -128,7 +128,7 @@ class Frames(object):
         self._id_to_pathinfo = {}
 
         if workdir is None:
-            workdir = ub.get_app_cache_dir('ndsampler')
+            workdir = ub.Path.appdir('ndsampler')
             if self._backend['type'] is not None:
                 warnings.warn('Frames workdir not specified. '
                               'Defaulting to {!r}'.format(workdir))
@@ -486,8 +486,8 @@ class Frames(object):
         Example:
             >>> from ndsampler.abstract_frames import *
             >>> import ndsampler
-            >>> workdir = ub.get_app_cache_dir('ndsampler/tests/test_cog_precomp2')
-            >>> ub.delete(workdir)
+            >>> workdir = ub.Path.appdir('ndsampler/tests/test_cog_precomp2')
+            >>> workdir.delete()
             >>> # TEST NPY
             >>> #
             >>> sampler = ndsampler.CocoSampler.demo(workdir=workdir, backend='npy')
