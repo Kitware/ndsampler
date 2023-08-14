@@ -535,8 +535,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         sample = self.load_sample(target_, with_annots=with_annots, **kw)
         return sample
 
-    def load_sample(self, target=None, with_annots=True, visible_thresh=0.0,
-                    **kwargs):
+    def load_sample(self, target=None, with_annots=True, annot_ids=None,
+                    visible_thresh=0.0, **kwargs):
         """
         Loads the volume data associated with the bbox and frame of a target
 
@@ -628,6 +628,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 Can also be a List[str] that specifies which specific subinfo
                 should be extracted. Valid strings in this list are: boxes,
                 keypoints, and segmentation. Defaults to True.
+
+            annot_ids (List[int]):
+                if specified, assume the user has precomputed which annotations
+                should be loaded for the target region. Skip the spatial lookup
+                step and just load the data for these annotations instead.
 
             visible_thresh (float): does not return annotations with visibility
                 less than this threshold.
@@ -820,7 +825,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         sample = self._load_slice(target_)
 
         if with_annots or ub.iterable(with_annots):
-            self._populate_overlap(sample, visible_thresh, with_annots)
+            self._populate_overlap(sample, visible_thresh, with_annots,
+                                   annot_ids)
 
         sample['classes'] = self.classes
         sample['kp_classes'] = self.kp_classes
@@ -1438,6 +1444,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     print('* Aligned sample')
                     print(f'warp_sample_from_grid={warp_sample_from_grid}')
                     delayed_crop.print_graph()
+                    delayed_crop = delayed_crop.optimize()
+                    print("Optimized:")
+                    delayed_crop.print_graph()
+
                 if as_xarray:
                     frame = delayed_crop.as_xarray().finalize(**finalizekw)
                 else:
@@ -1628,7 +1638,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         return sample
 
     @profile
-    def _populate_overlap(self, sample, visible_thresh=0.1, with_annots=True):
+    def _populate_overlap(self, sample, visible_thresh=0.1, with_annots=True,
+                          annot_ids=None):
         """
         Add information about annotations overlapping the sample.
 
@@ -1702,9 +1713,17 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             else:
                 imgspace_sample_box = sample_box.warp(tf_img_from_abs.matrix).quantize()
 
-            # Find which bounding boxes are visible in this region
-            overlap_aids = self.regions.overlapping_aids(
-                gid, imgspace_sample_box, visible_thresh=visible_thresh)
+            if annot_ids is None:
+                # Find which bounding boxes are visible in this region
+                overlap_aids = self.regions.overlapping_aids(
+                    gid, imgspace_sample_box, visible_thresh=visible_thresh)
+            else:
+                # If the user gave us a set of annotations, load those instead.
+                # But only consider the subset that actually belong to this
+                # image.
+                overlap_aids = annot_ids
+                flags = [coco_dset.anns[aid]['image_id'] == gid for aid in annot_ids]
+                overlap_aids = list(ub.compress(annot_ids, flags))
 
             # Get info about all annotations inside this window
             overlap_anns = [coco_dset.anns[aid] for aid in overlap_aids]
