@@ -31,7 +31,7 @@ Example:
     >>> image_id = 0
     >>> coco_dset.add_annotation(image_id=image_id, category_id=category_id, bbox=kwimage.Boxes([[140, 10, 180, 180]], 'xywh'))
     >>> print(coco_dset)
-    <CocoDataset(tag=None, n_anns=1, n_imgs=3, ... n_cats=1)>
+    <CocoDataset(tag=None, n_anns=1, n_imgs=3, ... n_cats=1...)>
     >>> # Now pass the dataset to a sampler and tell it where it can store temporary files
     >>> workdir = ub.Path.appdir('ndsampler/demo').ensuredir()
     >>> sampler = ndsampler.CocoSampler(coco_dset, workdir=workdir)
@@ -50,7 +50,7 @@ Example:
     im.shape=(300, 300, 3)
     >>> dets = sample['annots']['frame_dets'][0]
     >>> print(f'dets={dets}')
-    >>> print('dets.data = {}'.format(ub.repr2(dets.data, nl=1, sv=1)))
+    >>> print('dets.data = {}'.format(ub.urepr(dets.data, nl=1, sv=1, sort=1)))
     dets=<Detections(1)>
     dets.data = {
         'aids': [1],
@@ -685,7 +685,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> ann = sampler.dset.anns[aid]
             >>> # Method2: Access ann objects via annots method
             >>> dets = sampler.dset.annots(annotation_ids).detections
-            >>> print('dets.data = {}'.format(ub.repr2(dets.data, nl=1)))
+            >>> print('dets.data = {}'.format(ub.urepr(dets.data, nl=1)))
 
         Ignore:
 
@@ -784,7 +784,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> target['channels'] = 'B1|B8'
             >>> target['as_xarray'] = False
             >>> sample = self.load_sample(target)
-            >>> print(ub.repr2(sample['target'], nl=1))
+            >>> print(ub.urepr(sample['target'], nl=1))
             >>> print(sample['im'].shape)
             >>> assert sample['im'].shape == (3, 128, 128, 2)
             >>> target['channels'] = '<all>'
@@ -843,7 +843,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> self = CocoSampler.demo()
             >>> target = {'aid': 1, 'as_xarray': True}
             >>> target_ = self._infer_target_attributes(target)
-            >>> print('target_ = {}'.format(ub.repr2(target_, nl=1)))
+            >>> print('target_ = {}'.format(ub.urepr(target_, nl=1)))
             >>> assert target_['gid'] == 1
             >>> assert all(k in target_ for k in ['cx', 'cy', 'width', 'height'])
 
@@ -855,12 +855,12 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
             >>> target = {'vidid': 1, 'as_xarray': True}
             >>> target_ = self._infer_target_attributes(target)
-            >>> print('target_ = {}'.format(ub.repr2(target_, nl=1)))
+            >>> print('target_ = {}'.format(ub.urepr(target_, nl=1)))
             >>> assert 'gids' in target_
 
             >>> target = {'gids': [1, 2], 'as_xarray': True}
             >>> target_ = self._infer_target_attributes(target)
-            >>> print('target_ = {}'.format(ub.repr2(target_, nl=1)))
+            >>> print('target_ = {}'.format(ub.urepr(target_, nl=1)))
         """
         # we might modify the target
         target_ = target.copy()
@@ -1061,7 +1061,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> target['channels'] = 'B1|B8'
             >>> target['as_xarray'] = False
             >>> sample = self.load_sample(target)
-            >>> print(ub.repr2(sample['target'], nl=1))
+            >>> print(ub.urepr(sample['target'], nl=1))
             >>> print(sample['im'].shape)
             >>> assert sample['im'].shape == (3, 128, 128, 2)
             >>> target['channels'] = '<all>'
@@ -1079,7 +1079,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> target['as_xarray'] = False
             >>> target['space_slice'] = (slice(-64, 64), slice(-64, 64))
             >>> sample = self.load_sample(target)
-            >>> print(ub.repr2(sample['target'], nl=1))
+            >>> print(ub.urepr(sample['target'], nl=1))
             >>> print(sample['im'].shape)
             >>> assert sample['im'].shape == (3, 128, 128, 2)
             >>> target['channels'] = '<all>'
@@ -1101,10 +1101,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> assert len(frames) == 3
             >>> assert all(sum(p.shape[2] for p in f) == 7 for f in frames)
             >>> frames[0] == 3
-            >>> print('jagged_chans = {}'.format(ub.repr2(jagged_chans, nl=1)))
-            >>> print('jagged_shape = {}'.format(ub.repr2(jagged_shape, nl=1)))
-            >>> print('jagged_chans2 = {}'.format(ub.repr2(jagged_chans2, nl=1)))
-            >>> print('jagged_align = {}'.format(ub.repr2(jagged_align, nl=1)))
+            >>> print('jagged_chans = {}'.format(ub.urepr(jagged_chans, nl=1)))
+            >>> print('jagged_shape = {}'.format(ub.urepr(jagged_shape, nl=1)))
+            >>> print('jagged_chans2 = {}'.format(ub.urepr(jagged_chans2, nl=1)))
+            >>> print('jagged_align = {}'.format(ub.urepr(jagged_align, nl=1)))
 
             >>> # Test realigned native scale sampling
             >>> target['use_native_scale'] = True
@@ -1459,8 +1459,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 space_frames.append(frame)
 
                 # warp_sample_from_grid_alt = delayed_crop.get_transform_from(delayed_frame)
-                # print('warp_sample_from_grid_alt = {}'.format(ub.repr2(warp_sample_from_grid_alt, nl=1)))
-                # print('warp_sample_from_grid = {}'.format(ub.repr2(warp_sample_from_grid, nl=1)))
+                # print('warp_sample_from_grid_alt = {}'.format(ub.urepr(warp_sample_from_grid_alt, nl=1)))
+                # print('warp_sample_from_grid = {}'.format(ub.urepr(warp_sample_from_grid, nl=1)))
 
                 frame_sample_from_grid_warps.append(warp_sample_from_grid)
 
@@ -1654,7 +1654,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> target = self._infer_target_attributes(target)
             >>> sample = self._load_slice(target)
             >>> sample = self._populate_overlap(sample)
-            >>> print('sample = {}'.format(ub.repr2(ub.util_dict.dict_diff(sample, ['im']), nl=-1)))
+            >>> print('sample = {}'.format(ub.urepr(ub.util_dict.dict_diff(sample, ['im']), nl=-1)))
         """
 
         if isinstance(with_annots, int) and with_annots:

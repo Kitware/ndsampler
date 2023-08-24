@@ -69,9 +69,10 @@ def validate(ds, check_tiled=True):
             'GDAL 2.2 or above required')
 
     unicode_type = type(''.encode('utf-8').decode('utf-8'))
-    if isinstance(ds, (str, unicode_type)):
+    import os
+    if isinstance(ds, (str, unicode_type, os.PathLike)):
         gdal.PushErrorHandler()
-        ds = gdal.Open(ds)
+        ds = gdal.Open(os.fspath(ds))
         gdal.PopErrorHandler()
         if ds is None:
             errors.append('Invalid file : %s' % gdal.GetLastErrorMsg())
@@ -242,7 +243,7 @@ def main():
 
         if verbose:
             import ubelt as ub
-            print('detils = ' + ub.repr2(details, nl=1))
+            print('detils = ' + ub.urepr(details, nl=1))
 
         if (not quiet and not warnings and not errors) or verbose:
             if 'data_offsets' in details:

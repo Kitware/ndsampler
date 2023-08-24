@@ -39,9 +39,9 @@ def _doctest_check_cog(data, fpath):
     errors = _validate_cog(fpath)
     warnings, errors, details = _validate_cog(fpath)
     print('disk_shape = {!r}'.format(disk_shape))
-    print('details = ' + ub.repr2(details, nl=2))
-    print('warnings = ' + ub.repr2(warnings, nl=1))
-    print('errors = ' + ub.repr2(errors, nl=1))
+    print('details = ' + ub.urepr(details, nl=2))
+    print('warnings = ' + ub.urepr(warnings, nl=1))
+    print('errors = ' + ub.urepr(errors, nl=1))
     passed = not errors
 
     assert data.shape == disk_shape

@@ -95,8 +95,8 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
         >>> self = CocoRegions.demo()
         >>> pos_tr = self.get_positive(rng=0)
         >>> neg_tr = self.get_negative(rng=0)
-        >>> print(ub.repr2(pos_tr, precision=2))
-        >>> print(ub.repr2(neg_tr, precision=2))
+        >>> print(ub.urepr(pos_tr, precision=2))
+        >>> print(ub.urepr(neg_tr, precision=2))
     """
 
     def __init__(self, dset, workdir=None, verbose=1):
@@ -181,7 +181,7 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
         n_targets = len(self._targets) if self._targets is not None else None
         n_pos = len(self._pos_select_idxs) if self._pos_select_idxs is not None else None
         n_neg = len(self._negative_pool) if self._negative_pool is not None else None
-        n_dset = (ub.repr2(self.dset.basic_stats(), nl=0, sep='', si=True,
+        n_dset = (ub.urepr(self.dset.basic_stats(), nl=0, sep='', si=True,
                            explicit=1, nobr=1) if self.dset is not None else None)
         nice = ('{{nPos={pos}, nNeg={neg}}} ∼ '
                 '{{nViable={targets}}} ⊆ '
@@ -377,7 +377,7 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
             >>> assert 'category_id' in tr
             >>> assert 'aid' in tr
             >>> assert 'cx' in tr
-            >>> print(ub.repr2(tr, precision=2))
+            >>> print(ub.urepr(tr, precision=2))
             {
                 'aid': -1,
                 'category_id': 0,
@@ -433,7 +433,7 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
             >>> rng = kwarray.ensure_rng(0)
             >>> self = coco_sampler.CocoSampler.demo().regions
             >>> tr = self.get_positive(0, rng=rng)
-            >>> print(ub.repr2(tr, precision=2))
+            >>> print(ub.urepr(tr, precision=2))
         """
         if index is None:
             rng = kwarray.ensure_rng(rng)
@@ -880,13 +880,13 @@ def new_video_sample_grid(dset, window_dims=None, window_overlap=0.0,
         >>> dset.conform()
         >>> window_dims = (2, 224, 224)
         >>> sample_grid = new_video_sample_grid(dset, window_dims)
-        >>> print('sample_grid = {}'.format(ub.repr2(sample_grid, nl=2)))
+        >>> print('sample_grid = {}'.format(ub.urepr(sample_grid, nl=2)))
         >>> # Now try to load a sample
         >>> tr = sample_grid['positives'][0]
         >>> import ndsampler
         >>> sampler = ndsampler.CocoSampler(dset)
         >>> tr_ = sampler._infer_target_attributes(tr)
-        >>> print('tr_ = {}'.format(ub.repr2(tr_, nl=1)))
+        >>> print('tr_ = {}'.format(ub.urepr(tr_, nl=1)))
         >>> sample = sampler.load_sample(tr)
         >>> assert sample['im'].shape == (2, 224, 224, 5)
 
@@ -1051,7 +1051,7 @@ def new_image_sample_grid(dset, window_dims, window_overlap=0.0,
         >>> sampler = ndsampler.CocoSampler(dset)
         >>> tr['channels'] = '<all>'
         >>> tr_ = sampler._infer_target_attributes(tr)
-        >>> print('tr_ = {}'.format(ub.repr2(tr_, nl=1)))
+        >>> print('tr_ = {}'.format(ub.urepr(tr_, nl=1)))
         >>> sample = sampler.load_sample(tr)
         >>> assert sample['im'].shape == (224, 224, 5)
 

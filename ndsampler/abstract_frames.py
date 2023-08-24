@@ -566,7 +566,7 @@ class SimpleFrames(Frames):
         >>> from ndsampler.abstract_frames import *
         >>> self = SimpleFrames.demo(backend='npy')
         >>> pathinfo = self._build_pathinfo(1)
-        >>> print('pathinfo = {}'.format(ub.repr2(pathinfo, nl=3)))
+        >>> print('pathinfo = {}'.format(ub.urepr(pathinfo, nl=3)))
 
         >>> assert self.load_image(1).shape == (512, 512, 3)
         >>> assert self.load_region(1, (slice(-20), slice(-10))).shape == (492, 502, 3)
@@ -634,7 +634,7 @@ class AlignableImageData(object):
         >>> frames = SimpleFrames.demo(backend='npy')
         >>> pathinfo = frames._build_pathinfo(1)
         >>> cache_backend = frames._backend
-        >>> print('pathinfo = {}'.format(ub.repr2(pathinfo, nl=3)))
+        >>> print('pathinfo = {}'.format(ub.urepr(pathinfo, nl=3)))
         >>> self = AlignableImageData(pathinfo, cache_backend)
         >>> img_region = None
         >>> prefused = self._load_prefused_region(img_region)

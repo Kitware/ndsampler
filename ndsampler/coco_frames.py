@@ -81,11 +81,11 @@ class CocoFrames(abstract_frames.Frames, util_misc.HashIdentifiable):
             >>> sampler2 = ndsampler.CocoSampler.demo('vidshapes5-multispectral')
             >>> self = sampler1.frames
             >>> pathinfo = self._build_pathinfo(1)
-            >>> print('pathinfo = {}'.format(ub.repr2(pathinfo, nl=3)))
+            >>> print('pathinfo = {}'.format(ub.urepr(pathinfo, nl=3)))
 
             >>> self = sampler2.frames
             >>> pathinfo = self._build_pathinfo(1)
-            >>> print('pathinfo = {}'.format(ub.repr2(pathinfo, nl=3)))
+            >>> print('pathinfo = {}'.format(ub.urepr(pathinfo, nl=3)))
         """
         img = self.dset.imgs[image_id]
         default_fname = img.get('file_name', None)
