@@ -592,18 +592,21 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
                 nodata: override function level nodata
 
-                use_native_scale (bool): If True, the "im" field is returned
-                    as a jagged list of data that are as close to native
-                    resolution as possible while still maintaining alignment up
-                    to a scale factor. Currently only available for video
-                    sampling.
+                use_native_scale (bool):
+                    If True, the "im" field is returned as a jagged list of
+                    data that are as close to native resolution as possible
+                    while still maintaining alignment up to a scale factor.
+                    Currently only available for video sampling.
 
                 scale (float | Tuple[float, float]):
                     if specified, the same window is sampled, but the data is
                     returned warped by the extra scale factor. This augments
                     the existing image or video scale factor. Any annotations
                     are also warped according to this factor such that they
-                    align with the returned data.
+                    align with the returned data. By default this scale is
+                    applied to videospace, unless use_native_scale is given, in
+                    which case it is applied to the native resolution
+                    (generally you dont want to combine these).
 
                 pad (tuple): (height, width) extra context to add to window dims.
                     This helps prevent augmentation from producing boundary effects
@@ -662,6 +665,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             xdoctest -m ndsampler.coco_sampler CocoSampler.load_sample:1 --show
             xdoctest -m ndsampler.coco_sampler CocoSampler.load_sample:3 --show
 
+        Ignore:
+            globals().update(xdev.get_func_kwargs(ndsampler.CocoSampler.load_sample))
+
         Example:
             >>> import ndsampler
             >>> self = ndsampler.CocoSampler.demo()
@@ -686,16 +692,6 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> # Method2: Access ann objects via annots method
             >>> dets = sampler.dset.annots(annotation_ids).detections
             >>> print('dets.data = {}'.format(ub.urepr(dets.data, nl=1)))
-
-        Ignore:
-
-            import rtree
-            tree = rtree.Index()
-            tree.insert(0, [10, 10, 20, 20])
-            tree.insert(0, [20, 20, 30, 30])
-            tree.insert(0, [20, 50, 80, 80])
-
-            qtree = sampler.regions.isect_index.qtrees[1]
 
         Example:
             >>> import ndsampler
@@ -817,6 +813,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> jagged_align = [[a for a in m['align']] for m in sample3['params']['jagged_meta']]
         """
         if target is None:
+            if 'tr' in kwargs:
+                ub.schedule_deprecation(
+                    'ndsampler', 'tr', 'keyword arg to load_sample',
+                    migration='the name is now "target", use that instead',
+                    deprecate='0.7.3', error='1.0.0', remove='1.1.0')
             target = kwargs.pop('tr', None)
         if target is None:
             raise ValueError('The target dictionary must be specified')
@@ -1015,8 +1016,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         return target_
 
     @profile
-    def _load_slice(self, target):
+    def _load_slice(self, target_):
         """
+        Called by load_sample after the target dictionary has been resolved.
+
+        CommandLine:
+            xdoctest -m ndsampler.coco_sampler CocoSampler._load_slice --profile
+
         Example:
             >>> # sample an out of bounds target
             >>> from ndsampler.coco_sampler import *
@@ -1041,12 +1047,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> sample = self._load_slice(target)
             >>> print('sample = {!r}'.format(ub.map_vals(type, sample)))
 
-        CommandLine:
-            xdoctest -m ndsampler.coco_sampler CocoSampler._load_slice --profile
-
         Ignore:
-            from ndsampler.coco_sampler import *  # NOQA
-            from ndsampler.coco_sampler import _center_extent_to_slice, _ensure_iterablen
             import ndsampler
             import xdev
             globals().update(xdev.get_func_kwargs(ndsampler.CocoSampler._load_slice))
@@ -1134,13 +1135,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> assert shape1 != shape2
             >>> assert shape2 == shape3
         """
-        gids = target.get('gids', None)
+        gids = target_.get('gids', None)
         if gids is not None:
-            sample = self._load_slice_3d(target)
+            sample = self._load_slice_3d(target_)
         else:
-            sample = self._load_slice_2d(target)
+            sample = self._load_slice_2d(target_)
 
-        legacy_target = target.get('legacy_target', None)
+        legacy_target = target_.get('legacy_target', None)
         if legacy_target is None:
             legacy_target = True
 
@@ -1158,7 +1159,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         return sample
 
     @profile
-    def _load_slice_3d(self, target):
+    def _load_slice_3d(self, target_):
         """
         Breakout the 2d vs 3d logic so they can evolve somewhat independently.
 
@@ -1174,10 +1175,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> self = CocoSampler.demo('vidshapes-multisensor-msi', num_frames=1, num_videos=1, image_size=(32, 32))
             >>> sample_grid = self.new_sample_grid('video_detection', (2, 32, 32))
             >>> target = sample_grid['positives'][0]
-            >>> target = self._infer_target_attributes(target)
-            >>> sample = self.load_sample(target)
+            >>> target_ = self._infer_target_attributes(target)
+            >>> sample = self.load_sample(target_)
         """
-        target_ = target
         pad = target_.get('pad', None)
         dtype = target_.get('dtype', None)
         nodata = target_.get('nodata', None)
@@ -1456,12 +1456,20 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                         delayed_crop.print_graph()
 
                 if as_xarray:
-                    frame = delayed_crop.as_xarray().finalize(**finalizekw)
+                    to_finalize = delayed_crop.as_xarray()
                 else:
                     if optimize:
                         delayed_crop = delayed_crop.optimize()
-                    # delayed_crop._set_nested_params(**kwargs)
-                    frame = delayed_crop.finalize(**finalizekw)
+                    to_finalize = delayed_crop
+
+                # to_finalize._set_nested_params(**kwargs)
+                try:
+                    frame = to_finalize.finalize(**finalizekw)
+                except Exception:
+                    print('ERROR in finalize')
+                    frame.print_graph()
+                    raise
+
                 if dtype is not None:
                     frame = frame.astype(dtype)
                 space_frames.append(frame)
@@ -1472,8 +1480,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
                 frame_sample_from_grid_warps.append(warp_sample_from_grid)
 
-        # Concat aligned frames together (add nans for non-existing
-        # channels)
+        # Concat aligned frames together (add nans for non-existing channels)
         if frame_use_native_scale:
             data_sliced = space_frames
         else:
