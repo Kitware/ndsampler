@@ -9,6 +9,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * `load_sample` now takes an `annot_ids` argument to skip the spatial lookup
   and use something precomputed.
 
+* Can now specify `optimize=False` in `load_sample` target dictionary to
+  prevent delayed image from doing any optimization.
+
 
 ## Version 0.7.4 - Released 2023-03-05
 

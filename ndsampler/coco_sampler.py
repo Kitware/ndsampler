@@ -1212,6 +1212,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         # TODO: disable function level nodata param
         interpolation = target_.get('interpolation', 'auto')
         antialias = target_.get('antialias', 'auto')
+        # The user can force disable optimization
+        optimize = target_.get('optimize', True)
+
         if interpolation == 'auto':
             interpolation = 'linear'
         if antialias == 'auto':
@@ -1327,7 +1330,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                                               clip=False, wrap=False,
                                               pad=space_pad)
             delayed_crop = delayed_crop.prepare()
-            delayed_crop = delayed_crop.optimize()
+            if optimize:
+                delayed_crop = delayed_crop.optimize()
 
             # This alt should work, but unsure if the extra floating point
             # error from inverses will matter.
@@ -1358,7 +1362,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                             rescaled_parts.append(rescaled)
                         from kwcoco.util.delayed_ops import DelayedChannelConcat
                         delayed_crop = DelayedChannelConcat(rescaled_parts, dsize=max_dsize)
-                        delayed_crop = delayed_crop.optimize()
+                        if optimize:
+                            delayed_crop = delayed_crop.optimize()
 
                         # Find the scale factor to add into the sample_from_grid
                         # transform
@@ -1421,10 +1426,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                         print(f'warp_grid_to_part={warp_grid_to_part}')
                         part.print_graph()
 
+                    part2 = part.optimize() if optimize else part
                     if as_xarray:
-                        frame = part.optimize().as_xarray().finalize(**finalizekw)
+                        frame = part2.as_xarray().finalize(**finalizekw)
                     else:
-                        frame = part.optimize().finalize(**finalizekw)
+                        frame = part2.finalize(**finalizekw)
                     jagged_parts.append(frame)
                     jagged_chans.append(part.channels)
                     jagged_warps.append(warp_grid_to_part)
@@ -1444,14 +1450,16 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     print('* Aligned sample')
                     print(f'warp_sample_from_grid={warp_sample_from_grid}')
                     delayed_crop.print_graph()
-                    delayed_crop = delayed_crop.optimize()
-                    print("Optimized:")
-                    delayed_crop.print_graph()
+                    if optimize:
+                        delayed_crop = delayed_crop.optimize()
+                        print("Optimized:")
+                        delayed_crop.print_graph()
 
                 if as_xarray:
                     frame = delayed_crop.as_xarray().finalize(**finalizekw)
                 else:
-                    delayed_crop = delayed_crop.optimize()
+                    if optimize:
+                        delayed_crop = delayed_crop.optimize()
                     # delayed_crop._set_nested_params(**kwargs)
                     frame = delayed_crop.finalize(**finalizekw)
                 if dtype is not None:
