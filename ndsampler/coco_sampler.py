@@ -1467,7 +1467,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     frame = to_finalize.finalize(**finalizekw)
                 except Exception:
                     print('ERROR in finalize')
-                    frame.print_graph()
+                    to_finalize.print_graph()
                     raise
 
                 if dtype is not None:
