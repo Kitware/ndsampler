@@ -29,7 +29,7 @@ def nestshape(data):
                 # ('datatype', d.datatype),
                 ('cpu_only', d.cpu_only),
             ]))
-            meta = ub.repr2(meta, nl=0)
+            meta = ub.urepr(meta, nl=0)
             return {type(d).__name__ + meta: _recurse(d.data)}
         elif isinstance(d, list):
             return [_recurse(v) for v in d]

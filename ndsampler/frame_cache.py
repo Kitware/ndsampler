@@ -35,7 +35,7 @@ def _cog_cache_write(gpath, cache_gpath, config=None):
         >>> import ndsampler
         >>> from ndsampler.abstract_frames import *
         >>> import kwcoco
-        >>> workdir = ub.ensure_app_cache_dir('ndsampler')
+        >>> workdir = ub.Path.appdir('ndsampler').ensuredir()
         >>> dset = kwcoco.CocoDataset.demo()
         >>> imgs = dset.images()
         >>> id_to_name = imgs.lookup('file_name', keepid=True)
@@ -391,9 +391,9 @@ def _ensure_image_cog(gpath, cache_gpath, config, hack_use_cli=True):
 
         gpath_is_cog = not bool(errors)
         if ub.argflag('--debug-validate-cog') or DEBUG > 2:
-            print('details = {}'.format(ub.repr2(details, nl=1)))
-            print('errors (why we need to ensure) = {}'.format(ub.repr2(errors, nl=1)))
-            print('warnings = {}'.format(ub.repr2(warnings, nl=1)))
+            print('details = {}'.format(ub.urepr(details, nl=1)))
+            print('errors (why we need to ensure) = {}'.format(ub.urepr(errors, nl=1)))
+            print('warnings = {}'.format(ub.urepr(warnings, nl=1)))
             print('gpath_is_cog = {!r}'.format(gpath_is_cog))
 
         if gpath_is_cog:
@@ -406,11 +406,11 @@ def _ensure_image_cog(gpath, cache_gpath, config, hack_use_cli=True):
             if DEBUG:
                 print('BUILDING COG REPRESENTATION')
                 print('gpath = {!r}'.format(gpath))
-                print('cog config = {}'.format(ub.repr2(config, nl=2)))
+                print('cog config = {}'.format(ub.urepr(config, nl=2)))
                 if DEBUG > 1:
                     try:
                         import netharn as nh
-                        print(' * info(gpath) = ' + ub.repr2(nh.util.get_file_info(gpath)))
+                        print(' * info(gpath) = ' + ub.urepr(nh.util.get_file_info(gpath)))
                     except ImportError:
                         pass
             try:
@@ -429,7 +429,7 @@ def _ensure_image_cog(gpath, cache_gpath, config, hack_use_cli=True):
             if DEBUG > 1:
                 try:
                     import netharn as nh
-                    print(' * info(cog_gpath) = ' + ub.repr2(nh.util.get_file_info(cog_gpath)))
+                    print(' * info(cog_gpath) = ' + ub.urepr(nh.util.get_file_info(cog_gpath)))
                 except ImportError:
                     pass
             print('</DEBUG INFO>')

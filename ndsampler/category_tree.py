@@ -528,7 +528,7 @@ class Mixin_CategoryTree_Torch:
             >>> class_energy[i + 2][path] += 2 ** 20
             >>> class_logprobs = self.hierarchical_log_softmax(class_energy, dim=-1)
             >>> class_probs = torch.exp(class_logprobs).numpy()
-            >>> print(ub.hzcat(['probs = ', ub.repr2(class_probs[:8], precision=2, supress_small=True)]))
+            >>> print(ub.hzcat(['probs = ', ub.urepr(class_probs[:8], precision=2, supress_small=True)]))
             >>> dim = 1
             >>> criterion = 'entropy'
             >>> thresh = 0.40
@@ -768,7 +768,7 @@ class Mixin_CategoryTree_Torch:
                         print('depth = {!r}'.format(depth))
                         import pandas as pd
                         print('expanded_probs =\n{}'.format(
-                            ub.repr2(expanded_probs, precision=2,
+                            ub.urepr(expanded_probs, precision=2,
                                      with_dtype=0, supress_small=True)))
                         df = pd.DataFrame({
                             'h': h_expanded,

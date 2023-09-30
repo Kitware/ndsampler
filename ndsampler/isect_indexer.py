@@ -41,7 +41,7 @@ class FrameIntersectionIndex(ub.NiceRepr):
         >>> gid = 1
         >>> box = kwimage.Boxes([0, 10, 100, 100], 'xywh')
         >>> isect_aids, ious = self.ious(gid, box)
-        >>> print(ub.repr2(ious.tolist(), nl=0, precision=4))
+        >>> print(ub.urepr(ious.tolist(), nl=0, precision=4))
         [0.0507]
     """
     def __init__(self):

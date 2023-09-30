@@ -128,7 +128,7 @@ class Frames(object):
         self._id_to_pathinfo = {}
 
         if workdir is None:
-            workdir = ub.get_app_cache_dir('ndsampler')
+            workdir = ub.Path.appdir('ndsampler')
             if self._backend['type'] is not None:
                 warnings.warn('Frames workdir not specified. '
                               'Defaulting to {!r}'.format(workdir))
@@ -470,7 +470,7 @@ class Frames(object):
 
         Example:
             >>> from ndsampler.abstract_frames import *
-            >>> workdir = ub.ensure_app_cache_dir('ndsampler/tests/test_cog_precomp')
+            >>> workdir = ub.Path.appdir('ndsampler/tests/test_cog_precomp').ensuredir()
             >>> print('workdir = {!r}'.format(workdir))
             >>> ub.delete(workdir)
             >>> ub.ensuredir(workdir)
@@ -486,8 +486,8 @@ class Frames(object):
         Example:
             >>> from ndsampler.abstract_frames import *
             >>> import ndsampler
-            >>> workdir = ub.get_app_cache_dir('ndsampler/tests/test_cog_precomp2')
-            >>> ub.delete(workdir)
+            >>> workdir = ub.Path.appdir('ndsampler/tests/test_cog_precomp2')
+            >>> workdir.delete()
             >>> # TEST NPY
             >>> #
             >>> sampler = ndsampler.CocoSampler.demo(workdir=workdir, backend='npy')
@@ -566,7 +566,7 @@ class SimpleFrames(Frames):
         >>> from ndsampler.abstract_frames import *
         >>> self = SimpleFrames.demo(backend='npy')
         >>> pathinfo = self._build_pathinfo(1)
-        >>> print('pathinfo = {}'.format(ub.repr2(pathinfo, nl=3)))
+        >>> print('pathinfo = {}'.format(ub.urepr(pathinfo, nl=3)))
 
         >>> assert self.load_image(1).shape == (512, 512, 3)
         >>> assert self.load_region(1, (slice(-20), slice(-10))).shape == (492, 502, 3)
@@ -594,7 +594,7 @@ class SimpleFrames(Frames):
             gid: dset.get_image_fpath(gid) for gid in dset.imgs.keys()
         }
         if kw.get('workdir', None) is None:
-            kw['workdir'] = ub.ensure_app_cache_dir('ndsampler')
+            kw['workdir'] = ub.Path.appdir('ndsampler').ensuredir()
         self = SimpleFrames(id_to_path, **kw)
         return self
 
@@ -634,7 +634,7 @@ class AlignableImageData(object):
         >>> frames = SimpleFrames.demo(backend='npy')
         >>> pathinfo = frames._build_pathinfo(1)
         >>> cache_backend = frames._backend
-        >>> print('pathinfo = {}'.format(ub.repr2(pathinfo, nl=3)))
+        >>> print('pathinfo = {}'.format(ub.urepr(pathinfo, nl=3)))
         >>> self = AlignableImageData(pathinfo, cache_backend)
         >>> img_region = None
         >>> prefused = self._load_prefused_region(img_region)

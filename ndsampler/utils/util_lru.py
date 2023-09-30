@@ -34,7 +34,7 @@ class LRUDict(ub.NiceRepr):
         >>> del self[5]
         >>> assert 4 in self
         >>> # xdoctest: +IGNORE_WANT
-        >>> print('self = {}'.format(ub.repr2(self, nl=1)))
+        >>> print('self = {}'.format(ub.urepr(self, nl=1)))
         self = <LRUDict({4: 4, 0: 0, 6: 6, 7: 7}) at 0x7f4c78af95e0>
     """
 
@@ -49,7 +49,7 @@ class LRUDict(ub.NiceRepr):
         del self._cache[key]
 
     def __nice__(self):
-        return ub.repr2(self._cache, nl=0)
+        return ub.urepr(self._cache, nl=0)
 
     def update(self, other):
         for k, v in other.items():
@@ -241,4 +241,4 @@ def _benchmarks():
                     self[idx]
 
     print('\n===')
-    print('ti.rankings = {}'.format(ub.repr2(ti.rankings, nl=2)))
+    print('ti.rankings = {}'.format(ub.urepr(ti.rankings, nl=2)))

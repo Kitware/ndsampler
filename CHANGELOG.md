@@ -3,7 +3,17 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
-## Version 0.7.4 - Unreleased
+## Version 0.7.5 - Unreleased
+
+### Added
+* `load_sample` now takes an `annot_ids` argument to skip the spatial lookup
+  and use something precomputed.
+
+* Can now specify `optimize=False` in `load_sample` target dictionary to
+  prevent delayed image from doing any optimization.
+
+
+## Version 0.7.4 - Released 2023-03-05
 
 ### Added
 * Experimental support for `rtree` in `isect_indexer`
