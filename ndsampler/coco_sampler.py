@@ -97,7 +97,9 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
     Args:
         dset (kwcoco.CocoDataset): a coco-formatted dataset
 
-        backend (str | Dict): either 'cog' or 'npy', or a dict with
+        backend (str | Dict):
+            Can be None, 'cog' or 'npy', or a dict.
+            In the case of a dict, it takes the format:
             `{'type': str, 'config': Dict}`. See AbstractFrames for more
             details. Defaults to None, which does not do anything fancy.
 
@@ -1325,6 +1327,28 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 nodata_method=nodata,
                 antialias=antialias
             )
+            # TODO: Use the self.frames mechanism to load sampling friendly
+            # image representations. May need to extend self.frames for MSI.
+
+            # data_clipped = self.frames.load_region(
+            #     image_id=gid, region=data_slice, channels=channels)
+            if self.backend is not None and self.frames is not None:
+                # HACK, replace the paths in delayed frames with the
+                # old cache stuff. TODO: cleaner integration.
+                pathinfo = self.frames._lookup_pathinfo(coco_img['id'])
+                for path in list(delayed_frame._leaf_paths()):
+                    leaf = path[0]
+                    spec = leaf.meta['channels'].normalize().spec
+
+                    # Find the info section that corresponds
+                    norm_chan_infos = {}
+                    for chan_key,  info in pathinfo['channels'].items():
+                        norm_chan_key = kwcoco.FusedChannelSpec.coerce(chan_key).normalize().spec
+                        norm_chan_infos[norm_chan_key] = info
+                    info = norm_chan_infos[spec]
+                    # Hack to overwrite the path
+                    leaf.meta['fpath'] = info['cache']
+                    # assert leaf['lazy_ref'] is None
 
             delayed_crop = delayed_frame.crop(requested_space_slice,
                                               clip=False, wrap=False,
