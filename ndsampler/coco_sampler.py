@@ -1333,22 +1333,20 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             # data_clipped = self.frames.load_region(
             #     image_id=gid, region=data_slice, channels=channels)
             if self.frames is not None and self._backend is not None:
-                # HACK, replace the paths in delayed frames with the
-                # old cache stuff. TODO: cleaner integration.
+                # HACK, replace the paths in delayed frames with the old
+                # self.frames cache stuff. TODO: cleaner integration.
                 pathinfo = self.frames._lookup_pathinfo(coco_img['id'])
+                norm_to_chan_lut = pathinfo['norm_to_chan_lut']
                 for path in list(delayed_frame._leaf_paths()):
                     leaf = path[0]
                     spec = leaf.meta['channels'].normalize().spec
-
                     # Find the info section that corresponds
-                    norm_chan_infos = {}
-                    for chan_key,  info in pathinfo['channels'].items():
-                        norm_chan_key = kwcoco.FusedChannelSpec.coerce(chan_key).normalize().spec
-                        norm_chan_infos[norm_chan_key] = info
-                    info = norm_chan_infos[spec]
-                    # Hack to overwrite the path
-                    leaf.meta['fpath'] = info['cache']
-                    # assert leaf['lazy_ref'] is None
+                    chan_key = norm_to_chan_lut[spec]
+                    info = pathinfo['channels'][chan_key]
+                    # Hack to overwrite the path if an efficient cache exists
+                    if info['cache_type'] is not None:
+                        leaf.meta['fpath'] = info['cache']
+                        # assert leaf['lazy_ref'] is None
 
             delayed_crop = delayed_frame.crop(requested_space_slice,
                                               clip=False, wrap=False,

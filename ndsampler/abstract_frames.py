@@ -345,6 +345,9 @@ class Frames(object):
         """
         Ammortized O(1) image subregion loading (assuming constant region size)
 
+        if region size is varied, then sampling time scales with the number of
+        tiles needed to overlap the requested region.
+
         Args:
             image_id (int): image identifier
             region (Tuple[slice, ...]): space-time region within an image
