@@ -1332,7 +1332,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
             # data_clipped = self.frames.load_region(
             #     image_id=gid, region=data_slice, channels=channels)
-            if self.backend is not None and self.frames is not None:
+            if self.frames is not None and self._backend is not None:
                 # HACK, replace the paths in delayed frames with the
                 # old cache stuff. TODO: cleaner integration.
                 pathinfo = self.frames._lookup_pathinfo(coco_img['id'])
