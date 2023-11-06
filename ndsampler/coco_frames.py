@@ -87,6 +87,7 @@ class CocoFrames(abstract_frames.Frames, util_misc.HashIdentifiable):
             >>> pathinfo = self._build_pathinfo(1)
             >>> print('pathinfo = {}'.format(ub.urepr(pathinfo, nl=3)))
         """
+        import kwcoco
         img = self.dset.imgs[image_id]
         default_fname = img.get('file_name', None)
         default_channels = img.get('channels', None)
@@ -100,10 +101,18 @@ class CocoFrames(abstract_frames.Frames, util_misc.HashIdentifiable):
             'height': img.get('height', None),
         }
         root = self.dset.bundle_dpath
+        norm_to_chan_lut = {}
         if default_fname is not None:
+            chan_key = default_channels
+            if chan_key is not None:
+                norm_chan_key = kwcoco.FusedChannelSpec.coerce(chan_key).normalize().spec
+            else:
+                norm_chan_key = None
+            norm_to_chan_lut[norm_chan_key] = chan_key
             chan = {
                 'file_name': default_fname,
                 'channels': default_channels,
+                'norm_channels': norm_chan_key,
             }
             channels[default_channels] = chan
 
@@ -125,13 +134,22 @@ class CocoFrames(abstract_frames.Frames, util_misc.HashIdentifiable):
                         'type': 'affine',
                         'matrix': mat_aux_to_img.tolist(),
                     }
+            chan_key = aux['channels']
+            if chan_key is not None:
+                norm_chan_key = kwcoco.FusedChannelSpec.coerce(chan_key).normalize().spec
+            else:
+                norm_chan_key = None
+            norm_to_chan_lut[norm_chan_key] = chan_key
             chan = {
                 'file_name': fname,
-                'channels': aux['channels'],
+                'channels': chan_key,
+                'norm_channels': norm_chan_key,
                 'warp_aux_to_img': warp_aux_to_img,
             }
             channels[aux['channels']] = chan
 
         for chan in pathinfo['channels'].values():
             self._populate_chan_info(chan, root=root)
+
+        pathinfo['norm_to_chan_lut'] = norm_to_chan_lut
         return pathinfo
