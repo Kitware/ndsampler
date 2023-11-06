@@ -32,6 +32,12 @@ CocoSampler class will let you sample positive and negative regions.
 For classification tasks the MS-COCO data could just be that every image has an
 annotation that takes up the entire image.
 
+The aspiration of this module is to allow you to access your data in-situ (i.e.
+no pre-processing), although the cost of that may depend on how efficient your
+data is to access. However a faster cache can be built at the cost of disk
+space. Currently we have a "cog" and "npy" backend. Help is wanted to integrate
+backends for hdf5 and other medical / domain-specific formats.
+
 Installation
 ------------
 
