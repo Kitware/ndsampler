@@ -15,6 +15,7 @@ ci_cpython_versions = ["3.6", "3.7", "3.8", "3.9", "3.10"]
 author = "Jon Crall"
 author_email = "jon.crall@kitware.com"
 description = "Fast sampling from large images"
+render_doc_images = 1
 url = "https://gitlab.kitware.com/computer-vision/ndsampler"
 license = "Apache 2"
 dev_status = "beta"
