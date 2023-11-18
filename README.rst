@@ -1,7 +1,7 @@
 ndsampler
 =========
 
-|GitlabCIPipeline| |GitlabCICoverage| |Pypi| |Downloads|
+|GitlabCIPipeline| |GitlabCICoverage| |Pypi| |Downloads| |ReadTheDocs|
 
 
 +------------------+---------------------------------------------------------+
