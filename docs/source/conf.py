@@ -163,6 +163,9 @@ autoclass_content = 'both'
 # autoapi_dirs = [f'../../src/{modname}']
 # autoapi_keep_files = True
 
+# References:
+# https://stackoverflow.com/questions/21538983/specifying-targets-for-intersphinx-links-to-numpy-scipy-and-matplotlib
+
 intersphinx_mapping = {
     # 'pytorch': ('http://pytorch.org/docs/master/', None),
     'python': ('https://docs.python.org/3', None),
@@ -181,10 +184,20 @@ intersphinx_mapping = {
     'scriptconfig': ('https://scriptconfig.readthedocs.io/en/latest/', None),
     'rich': ('https://rich.readthedocs.io/en/latest/', None),
 
+    'numpy': ('https://numpy.org/doc/stable/', None),
+    'sympy': ('https://docs.sympy.org/latest/', None),
+    'scikit-learn': ('https://scikit-learn.org/stable/', None),
+    'pandas': ('https://pandas.pydata.org/docs/', None),
+    'matplotlib': ('https://matplotlib.org/stable/', None),
+
     'pytest': ('https://docs.pytest.org/en/latest/', None),
+    'platformdirs': ('https://platformdirs.readthedocs.io/en/latest/', None),
+
+    'timerit': ('https://timerit.readthedocs.io/en/latest/', None),
+    'progiter': ('https://progiter.readthedocs.io/en/latest/', None),
+    'dateutil': ('https://dateutil.readthedocs.io/en/latest/', None),
     # 'pytest._pytest.doctest': ('https://docs.pytest.org/en/latest/_modules/_pytest/doctest.html', None),
     # 'colorama': ('https://pypi.org/project/colorama/', None),
-    # 'numpy': ('http://docs.scipy.org/doc/numpy/', None),
     # 'cv2' : ('http://docs.opencv.org/2.4/', None),
     # 'h5py' : ('http://docs.h5py.org/en/latest/', None)
 }
@@ -337,8 +350,10 @@ class PatchedPythonDomain(PythonDomain):
     """
     def resolve_xref(self, env, fromdocname, builder, typ, target, node, contnode):
         # TODO: can use this to resolve references nicely
-        # if target.startswith('ub.'):
-        #     target = 'ubelt.' + target[3]
+        if target.startswith('ub.'):
+            target = 'ubelt.' + target[3]
+        if target.startswith('xdoc.'):
+            target = 'xdoctest.' + target[3]
         return_value = super(PatchedPythonDomain, self).resolve_xref(
             env, fromdocname, builder, typ, target, node, contnode)
         return return_value
@@ -545,8 +560,8 @@ class GoogleStyleDocstringProcessor:
         #     import xdev
         #     xdev.embed()
 
-        RENDER_IMAGES = 1
-        if RENDER_IMAGES:
+        render_doc_images = 1
+        if render_doc_images:
             # DEVELOPING
             if any('REQUIRES(--show)' in line for line in lines):
                 # import xdev

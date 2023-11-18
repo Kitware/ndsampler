@@ -824,7 +824,20 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         if target is None:
             raise ValueError('The target dictionary must be specified')
 
+        verbose_ndsample = target.get('verbose_ndsample', False)
         target_ = self._infer_target_attributes(target, **kwargs)
+        if verbose_ndsample:
+            print('Load Sample:')
+            print('target_ = {}'.format(ub.urepr(target_, nl=1)))
+            print('Load Sample Inferred:')
+            inferred_lines = []
+            for k in target_:
+                v1 = target.get(k, None)
+                v2 = target_.get(k, None)
+                if v1 != v2:
+                    inferred_lines.append(f'* {k}: {v1} -> {v2}')
+            print('\n'.join(inferred_lines))
+
         sample = self._load_slice(target_)
 
         if with_annots or ub.iterable(with_annots):
@@ -1196,12 +1209,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         if data_dims is None:
             _req_real_slice = requested_slice
             _req_extra_pad = [(0, 0), (0, 0)]
+            resolved_slice = requested_slice
         else:
             _req_real_slice, _req_extra_pad = kwarray.embed_slice(requested_slice, data_dims)
-        resolved_slice = tuple([
-            slice(s.start - p_lo, s.stop + p_hi, s.step)
-            for s, (p_lo, p_hi) in zip(_req_real_slice, _req_extra_pad)
-        ])
+            resolved_slice = tuple([
+                slice(s.start - p_lo, s.stop + p_hi, s.step)
+                for s, (p_lo, p_hi) in zip(_req_real_slice, _req_extra_pad)
+            ])
 
         channels = target_.get('channels', ub.NoParam)
 
@@ -1717,7 +1731,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         sample_box: kwimage.Boxes = params['sample_tlbr']
         offset = params['offset']
         data_dims = params['data_dims']
-        space_dims = data_dims[-2:]
+        if data_dims is not None:
+            space_dims = data_dims[-2:]
+        else:
+            space_dims = None
 
         coco_dset = self.dset
         kp_classes = self.kp_classes
