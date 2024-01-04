@@ -1,7 +1,7 @@
 ndsampler
 =========
 
-|GitlabCIPipeline| |GitlabCICoverage| |Pypi| |Downloads| |ReadTheDocs|
+|GitlabCIPipeline| |GitlabCICoverage| |Pypi| |PypiDownloads| |ReadTheDocs|
 
 
 +------------------+---------------------------------------------------------+
@@ -234,7 +234,7 @@ TODO
 .. |Pypi| image:: https://img.shields.io/pypi/v/ndsampler.svg
    :target: https://pypi.python.org/pypi/ndsampler
 
-.. |Downloads| image:: https://img.shields.io/pypi/dm/ndsampler.svg
+.. |PypiDownloads| image:: https://img.shields.io/pypi/dm/ndsampler.svg
    :target: https://pypistats.org/packages/ndsampler
 
 .. |ReadTheDocs| image:: https://readthedocs.org/projects/ndsampler/badge/?version=latest
@@ -247,5 +247,5 @@ TODO
 .. |GitlabCIPipeline| image:: https://gitlab.kitware.com/computer-vision/ndsampler/badges/master/pipeline.svg
    :target: https://gitlab.kitware.com/computer-vision/ndsampler/-/jobs
 
-.. |GitlabCICoverage| image:: https://gitlab.kitware.com/computer-vision/ndsampler/badges/master/coverage.svg?job=coverage
+.. |GitlabCICoverage| image:: https://gitlab.kitware.com/computer-vision/ndsampler/badges/master/coverage.svg
     :target: https://gitlab.kitware.com/computer-vision/ndsampler/commits/master
