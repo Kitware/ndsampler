@@ -5,6 +5,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Version 0.7.8 - Unreleased
 
+### Added
+
+* New method `load_target_annots` that just finds overlapping annotations
+
 
 ## Version 0.7.7 - Released 2023-11-17
 
