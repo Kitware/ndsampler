@@ -5,6 +5,7 @@ Subpackages
 -----------
 
 .. toctree::
+   :maxdepth: 4
 
    ndsampler.utils
 
@@ -12,7 +13,9 @@ Submodules
 ----------
 
 .. toctree::
+   :maxdepth: 4
 
+   ndsampler._internal
    ndsampler.abstract_frames
    ndsampler.abstract_sampler
    ndsampler.category_tree
@@ -21,12 +24,9 @@ Submodules
    ndsampler.coco_regions
    ndsampler.coco_sampler
    ndsampler.coerce_data
+   ndsampler.frame_cache
    ndsampler.isect_indexer
-   ndsampler.make_demo_coco
    ndsampler.toydata
-   ndsampler.toypatterns
-   ndsampler.util
-   ndsampler.util_futures
 
 Module contents
 ---------------
@@ -35,3 +35,4 @@ Module contents
    :members:
    :undoc-members:
    :show-inheritance:
+   :private-members:

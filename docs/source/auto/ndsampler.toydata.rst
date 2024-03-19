@@ -5,3 +5,4 @@ ndsampler.toydata module
    :members:
    :undoc-members:
    :show-inheritance:
+   :private-members:
