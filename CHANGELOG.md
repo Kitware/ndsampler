@@ -3,7 +3,14 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
-## Version 0.7.7 - Unreleased
+## Version 0.7.8 - Unreleased
+
+### Added
+
+* New method `load_target_annots` that just finds overlapping annotations
+
+
+## Version 0.7.7 - Released 2023-11-17
 
 
 ## Version 0.7.6 - Released 2023-11-05

@@ -1,8 +1,25 @@
 """
+The ndsampler library
+
++------------------+---------------------------------------------------------+
+| Read the docs    | https://ndsampler.readthedocs.io                        |
++------------------+---------------------------------------------------------+
+| Gitlab (main)    | https://gitlab.kitware.com/computer-vision/ndsampler    |
++------------------+---------------------------------------------------------+
+| Github (mirror)  | https://github.com/Kitware/ndsampler                    |
++------------------+---------------------------------------------------------+
+| Pypi             | https://pypi.org/project/ndsampler                      |
++------------------+---------------------------------------------------------+
+
+
+See the gitlab README for more details.
+"""
+
+__autogen__ = """
 mkinit ~/code/ndsampler/ndsampler/__init__.py --diff
 mkinit ~/code/ndsampler/ndsampler/__init__.py -w
 """
-__version__ = '0.7.7'
+__version__ = '0.7.8'
 
 from ndsampler.utils.util_misc import (HashIdentifiable,)
 

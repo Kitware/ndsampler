@@ -537,6 +537,22 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         sample = self.load_sample(target_, with_annots=with_annots, **kw)
         return sample
 
+    def load_target_annots(sampler, target):
+        """
+        New in 0.7.8
+
+        TODO: need an ndsampler endpoint that just finds the annotations in a
+        sample quickly.
+        """
+        import kwimage
+        space_slice = target['space_slice']
+        space_box = kwimage.Box.from_slice(space_slice)
+        all_aids = []
+        for gid in target['gids']:
+            aids = sampler.regions.overlapping_aids(gid, space_box.boxes)
+            all_aids.extend(aids)
+        return all_aids
+
     def load_sample(self, target=None, with_annots=True, annot_ids=None,
                     visible_thresh=0.0, **kwargs):
         """

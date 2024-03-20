@@ -5,3 +5,4 @@ ndsampler.abstract\_frames module
    :members:
    :undoc-members:
    :show-inheritance:
+   :private-members:
