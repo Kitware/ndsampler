@@ -6,6 +6,9 @@ https://stackoverflow.com/questions/41946007/efficient-and-well-explained-implem
 https://github.com/Elan456/pyquadtree
 
 https://informix-spatial-technology.blogspot.com/2012/01/comparison-on-b-tree-r-tree-quad-tree.html
+
+TODO:
+    Look into CDAL: https://github.com/CGAL/cgal-swig-bindings/wiki/Package_wrappers_available
 """
 import kwimage
 import rtree
@@ -230,7 +233,7 @@ def main():
 if __name__ == '__main__':
     """
     CommandLine:
-        python ~/code/ndsampler/dev/bench/bench_rtree_vs_quadtree.py
+        python ~/code/ndsampler/dev/bench/bench_rtree_vs_quadtree.py --show
         LINE_PROFILE=1 python ~/code/ndsampler/dev/bench/bench_rtree_vs_quadtree.py
     """
     main()
