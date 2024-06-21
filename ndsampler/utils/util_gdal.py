@@ -556,11 +556,16 @@ def _api_convert_cloud_optimized_geotiff2(src_fpath, dst_fpath,
     # driver2 = None
     return dst_fpath
 
+try:
+    complex_ = np.complex_
+except AttributeError:
+    complex_ = np.complex128
+
 _GDAL_DTYPE_LUT = {
     1: np.uint8,     2: np.uint16,
     3: np.int16,     4: np.uint32,      5: np.int32,
-    6: np.float32,   7: np.float64,     8: np.complex_,
-    9: np.complex_,  10: np.complex64,  11: np.complex128
+    6: np.float32,   7: np.float64,     8: complex_,
+    9: complex_,    10: np.complex64,  11: np.complex128
 }
 
 
