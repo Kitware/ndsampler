@@ -79,6 +79,8 @@ from ndsampler import coco_regions
 from ndsampler import coco_frames
 from ndsampler import abstract_sampler
 from ndsampler.utils import util_misc
+from delayed_image.channel_spec import FusedChannelSpec
+from delayed_image.channel_spec import ChannelSpec
 
 try:
     from xdev import profile
@@ -596,7 +598,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 present. (NEW in 0.5.10)
 
                 The `channels` key can be specified as a channel code or
-                    :class:`kwcoco.ChannelSpec` object.  (NEW in 0.6.1)
+                    :class:`delayed_image.ChannelSpec` object.  (NEW in 0.6.1)
 
                 as_xarray (bool):
                     if True, return the image data as an xarray object.
@@ -1239,7 +1241,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             # Do something special
             request_chanspec = None
         else:
-            request_chanspec = kwcoco.ChannelSpec.coerce(channels)
+            request_chanspec = ChannelSpec.coerce(channels)
 
         # TODO: disable function level nodata param
         interpolation = target_.get('interpolation', 'auto')
@@ -1313,9 +1315,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         coco_img_list = self.dset.images(time_gids).coco_images
         if request_chanspec is None:
             # Hobble together channels if they aren't given
-            unique_chan = list(ub.unique([g.channels for g in coco_img_list], key=lambda c: c.spec))
-            if len(unique_chan):
-                request_chanspec = kwcoco.FusedChannelSpec.coerce(sorted(sum(unique_chan).fuse().unique()))
+            unique_chan = list(ub.unique([g.channels for g in coco_img_list], key=lambda c: c.spec if c is not None else None))
+            if unique_chan == [None]:
+                request_chanspec = None
+            elif len(unique_chan):
+                request_chanspec = FusedChannelSpec.coerce(sorted(sum(unique_chan).fuse().unique()))
 
         # New: for each frame, we need to keep track of the transform from the
         # grid space to sample space, possibly for each channel
@@ -1357,6 +1361,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 nodata_method=nodata,
                 antialias=antialias
             )
+
             # TODO: Use the self.frames mechanism to load sampling friendly
             # image representations. May need to extend self.frames for MSI.
 
@@ -1378,9 +1383,12 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                         leaf.meta['fpath'] = info['cache']
                         # assert leaf['lazy_ref'] is None
 
+            _pad = space_pad
+            if all(p == 0 for ps in space_pad for p in ps):
+                _pad = None  # make pad None for lazy checks
             delayed_crop = delayed_frame.crop(requested_space_slice,
                                               clip=False, wrap=False,
-                                              pad=space_pad)
+                                              pad=_pad, lazy=True)
             delayed_crop = delayed_crop.prepare()
             if optimize:
                 delayed_crop = delayed_crop.optimize()
@@ -1412,6 +1420,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                             rescale_factor = np.array(max_dsize) / np.array(part.dsize)
                             rescaled = part.warp({'scale': rescale_factor}, dsize=max_dsize)
                             rescaled_parts.append(rescaled)
+
+                        # FIXME: use delaeyd_iamge
                         from kwcoco.util.delayed_ops import DelayedChannelConcat
                         delayed_crop = DelayedChannelConcat(rescaled_parts, dsize=max_dsize)
                         if optimize:
@@ -1494,10 +1504,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 })
             else:
                 if extra_scale is not None:
-                    tf_scale = kwimage.Affine.scale(extra_scale)
-                    delayed_crop = delayed_crop.warp({'scale': extra_scale})
-                    warp_sample_from_grid = tf_scale @ warp_sample_from_grid
-                    # warp_sample_from_grid =  warp_sample_from_grid @ tf_scale
+                    if extra_scale != 1.0:
+                        tf_scale = kwimage.Affine.scale(extra_scale)
+                        delayed_crop = delayed_crop.warp({'scale': extra_scale})
+                        warp_sample_from_grid = tf_scale @ warp_sample_from_grid
                 if verbose_ndsample:
                     print('* Aligned sample')
                     print(f'warp_sample_from_grid={warp_sample_from_grid}')

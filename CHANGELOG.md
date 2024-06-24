@@ -8,6 +8,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Removed
 * Drop Python 3.6 and 3.7 support
 
+### Changed
+* Speed improvements to delayed image loading
+
+
 ## Version 0.7.8 - Released 2024-03-19
 
 ### Added
