@@ -142,7 +142,7 @@ class Mixin_CategoryTree_Torch:
             * hierarchical_log_softmax (alias for this function)
             * source_log_softmax (this function)
 
-        Converts raw class energy to absolute log probabilites based on the
+        Converts raw class energy to absolute log probabilities based on the
         category hierarchy. This is done by first converting to conditional
         log probabilities and then applying the probability chain rule (in log
         space, which has better numerical properties).
@@ -196,7 +196,7 @@ class Mixin_CategoryTree_Torch:
             In this method of computation ONLY the energy in the leaf nodes
             matters. The energy in all other intermediate notes is ignored.
             For this reason the "source" method of computation is often
-            prefered.
+            preferred.
 
         Args:
             class_energy (Tensor): raw output from network. The values in
@@ -269,19 +269,19 @@ class Mixin_CategoryTree_Torch:
     # hierarchical_log_softmax = sink_log_softmax
 
     def hierarchical_softmax(self, class_energy, dim):
-        """ Convinience method which converts class-energy to final probs """
+        """ Convenience method which converts class-energy to final probs """
         import torch
         class_logprobs = self.hierarchical_log_softmax(class_energy, dim)
         class_probs = torch.exp(class_logprobs)
         return class_probs
 
     def graph_log_softmax(self, class_energy, dim):
-        """ Convinience method which converts class-energy to logprobs """
+        """ Convenience method which converts class-energy to logprobs """
         class_logprobs = self.hierarchical_log_softmax(class_energy, dim)
         return class_logprobs
 
     def graph_softmax(self, class_energy, dim):
-        """ Convinience method which converts class-energy to final probs """
+        """ Convenience method which converts class-energy to final probs """
         import torch
         class_logprobs = self.hierarchical_log_softmax(class_energy, dim)
         class_probs = torch.exp(class_logprobs)
@@ -327,8 +327,9 @@ class Mixin_CategoryTree_Torch:
 
         Example:
             >>> # xdoctest: +REQUIRES(module:torch)
+            >>> from ndsampler.category_tree import *  # NOQA
+            >>> import networkx as nx
             >>> import torch
-            >>> from ndsampler.category_tree import *
             >>> graph = nx.from_dict_of_lists({
             >>>     'background': [],
             >>>     'mineral': ['granite', 'quartz'],
@@ -347,17 +348,17 @@ class Mixin_CategoryTree_Torch:
             >>> is_relevant = (class_energy.grad.abs() > 0).numpy()
             >>> print('target -> relevant')
             >>> print('------------------')
-            >>> for bx, idx in enumerate(targets.tolist()):
+            >>> for bx, idx in enumerate(sorted(targets.tolist())):
             ...     target_node = self.idx_to_node[idx]
-            ...     relevant_nodes = list(ub.take(self.idx_to_node, np.where(is_relevant[bx])[0]))
+            ...     relevant_nodes = sorted(ub.take(self.idx_to_node, np.where(is_relevant[bx])[0]))
             ...     print('{} -> {}'.format(target_node, relevant_nodes))
             target -> relevant
             ------------------
-            boxer -> ['animal', 'background', 'beagle', 'boxer', 'cat', 'dog', 'mineral']
-            dog -> ['animal', 'background', 'cat', 'dog', 'mineral']
-            quartz -> ['animal', 'background', 'granite', 'mineral', 'quartz']
-            animal -> ['animal', 'background', 'mineral']
-            background -> ['animal', 'background', 'mineral']
+            background -> ['animal', 'background', 'beagle', 'boxer', 'cat', 'dog', 'mineral']
+            animal -> ['animal', 'background', 'cat', 'dog', 'mineral']
+            dog -> ['animal', 'background', 'granite', 'mineral', 'quartz']
+            quartz -> ['animal', 'background', 'mineral']
+            boxer -> ['animal', 'background', 'mineral']
         """
         import torch.nn.functional as F
         loss = F.nll_loss(class_logprobs, targets)
@@ -371,7 +372,7 @@ class Mixin_CategoryTree_Torch:
             thresh (float): only make a more fine-grained decision if
                 its probability is above this threshold. This number should
                 be set relatively low to encourage smoothness in the
-                detectio metrics.
+                detection metrics.
 
         Example:
             >>> # xdoctest: +REQUIRES(module:torch)
@@ -401,9 +402,9 @@ class Mixin_CategoryTree_Torch:
 
         def _descend(depth, nodes, jdxs):
             """
-            Recursively descend the class tree starting at the coursest level.
+            Recursively descend the class tree starting at the coarsest level.
             At each level we decide if the items will take a category at this
-            level of granulatority or try to take a more fine-grained label.
+            level of granularity or try to take a more fine-grained label.
 
             Args:
                 depth (int): current depth in the tree
@@ -643,7 +644,7 @@ class Mixin_CategoryTree_Torch:
         sources = list(source_nodes(self.graph))
         other_dims = sorted(set(range(len(class_probs.shape))) - {dim})
 
-        # Rearange probs so the class dimension is at the end
+        # Rearrange probs so the class dimension is at the end
         flat_class_probs = impl.transpose(class_probs, other_dims + [dim]).reshape(-1, class_probs.shape[dim])
         flat_jdxs = np.arange(flat_class_probs.shape[0])
 

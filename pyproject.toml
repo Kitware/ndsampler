@@ -10,8 +10,9 @@ mod_name = "ndsampler"
 repo_name = "ndsampler"
 rel_mod_parent_dpath = "."
 os = [ "all", "osx", "win", "linux",]
-min_python = 3.6
-ci_cpython_versions = ["3.6", "3.7", "3.8", "3.9", "3.10"]
+min_python = 3.8
+max_python = 3.12
+ci_cpython_versions = ["3.8", "3.9", "3.10", "3.11", "3.12"]
 author = "Jon Crall"
 author_email = "jon.crall@kitware.com"
 description = "Fast sampling from large images"
@@ -29,7 +30,7 @@ classifiers = [
 ]
 
 [tool.pytest.ini_options]
-addopts = "-p no:doctest --xdoctest --xdoctest-style=google --ignore-glob=setup.py --ignore-glob=dev"
+addopts = "-p no:doctest --xdoctest --xdoctest-style=google --ignore-glob=setup.py --ignore-glob=dev --ignore-glob=docs"
 norecursedirs = ".git ignore build __pycache__ dev _skbuild"
 filterwarnings = [ "default", "ignore:.*No cfgstr given in Cacher constructor or call.*:Warning", "ignore:.*Define the __nice__ method for.*:Warning", "ignore:.*private pytest class or function.*:Warning",]
 
