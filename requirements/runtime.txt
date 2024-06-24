@@ -50,4 +50,5 @@ pyqtree >= 1.0.0
 
 kwimage >= 0.10.0
 kwarray >= 0.6.19
-kwcoco >= 0.8.0
+kwcoco >= 0.8.1
+delayed_image >= 0.3.1
