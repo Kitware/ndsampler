@@ -568,10 +568,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
                 For 2D image source objects, target must contain or be able to
                 infer the key `gid (int)`, to specify an image id.
+                You may also use `image_id` as an alias (NEW in 0.8.1).
 
                 For 3D video source objects, target must contain the key
                 `vidid (int)`, to specify a video id (NEW in 0.6.1) or
                 `gids List[int]`, as a list of images in a video (NEW in 0.6.2)
+                You may also use `video_id` and  `image_ids` as an alias (NEW
+                in 0.8.1).
 
                 In general, coordinate regions can specified by the key
                 `slices`, a numpy-like "fancy index" over each of the n
@@ -644,6 +647,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     to float32 and nodata values are replaced with nan. These
                     nan values are handled correctly in subsequent warping
                     operations. Defaults to None.
+
+                finalize (bool):
+                    If False, returns the delayed image instead of the
+                    finalized image.  (Currently only implemented for 3d
+                    sampling). Defaults to True.
 
             with_annots (bool | str):
                 if True, also extracts information about any annotation that
@@ -831,6 +839,15 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> assert np.allclose((box3.width / box1.width), 2)
             >>> jagged_shape = [[p.shape for p in f] for f in sample3['im']]
             >>> jagged_align = [[a for a in m['align']] for m in sample3['params']['jagged_meta']]
+
+        Example:
+            >>> # Test finalize=False
+            >>> from ndsampler.coco_sampler import *
+            >>> self = CocoSampler.demo('vidshapes1-msi-multisensor', num_frames=5)
+            >>> sample_grid = self.new_sample_grid('video_detection', (3, 128, 128))
+            >>> target = sample_grid['positives'][0]
+            >>> target['finalize'] = False
+            >>> sample1 = self.load_sample(target)
         """
         if target is None:
             if 'tr' in kwargs:
@@ -895,6 +912,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> target = {'gids': [1, 2], 'as_xarray': True}
             >>> target_ = self._infer_target_attributes(target)
             >>> print('target_ = {}'.format(ub.urepr(target_, nl=1)))
+
+            >>> target = {'image_ids': [1, 2], 'as_xarray': True}
+            >>> target_ = self._infer_target_attributes(target)
+            >>> print('target_ = {}'.format(ub.urepr(target_, nl=1)))
         """
         # we might modify the target
         target_ = target.copy()
@@ -913,6 +934,15 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                         f'{key} was specified in both kwargs and the target dictionary, '
                         'the deprecated kwarg will take precedence')
                 target_[key] = kwargs[key]
+
+        # TODO: make the cannonical form of the target use the spelled-out
+        # versions of the variables, but allow the short alias codes.
+        if 'image_id' in target_:
+            target_['gid'] = target_['image_id']
+        if 'image_ids' in target_:
+            target_['gids'] = target_['image_ids']
+        if 'video_id' in target_:
+            target_['vidid'] = target_['video_id']
 
         if 'aid' in target_:
             # If the annotation id is specified, infer other unspecified fields
@@ -1215,6 +1245,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         dtype = target_.get('dtype', None)
         nodata = target_.get('nodata', None)
 
+        finalize = target_.get('finalize', True)
+
         verbose_ndsample = target_.get('verbose_ndsample', False)
 
         assert 'space_slice' in target_
@@ -1489,10 +1521,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                         part.print_graph()
 
                     part2 = part.optimize() if optimize else part
-                    if as_xarray:
-                        frame = part2.as_xarray().finalize(**finalizekw)
+                    if finalize:
+                        if as_xarray:
+                            frame = part2.as_xarray().finalize(**finalizekw)
+                        else:
+                            frame = part2.finalize(**finalizekw)
                     else:
-                        frame = part2.finalize(**finalizekw)
+                        frame = part2
                     jagged_parts.append(frame)
                     jagged_chans.append(part.channels)
                     jagged_warps.append(warp_grid_to_part)
@@ -1525,25 +1560,27 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     to_finalize = delayed_crop
 
                 # to_finalize._set_nested_params(**kwargs)
-                try:
-                    frame = to_finalize.finalize(**finalizekw)
-                except Exception:
-                    print('ERROR in finalize')
-                    to_finalize.print_graph()
-                    raise
+                if finalize:
+                    try:
+                        frame = to_finalize.finalize(**finalizekw)
+                    except Exception:
+                        print('ERROR in finalize')
+                        to_finalize.print_graph()
+                        raise
 
-                if dtype is not None:
-                    frame = frame.astype(dtype)
+                    if dtype is not None:
+                        frame = frame.astype(dtype)
+                else:
+                    frame = to_finalize
                 space_frames.append(frame)
 
                 # warp_sample_from_grid_alt = delayed_crop.get_transform_from(delayed_frame)
                 # print('warp_sample_from_grid_alt = {}'.format(ub.urepr(warp_sample_from_grid_alt, nl=1)))
                 # print('warp_sample_from_grid = {}'.format(ub.urepr(warp_sample_from_grid, nl=1)))
-
                 frame_sample_from_grid_warps.append(warp_sample_from_grid)
 
         # Concat aligned frames together (add nans for non-existing channels)
-        if frame_use_native_scale:
+        if frame_use_native_scale or not finalize:
             data_sliced = space_frames
         else:
             if as_xarray:
