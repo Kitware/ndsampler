@@ -5,6 +5,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Version 0.8.1 - Unreleased
 
+### Added
+* Added `finalize` argument to `CocoSampler.load_sample` which allows the
+  sampler to return the delayed image instead of the finalized one. 
+
+* The target dictionary for `load_sample` now respects `image_id`, `image_ids`,
+  and `video_id`.
+
 
 ## Version 0.8.0 - Released 2024-06-24
 
