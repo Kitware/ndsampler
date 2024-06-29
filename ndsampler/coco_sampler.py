@@ -938,11 +938,14 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         # TODO: make the cannonical form of the target use the spelled-out
         # versions of the variables, but allow the short alias codes.
         if 'image_id' in target_:
-            target_['gid'] = target_['image_id']
+            if target_.get('gid', None) is not None:
+                target_['gid'] = target_['image_id']
         if 'image_ids' in target_:
-            target_['gids'] = target_['image_ids']
+            if target_.get('gids', None) is not None:
+                target_['gids'] = target_['image_ids']
         if 'video_id' in target_:
-            target_['vidid'] = target_['video_id']
+            if target_.get('vidid', None) is not None:
+                target_['vidid'] = target_['video_id']
 
         if 'aid' in target_:
             # If the annotation id is specified, infer other unspecified fields
