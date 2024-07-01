@@ -938,13 +938,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         # TODO: make the cannonical form of the target use the spelled-out
         # versions of the variables, but allow the short alias codes.
         if 'image_id' in target_:
-            if target_.get('gid', None) is not None:
+            if target_.get('gid', None) is None:
                 target_['gid'] = target_['image_id']
         if 'image_ids' in target_:
-            if target_.get('gids', None) is not None:
+            if target_.get('gids', None) is None:
                 target_['gids'] = target_['image_ids']
         if 'video_id' in target_:
-            if target_.get('vidid', None) is not None:
+            if target_.get('vidid', None) is None:
                 target_['vidid'] = target_['video_id']
 
         if 'aid' in target_:
@@ -998,7 +998,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             # Image sample
             ndim = 2
         else:
-            raise ValueError('no source object id(s)')
+            raise ValueError(f'no source object id(s) in target={target}')
 
         # Fix non-determined bounds
         if ndim == 2:

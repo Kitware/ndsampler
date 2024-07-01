@@ -146,8 +146,13 @@ class FrameIntersectionIndex(ub.NiceRepr):
                 if bbox is not None:
                     aid = ann['id']
                     qtree = qtrees[ann['image_id']]
-                    xywh_box = kwimage.Boxes(bbox, 'xywh')
-                    ltrb_box = xywh_box.to_ltrb().data
+                    # Orig variant:
+                    # xywh_box = kwimage.Boxes(bbox, 'xywh')
+                    # ltrb_box = xywh_box.to_ltrb().data
+                    # Optimized Code:
+                    x, y, w, h = bbox
+                    ltrb_box = [x, y, x + w, y + h]
+                    ltrb_box = np.array(ltrb_box)
                     qtree.insert(aid, ltrb_box)
                     qtree.aid_to_ltrb[aid] = ltrb_box
         return qtrees
@@ -178,7 +183,7 @@ class FrameIntersectionIndex(ub.NiceRepr):
         """
         boxes1 = box[None, :] if len(box.shape) == 1 else box
         qtree = self.qtrees[gid]
-        query = boxes1.to_ltrb().data[0]
+        query = boxes1.to_ltrb(copy=False).data[0]
         if rtree is None:
             isect_aids = sorted(set(qtree.intersect(query)))
         else:

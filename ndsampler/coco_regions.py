@@ -213,6 +213,7 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
         """
         return self._lazy_isect_index()
 
+    @profile
     def _lazy_isect_index(self, verbose=None):
         if self._isect_index is None:
             # FIXME! Any use of cacher here should be wrapped in an
