@@ -1006,8 +1006,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             space_dims = (img['height'], img['width'])
             data_dims = space_dims
         elif ndim == 3:
+            video = None
             if vidid is not None:
-                video = self.dset.index.videos[vidid]
+                video = self.dset.index.videos.get(vidid, None)
+
+            if video is not None:
                 space_dims = (video['height'], video['width'])
                 vid_gids = self.dset.index.vidid_to_gids[vidid]
                 data_dims = (len(vid_gids),) + space_dims
