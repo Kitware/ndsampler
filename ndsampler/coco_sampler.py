@@ -1183,7 +1183,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> target = self._infer_target_attributes(target)
             >>> gid = None
             >>> for coco_img in self.dset.images().coco_images:
-            >>>     if coco_img.channels & 'r|g|b':
+            >>>     if  (coco_img.channels & 'r|g|b').numel():
             >>>         gid = coco_img.img['id']
             >>>         break
             >>> assert gid is not None, 'need specific image'
