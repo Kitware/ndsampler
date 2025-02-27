@@ -445,6 +445,29 @@ test/full-strict/cp312-linux-x86_64:
   image: python:3.12
   needs:
   - build/cp312-linux-x86_64
+build/cp313-linux-x86_64:
+  <<: *build_wheel_template
+  image: python:3.13
+test/minimal-loose/cp313-linux-x86_64:
+  <<: *test_minimal-loose_template
+  image: python:3.13
+  needs:
+  - build/cp313-linux-x86_64
+test/full-loose/cp313-linux-x86_64:
+  <<: *test_full-loose_template
+  image: python:3.13
+  needs:
+  - build/cp313-linux-x86_64
+test/minimal-strict/cp313-linux-x86_64:
+  <<: *test_minimal-strict_template
+  image: python:3.13
+  needs:
+  - build/cp313-linux-x86_64
+test/full-strict/cp313-linux-x86_64:
+  <<: *test_full-strict_template
+  image: python:3.13
+  needs:
+  - build/cp313-linux-x86_64
 lint:
   <<: *common_template
   image: python:3.11
@@ -518,6 +541,8 @@ gpgsign/wheels:
   - job: build/cp311-linux-x86_64
     artifacts: true
   - job: build/cp312-linux-x86_64
+    artifacts: true
+  - job: build/cp313-linux-x86_64
     artifacts: true
 deploy/wheels:
   <<: *common_template
