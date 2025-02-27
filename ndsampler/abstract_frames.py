@@ -709,6 +709,11 @@ class AlignableImageData(object):
         return chan
 
     def _coerce_channels(self, channels=ub.NoParam):
+        """
+        from delayed_image.channel_spec import FusedChannelSpec
+
+        FusedChannelSpec.coerce('hidden:0.128')
+        """
         if isinstance(channels, str):
             # TODO: document this special key for all channels
             if channels == '<all>':
