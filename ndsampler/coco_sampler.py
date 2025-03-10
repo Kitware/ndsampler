@@ -883,6 +883,31 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         sample['kp_classes'] = self.kp_classes
         return sample
 
+    def _normalize_target_keys(self, target_):
+        """
+        Normalize keys in the target dictionary to their cannonical form
+        used in the rest of the code.
+
+        TODO:
+            - [ ] Make "image_id" cannonical over "gid"
+            - [ ] Make "image_ids" cannonical over "gids"
+            - [ ] Make "annot_id" cannonical over "aid"
+            - [ ] Make "video_id" cannonical over "vidid"
+            - [ ] Warn users to use cannonical forms
+        """
+        # TODO: make the cannonical form of the target use the spelled-out
+        # versions of the variables, but allow the short alias codes.
+        if 'image_id' in target_:
+            if target_.get('gid', None) is None:
+                target_['gid'] = target_['image_id']
+        if 'image_ids' in target_:
+            if target_.get('gids', None) is None:
+                target_['gids'] = target_['image_ids']
+        if 'video_id' in target_:
+            if target_.get('vidid', None) is None:
+                target_['vidid'] = target_['video_id']
+        return target_
+
     @profile
     def _infer_target_attributes(self, target, **kwargs):
         """
@@ -935,17 +960,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                         'the deprecated kwarg will take precedence')
                 target_[key] = kwargs[key]
 
-        # TODO: make the cannonical form of the target use the spelled-out
-        # versions of the variables, but allow the short alias codes.
-        if 'image_id' in target_:
-            if target_.get('gid', None) is None:
-                target_['gid'] = target_['image_id']
-        if 'image_ids' in target_:
-            if target_.get('gids', None) is None:
-                target_['gids'] = target_['image_ids']
-        if 'video_id' in target_:
-            if target_.get('vidid', None) is None:
-                target_['vidid'] = target_['video_id']
+        target_ = self._normalize_target_keys(target_)
 
         if 'aid' in target_:
             # If the annotation id is specified, infer other unspecified fields
