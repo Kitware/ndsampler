@@ -1017,6 +1017,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             else:
                 space_dims = None
                 data_dims = None
+                if vidid is None and len(gids) == 1:
+                    # fallback to a single image
+                    img = self.dset.index.imgs[gids[0]]
+                    space_dims = (img['height'], img['width'])
+                    data_dims = (1,) + space_dims
         else:
             raise NotImplementedError
 

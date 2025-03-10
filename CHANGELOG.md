@@ -12,6 +12,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * The target dictionary for `load_sample` now respects `image_id`, `image_ids`,
   and `video_id`.
 
+### Fix
+
+* When using the 3d `load_sample` backend with a single image, allow fallback
+  on image width/height 
+
 
 ## Version 0.8.0 - Released 2024-06-24
 
