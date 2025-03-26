@@ -308,21 +308,36 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
 
         Returns:
             List[int]: annotation ids
+
+        Example:
+            >>> from ndsampler.coco_regions import *
+            >>> from ndsampler import coco_sampler
+            >>> self = coco_sampler.CocoSampler.demo().regions
+            >>> region = kwimage.Boxes([[0, 0, 1000, 1000]], 'xywh')
+            >>> gid = 1
+            >>> overlap_aids = self.overlapping_aids(gid, region, visible_thresh=0.1)
+            >>> assert len(overlap_aids) > 0
         """
         overlap_aids = self.isect_index.overlapping_aids(gid, region)
         if visible_thresh > 0 and len(overlap_aids) > 0:
             # Get info about all annotations inside this window
-            if 0:
-                overlap_annots = self.dset.annots(overlap_aids)
-                abs_boxes = overlap_annots.boxes
-            else:
-                overlap_anns = [self.dset.anns[aid] for aid in overlap_aids]
-                abs_boxes = kwimage.Boxes(
-                    [ann['bbox'] for ann in overlap_anns], 'xywh')
+            overlap_annots = self.dset.annots(overlap_aids)
+            abs_boxes = kwimage.Boxes(
+                overlap_annots.lookup('bbox') , 'xywh')
             # Remove annotations that are not mostly invisible
             if len(abs_boxes) > 0:
                 eps = 1e-6
-                isect_area = region[None, :].isect_area(abs_boxes)[0]
+                try:
+                    # HACK: This is legacy code that breaks convension of
+                    # kwimage.Boxes, but leaving it for now. It likely only
+                    # works with older unsupported versions of kwimage, but
+                    # this needs to be confirmed before breaking backwards
+                    # compat.
+                    isect_area = region[None, :].isect_area(abs_boxes)[0]
+                except IndexError:
+                    # We should be able to assume that a kwimage.Boxes
+                    # object always has a leading dimension.
+                    isect_area = region.isect_area(abs_boxes)[0]
                 other_area = abs_boxes.area.T[0]
                 visibility = isect_area / (other_area + eps)
                 is_visible = visibility > visible_thresh

@@ -17,6 +17,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 * When using the 3d `load_sample` backend with a single image, allow fallback
   on image width/height 
 
+* Issue when using `visible_thresh`, and added corresponding test.
+
 
 ## Version 0.8.0 - Released 2024-06-24
 
