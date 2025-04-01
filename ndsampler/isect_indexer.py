@@ -36,7 +36,7 @@ class FrameIntersectionIndex(ub.NiceRepr):
         >>> dset._ensure_imgsize()
         >>> dset.remove_annotations([ann for ann in dset.anns.values()
         >>>                          if 'bbox' not in ann])
-        >>> # Build intersection index aroung coco dataset
+        >>> # Build intersection index around coco dataset
         >>> self = FrameIntersectionIndex.from_coco(dset)
         >>> gid = 1
         >>> box = kwimage.Boxes([0, 10, 100, 100], 'xywh')
@@ -192,7 +192,7 @@ class FrameIntersectionIndex(ub.NiceRepr):
 
     def ious(self, gid, box):
         """
-        Find overlaping annotations in a specific image and their intersection
+        Find overlapping annotations in a specific image and their intersection
         over union with a a query box.
 
         Args:

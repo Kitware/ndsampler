@@ -164,7 +164,7 @@ class Mixin_CategoryTree_Torch:
             >>> class_probs = torch.exp(class_logprobs)
             >>> for node, idx in self.node_to_idx.items():
             ...     # Check the total children probabilities
-            ...     # is equal to the parent probablity.
+            ...     # is equal to the parent probability.
             ...     children = list(self.graph.successors(node))
             ...     child_idxs = [self.node_to_idx[c] for c in children]
             ...     if len(child_idxs) > 0:
@@ -215,7 +215,7 @@ class Mixin_CategoryTree_Torch:
             >>> class_probs = torch.exp(class_logprobs)
             >>> for node, idx in self.node_to_idx.items():
             ...     # Check the total children probabilities
-            ...     # is equal to the parent probablity.
+            ...     # is equal to the parent probability.
             ...     children = list(self.graph.successors(node))
             ...     child_idxs = [self.node_to_idx[c] for c in children]
             ...     if len(child_idxs) > 0:
@@ -498,7 +498,7 @@ class Mixin_CategoryTree_Torch:
 
             ignore_class_idxs (List[int], optional): if specified this is a list
                 of class indices which we are not allowed to predict. We
-                will procede as if the graph did not contain these nodes.
+                will proceed as if the graph did not contain these nodes.
                 (Useful for getting low-probability detections).
 
             always_refine_idxs  (List[int], optional):
@@ -592,7 +592,7 @@ class Mixin_CategoryTree_Torch:
             >>> # xdoctest: +REQUIRES(module:torch)
             >>> import torch
             >>> # FIXME: What do we do in this case?
-            >>> # Do we always decend at level A?
+            >>> # Do we always descend at level A?
             >>> from ndsampler.category_tree import *
             >>> graph = nx.from_dict_of_lists({
             >>>     'a': ['b', 'c'],

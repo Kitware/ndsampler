@@ -112,7 +112,7 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
 
         self._positive_pool = None
 
-        # A list of the selected positive (possibily oversampled) indices
+        # A list of the selected positive (possibly oversampled) indices
         self._pos_select_idxs = None
 
         self._negative_pool = None
@@ -238,9 +238,9 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
         could sample from. Often times we will simply use all of them.
 
         This function takes a subset of annotations in the coco dataset that
-        can be considered "viable" positives. We may subsample these futher,
+        can be considered "viable" positives. We may subsample these further
         but this serves to collect the annotations that could feasibly be used
-        by the network. Essentailly we remove annotations without bounding
+        by the network. Essentially we remove annotations without bounding
         boxes. I'm not sure I 100% like the way this works though. Shouldn't
         filtering be done before we even get here? Perhaps but perhaps not.
         This design needs a bit more thought.
@@ -328,7 +328,7 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
             if len(abs_boxes) > 0:
                 eps = 1e-6
                 try:
-                    # HACK: This is legacy code that breaks convension of
+                    # HACK: This is legacy code that breaks convention of
                     # kwimage.Boxes, but leaving it for now. It likely only
                     # works with older unsupported versions of kwimage, but
                     # this needs to be confirmed before breaking backwards
@@ -822,7 +822,7 @@ def tabular_coco_targets(dset):
 def select_positive_regions(targets, window_dims=(300, 300), thresh=0.0,
                             rng=None, verbose=0):
     """
-    Reduce positive example redundency by selecting disparate positive samples
+    Reduce positive example redundancy by selecting disparate positive samples
 
     Example:
         >>> from ndsampler.coco_regions import *
@@ -856,13 +856,13 @@ def select_positive_regions(targets, window_dims=(300, 300), thresh=0.0,
                         total=len(gid_to_groupx), adjust=0, freq=32)
 
     for gid, groupx in iter_:
-        # Select all candiate windows in this image
+        # Select all candidate windows in this image
         cand_windows = boxes.take(groupx, axis=0)
         # Randomize which candidate windows have the highest scores so the
         # selection can vary each epoch.
         cand_scores = rng.rand(len(cand_windows))
         cand_dets = kwimage.Detections(boxes=cand_windows, scores=cand_scores)
-        # Non-max supresssion is really similar to set-cover
+        # Non-max suppression is really similar to set-cover
         keep = cand_dets.non_max_supression(thresh=thresh)
         selection.extend(groupx[keep])
 

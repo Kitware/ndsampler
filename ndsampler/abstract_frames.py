@@ -518,7 +518,7 @@ class Frames(object):
             return
 
         ub.ensuredir(self.cache_dpath)
-        # Note: this usually acceses the hashid attribute of util.HashIdentifiable
+        # Note: this usually accesses the hashid attribute of util.HashIdentifiable
         hashid = getattr(self, 'hashid', None)
 
         # TODO:

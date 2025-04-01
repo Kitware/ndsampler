@@ -92,7 +92,7 @@ Usage
 The main pattern of usage is:
 
 1. Use kwcoco to load a json-based COCO dataset (or create a ``kwcoco.CocoDataset``
-   programatically).
+   programmatically).
 
 2. Pass that dataset to an ``ndsampler.CocoSampler`` object, and that
    effectively wraps the json structure that holds your images and annotations
@@ -135,7 +135,7 @@ This example shows how you can efficiently load subregions from images.
     >>> # Now pass the dataset to a sampler and tell it where it can store temporary files
     >>> workdir = ub.Path.appdir('ndsampler/demo').ensuredir()
     >>> sampler = ndsampler.CocoSampler(coco_dset, workdir=workdir)
-    >>> # Now you can load arbirary samples by specifing a target dictionary
+    >>> # Now you can load arbitrary samples by specifying a target dictionary
     >>> # with an image_id (gid) center location (cx, cy) and width, height.
     >>> target = {'gid': 0, 'cx': 200, 'cy': 200, 'width': 100, 'height': 100}
     >>> sample = sampler.load_sample(target)
@@ -157,9 +157,9 @@ A Note On COGs
 COGs (cloud optimized geotiffs) are the backbone efficient sampling in the
 ndsampler library.
 
-To preform deep learning efficiently you need to be able to effectively
+To perform deep learning efficiently you need to be able to effectively
 randomly sample cropped regions from images, so when ``ndsampler.Sampler``
-(more acurately the ``FramesSampler`` belonging to the base ``Sampler`` object)
+(more accurately the ``FramesSampler`` belonging to the base ``Sampler`` object)
 is in "cog" mode, it caches all images larger than 512x512 in cog format.
 
 I've noticed a significant speedups even for "small" 1024x1024 images.  I

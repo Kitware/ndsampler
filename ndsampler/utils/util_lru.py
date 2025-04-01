@@ -143,7 +143,7 @@ class LRUDict(ub.NiceRepr):
                 import warnings
                 warnings.warn(
                     'Optional lru-dict c-implementation is unavailable.'
-                    ' `pip install lru-dict` to supress this warning,'
+                    ' `pip install lru-dict` to suppress this warning,'
                     ' or set environ NDSAMPLER_DISABLE_WARNINGS=1.'
                     ' Fallback to pure python. ex={!r}'.format(ex))
 

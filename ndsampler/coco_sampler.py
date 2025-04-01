@@ -35,7 +35,7 @@ Example:
     >>> # Now pass the dataset to a sampler and tell it where it can store temporary files
     >>> workdir = ub.Path.appdir('ndsampler/demo').ensuredir()
     >>> sampler = ndsampler.CocoSampler(coco_dset, workdir=workdir)
-    >>> # Now you can load arbirary samples by specifing a target dictionary
+    >>> # Now you can load arbitrary samples by specifying a target dictionary
     >>> # with an image_id (gid) center location (cx, cy) and width, height.
     >>> target = {'gid': 0, 'cx': 220, 'cy': 100, 'width': 300, 'height': 300}
     >>> sample = sampler.load_sample(target)
@@ -136,7 +136,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
     @classmethod
     def demo(cls, key='shapes', workdir=None, backend=None, **kw):
         """
-        Create a toy coco sampler for testing and demo puposes
+        Create a toy coco sampler for testing and demo purposes
 
         SeeAlso:
             * kwcoco.CocoDataset.demo
@@ -172,7 +172,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
     def coerce(cls, data, **kwargs):
         """
         Attempt to coerce the input data into a sampler. Generally this can be
-        anything that is already a sampler, or somthing that can be coerced
+        anything that is already a sampler, or something that can be coerced
         into a kwcoco dataset.
 
         Args:
@@ -224,7 +224,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
     @property
     def catgraph(self):
         """
-        DEPRICATED, use self.classes instead
+        DEPRECATED, use self.classes instead
         """
         if self.regions is None:
             return None
@@ -369,7 +369,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 overlaps the region of interest (subject to visibility_thresh).
                 Can also be a List[str] that specifies which specific subinfo
                 should be extracted. Valid strings in this list are: boxes,
-                keypoints, and segmenation. Defaults to True.
+                keypoints, and segmentation. Defaults to True.
 
             target (Dict): Extra target arguments that update the positive target,
                 like window_dims, pad, etc.... See :func:`load_sample` for
@@ -885,17 +885,17 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
     def _normalize_target_keys(self, target_):
         """
-        Normalize keys in the target dictionary to their cannonical form
+        Normalize keys in the target dictionary to their canonical form
         used in the rest of the code.
 
         TODO:
-            - [ ] Make "image_id" cannonical over "gid"
-            - [ ] Make "image_ids" cannonical over "gids"
-            - [ ] Make "annot_id" cannonical over "aid"
-            - [ ] Make "video_id" cannonical over "vidid"
-            - [ ] Warn users to use cannonical forms
+            - [ ] Make "image_id" canonical over "gid"
+            - [ ] Make "image_ids" canonical over "gids"
+            - [ ] Make "annot_id" canonical over "aid"
+            - [ ] Make "video_id" canonical over "vidid"
+            - [ ] Warn users to use canonical forms
         """
-        # TODO: make the cannonical form of the target use the spelled-out
+        # TODO: make the canonical form of the target use the spelled-out
         # versions of the variables, but allow the short alias codes.
         if 'image_id' in target_:
             if target_.get('gid', None) is None:
@@ -911,7 +911,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
     @profile
     def _infer_target_attributes(self, target, **kwargs):
         """
-        Infer unpopulated target attribues
+        Infer unpopulated target attributes
 
         Example:
             >>> # sample using only an annotation id
@@ -1878,7 +1878,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             sseg_list = []
             kpts_list = []
             for ann in overlap_anns:
-                # TODO: it should probably be the regions's responsibilty to load
+                # TODO: it should probably be the regions's responsibility to load
                 # and return these kwimage data structures.
                 abs_points = None
                 abs_sseg = None

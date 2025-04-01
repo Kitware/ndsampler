@@ -1,5 +1,5 @@
 """
-Note: this module also exists in kwcoco.utils
+TODO: Use the ubelt variants of these instead.
 """
 import concurrent.futures
 from concurrent.futures import as_completed
@@ -8,7 +8,7 @@ __all__ = ['Executor', 'SerialExecutor', 'as_completed']
 
 
 # class FakeCondition(object):
-#     def aquire(self):
+#     def acquire(self):
 #         pass
 
 #     def release(self):

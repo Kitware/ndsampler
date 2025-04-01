@@ -14,7 +14,7 @@ class HashIdentifiable(object):
     Example:
         class Base:
             def __init__(self):
-                # commenting the next line removes cooperative inheritence
+                # commenting the next line removes cooperative inheritance
                 super().__init__()
                 self.base = 1
 
