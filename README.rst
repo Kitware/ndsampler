@@ -214,23 +214,6 @@ Kitware also has a pypi index that hosts GDAL wheels for linux systems:
     pip install --find-links https://girder.github.io/large_image_wheels GDAL
 
 
-TODO
-----
-
-- [ ] Currently only supports image-based detection tasks, but not much work is
-  needed to extend to video. The code was originally based on sampling code for
-  video, so ndimensions is builtin to most places in the code. However, there are
-  currently no test cases that demonstrate that this library does work with video.
-  So we should (a) port the video toydata code from irharn to test ndcases and (b)
-  fix the code to work for both still images and video where things break.
-
-- [ ] Currently we are good at loading many small objects in 2d images.
-  However, we are bad at loading images with one single large object that needs
-  to be downsampled (e.g. loading an entire 1024x1024 image and downsampling it
-  to 224x224). We should find a way to mitigate this using pyramid overviews in
-  the backend COG files.
-
-
 .. |Pypi| image:: https://img.shields.io/pypi/v/ndsampler.svg
    :target: https://pypi.python.org/pypi/ndsampler
 
