@@ -19,7 +19,7 @@ __autogen__ = """
 mkinit ~/code/ndsampler/ndsampler/__init__.py --diff
 mkinit ~/code/ndsampler/ndsampler/__init__.py -w
 """
-__version__ = '0.8.0'
+__version__ = '0.8.1'
 
 from ndsampler.utils.util_misc import (HashIdentifiable,)
 

@@ -25,7 +25,7 @@
                 ]
             },
             "properties": {
-                "comment": "I dont like giving information about each item in the geometry collection outside of each particular goemetry object, but I dont see another way to do it. I really dont like that these properties are highly dependent on the ordering of each geometry object in the geometry collection",
+                "comment": "I dont like giving information about each item in the geometry collection outside of each particular geometry object, but I dont see another way to do it. I really dont like that these properties are highly dependent on the ordering of each geometry object in the geometry collection",
                 "geometries_metadata": [
                     {
                         "comment": "it would be much nicer if this actually lived inside the multipoint geometry object",
@@ -47,5 +47,5 @@
         {"comment": "..."}, 
         {"comment": "final feature"}
     ],
-    "categories": "Custom feild defining what the categories referenced by the category ids are"
+    "categories": "Custom field defining what the categories referenced by the category ids are"
 }

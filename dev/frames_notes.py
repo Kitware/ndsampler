@@ -148,7 +148,7 @@ def __devcheck_align_regions():
         chan_region = (slice(lt_y, rb_y), slice(lt_x, rb_x))
         chan_crop = chan[chan_region]
 
-        # Because we sampled a larget quantized region, we need to modify the
+        # Because we sampled a large quantized region, we need to modify the
         # chan-to-base base_to_aux to nudge it a bit to the left, undoing the
         # quantization, which has a bit of extra padding on the left, before
         # applying the final base_to_aux.

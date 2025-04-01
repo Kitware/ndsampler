@@ -10,10 +10,9 @@ mod_name = "ndsampler"
 repo_name = "ndsampler"
 rel_mod_parent_dpath = "."
 os = [ "all", "osx", "win", "linux",]
-min_python = 3.8
-max_python = 3.12
-ci_cpython_versions = ["3.8", "3.9", "3.10", "3.11", "3.12"]
+min_python = '3.8'
 author = "Jon Crall"
+use_uv = true
 author_email = "jon.crall@kitware.com"
 description = "Fast sampling from large images"
 render_doc_images = 1
@@ -40,3 +39,9 @@ branch = true
 [tool.coverage.report]
 exclude_lines = [ "pragma: no cover", ".*  # pragma: no cover", ".*  # nocover", "def __repr__", "raise AssertionError", "raise NotImplementedError", "if 0:", "if trace is not None", "verbose = .*", "^ *raise", "^ *pass *$", "if _debug:", "if __name__ == .__main__.:", ".*if six.PY2:",]
 omit = [ "ndsampler/__main__.py", "*/setup.py",]
+
+[tool.codespell]
+skip = ['./docs/build', './*.egg-info', './build', './htmlcov']
+count = true
+quiet-level = 3
+ignore-words-list = ['wont', 'cant', 'ANS', 'doesnt', 'arent', 'ans', 'thats', 'datas', 'isnt', 'nd', 'whos', 'didnt']

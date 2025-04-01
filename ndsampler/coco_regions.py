@@ -112,7 +112,7 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
 
         self._positive_pool = None
 
-        # A list of the selected positive (possibily oversampled) indices
+        # A list of the selected positive (possibly oversampled) indices
         self._pos_select_idxs = None
 
         self._negative_pool = None
@@ -213,6 +213,7 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
         """
         return self._lazy_isect_index()
 
+    @profile
     def _lazy_isect_index(self, verbose=None):
         if self._isect_index is None:
             # FIXME! Any use of cacher here should be wrapped in an
@@ -237,9 +238,9 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
         could sample from. Often times we will simply use all of them.
 
         This function takes a subset of annotations in the coco dataset that
-        can be considered "viable" positives. We may subsample these futher,
+        can be considered "viable" positives. We may subsample these further
         but this serves to collect the annotations that could feasibly be used
-        by the network. Essentailly we remove annotations without bounding
+        by the network. Essentially we remove annotations without bounding
         boxes. I'm not sure I 100% like the way this works though. Shouldn't
         filtering be done before we even get here? Perhaps but perhaps not.
         This design needs a bit more thought.
@@ -307,21 +308,36 @@ class CocoRegions(Targets, util_misc.HashIdentifiable, ub.NiceRepr):
 
         Returns:
             List[int]: annotation ids
+
+        Example:
+            >>> from ndsampler.coco_regions import *
+            >>> from ndsampler import coco_sampler
+            >>> self = coco_sampler.CocoSampler.demo().regions
+            >>> region = kwimage.Boxes([[0, 0, 1000, 1000]], 'xywh')
+            >>> gid = 1
+            >>> overlap_aids = self.overlapping_aids(gid, region, visible_thresh=0.1)
+            >>> assert len(overlap_aids) > 0
         """
         overlap_aids = self.isect_index.overlapping_aids(gid, region)
         if visible_thresh > 0 and len(overlap_aids) > 0:
             # Get info about all annotations inside this window
-            if 0:
-                overlap_annots = self.dset.annots(overlap_aids)
-                abs_boxes = overlap_annots.boxes
-            else:
-                overlap_anns = [self.dset.anns[aid] for aid in overlap_aids]
-                abs_boxes = kwimage.Boxes(
-                    [ann['bbox'] for ann in overlap_anns], 'xywh')
+            overlap_annots = self.dset.annots(overlap_aids)
+            abs_boxes = kwimage.Boxes(
+                overlap_annots.lookup('bbox') , 'xywh')
             # Remove annotations that are not mostly invisible
             if len(abs_boxes) > 0:
                 eps = 1e-6
-                isect_area = region[None, :].isect_area(abs_boxes)[0]
+                try:
+                    # HACK: This is legacy code that breaks convention of
+                    # kwimage.Boxes, but leaving it for now. It likely only
+                    # works with older unsupported versions of kwimage, but
+                    # this needs to be confirmed before breaking backwards
+                    # compat.
+                    isect_area = region[None, :].isect_area(abs_boxes)[0]
+                except IndexError:
+                    # We should be able to assume that a kwimage.Boxes
+                    # object always has a leading dimension.
+                    isect_area = region.isect_area(abs_boxes)[0]
                 other_area = abs_boxes.area.T[0]
                 visibility = isect_area / (other_area + eps)
                 is_visible = visibility > visible_thresh
@@ -806,7 +822,7 @@ def tabular_coco_targets(dset):
 def select_positive_regions(targets, window_dims=(300, 300), thresh=0.0,
                             rng=None, verbose=0):
     """
-    Reduce positive example redundency by selecting disparate positive samples
+    Reduce positive example redundancy by selecting disparate positive samples
 
     Example:
         >>> from ndsampler.coco_regions import *
@@ -840,13 +856,13 @@ def select_positive_regions(targets, window_dims=(300, 300), thresh=0.0,
                         total=len(gid_to_groupx), adjust=0, freq=32)
 
     for gid, groupx in iter_:
-        # Select all candiate windows in this image
+        # Select all candidate windows in this image
         cand_windows = boxes.take(groupx, axis=0)
         # Randomize which candidate windows have the highest scores so the
         # selection can vary each epoch.
         cand_scores = rng.rand(len(cand_windows))
         cand_dets = kwimage.Detections(boxes=cand_windows, scores=cand_scores)
-        # Non-max supresssion is really similar to set-cover
+        # Non-max suppression is really similar to set-cover
         keep = cand_dets.non_max_supression(thresh=thresh)
         selection.extend(groupx[keep])
 

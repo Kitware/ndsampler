@@ -35,7 +35,7 @@ Example:
     >>> # Now pass the dataset to a sampler and tell it where it can store temporary files
     >>> workdir = ub.Path.appdir('ndsampler/demo').ensuredir()
     >>> sampler = ndsampler.CocoSampler(coco_dset, workdir=workdir)
-    >>> # Now you can load arbirary samples by specifing a target dictionary
+    >>> # Now you can load arbitrary samples by specifying a target dictionary
     >>> # with an image_id (gid) center location (cx, cy) and width, height.
     >>> target = {'gid': 0, 'cx': 220, 'cy': 100, 'width': 300, 'height': 300}
     >>> sample = sampler.load_sample(target)
@@ -136,7 +136,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
     @classmethod
     def demo(cls, key='shapes', workdir=None, backend=None, **kw):
         """
-        Create a toy coco sampler for testing and demo puposes
+        Create a toy coco sampler for testing and demo purposes
 
         SeeAlso:
             * kwcoco.CocoDataset.demo
@@ -172,7 +172,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
     def coerce(cls, data, **kwargs):
         """
         Attempt to coerce the input data into a sampler. Generally this can be
-        anything that is already a sampler, or somthing that can be coerced
+        anything that is already a sampler, or something that can be coerced
         into a kwcoco dataset.
 
         Args:
@@ -224,7 +224,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
     @property
     def catgraph(self):
         """
-        DEPRICATED, use self.classes instead
+        DEPRECATED, use self.classes instead
         """
         if self.regions is None:
             return None
@@ -369,7 +369,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                 overlaps the region of interest (subject to visibility_thresh).
                 Can also be a List[str] that specifies which specific subinfo
                 should be extracted. Valid strings in this list are: boxes,
-                keypoints, and segmenation. Defaults to True.
+                keypoints, and segmentation. Defaults to True.
 
             target (Dict): Extra target arguments that update the positive target,
                 like window_dims, pad, etc.... See :func:`load_sample` for
@@ -568,10 +568,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
 
                 For 2D image source objects, target must contain or be able to
                 infer the key `gid (int)`, to specify an image id.
+                You may also use `image_id` as an alias (NEW in 0.8.1).
 
                 For 3D video source objects, target must contain the key
                 `vidid (int)`, to specify a video id (NEW in 0.6.1) or
                 `gids List[int]`, as a list of images in a video (NEW in 0.6.2)
+                You may also use `video_id` and  `image_ids` as an alias (NEW
+                in 0.8.1).
 
                 In general, coordinate regions can specified by the key
                 `slices`, a numpy-like "fancy index" over each of the n
@@ -644,6 +647,11 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     to float32 and nodata values are replaced with nan. These
                     nan values are handled correctly in subsequent warping
                     operations. Defaults to None.
+
+                finalize (bool):
+                    If False, returns the delayed image instead of the
+                    finalized image.  (Currently only implemented for 3d
+                    sampling). Defaults to True.
 
             with_annots (bool | str):
                 if True, also extracts information about any annotation that
@@ -831,6 +839,15 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> assert np.allclose((box3.width / box1.width), 2)
             >>> jagged_shape = [[p.shape for p in f] for f in sample3['im']]
             >>> jagged_align = [[a for a in m['align']] for m in sample3['params']['jagged_meta']]
+
+        Example:
+            >>> # Test finalize=False
+            >>> from ndsampler.coco_sampler import *
+            >>> self = CocoSampler.demo('vidshapes1-msi-multisensor', num_frames=5)
+            >>> sample_grid = self.new_sample_grid('video_detection', (3, 128, 128))
+            >>> target = sample_grid['positives'][0]
+            >>> target['finalize'] = False
+            >>> sample1 = self.load_sample(target)
         """
         if target is None:
             if 'tr' in kwargs:
@@ -866,10 +883,35 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         sample['kp_classes'] = self.kp_classes
         return sample
 
+    def _normalize_target_keys(self, target_):
+        """
+        Normalize keys in the target dictionary to their canonical form
+        used in the rest of the code.
+
+        TODO:
+            - [ ] Make "image_id" canonical over "gid"
+            - [ ] Make "image_ids" canonical over "gids"
+            - [ ] Make "annot_id" canonical over "aid"
+            - [ ] Make "video_id" canonical over "vidid"
+            - [ ] Warn users to use canonical forms
+        """
+        # TODO: make the canonical form of the target use the spelled-out
+        # versions of the variables, but allow the short alias codes.
+        if 'image_id' in target_:
+            if target_.get('gid', None) is None:
+                target_['gid'] = target_['image_id']
+        if 'image_ids' in target_:
+            if target_.get('gids', None) is None:
+                target_['gids'] = target_['image_ids']
+        if 'video_id' in target_:
+            if target_.get('vidid', None) is None:
+                target_['vidid'] = target_['video_id']
+        return target_
+
     @profile
     def _infer_target_attributes(self, target, **kwargs):
         """
-        Infer unpopulated target attribues
+        Infer unpopulated target attributes
 
         Example:
             >>> # sample using only an annotation id
@@ -895,6 +937,10 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> target = {'gids': [1, 2], 'as_xarray': True}
             >>> target_ = self._infer_target_attributes(target)
             >>> print('target_ = {}'.format(ub.urepr(target_, nl=1)))
+
+            >>> target = {'image_ids': [1, 2], 'as_xarray': True}
+            >>> target_ = self._infer_target_attributes(target)
+            >>> print('target_ = {}'.format(ub.urepr(target_, nl=1)))
         """
         # we might modify the target
         target_ = target.copy()
@@ -913,6 +959,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                         f'{key} was specified in both kwargs and the target dictionary, '
                         'the deprecated kwarg will take precedence')
                 target_[key] = kwargs[key]
+
+        target_ = self._normalize_target_keys(target_)
 
         if 'aid' in target_:
             # If the annotation id is specified, infer other unspecified fields
@@ -965,7 +1013,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             # Image sample
             ndim = 2
         else:
-            raise ValueError('no source object id(s)')
+            raise ValueError(f'no source object id(s) in target={target}')
 
         # Fix non-determined bounds
         if ndim == 2:
@@ -973,14 +1021,22 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             space_dims = (img['height'], img['width'])
             data_dims = space_dims
         elif ndim == 3:
+            video = None
             if vidid is not None:
-                video = self.dset.index.videos[vidid]
+                video = self.dset.index.videos.get(vidid, None)
+
+            if video is not None:
                 space_dims = (video['height'], video['width'])
                 vid_gids = self.dset.index.vidid_to_gids[vidid]
                 data_dims = (len(vid_gids),) + space_dims
             else:
                 space_dims = None
                 data_dims = None
+                if vidid is None and len(gids) == 1:
+                    # fallback to a single image
+                    img = self.dset.index.imgs[gids[0]]
+                    space_dims = (img['height'], img['width'])
+                    data_dims = (1,) + space_dims
         else:
             raise NotImplementedError
 
@@ -1147,7 +1203,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             >>> target = self._infer_target_attributes(target)
             >>> gid = None
             >>> for coco_img in self.dset.images().coco_images:
-            >>>     if coco_img.channels & 'r|g|b':
+            >>>     if  (coco_img.channels & 'r|g|b').numel():
             >>>         gid = coco_img.img['id']
             >>>         break
             >>> assert gid is not None, 'need specific image'
@@ -1214,6 +1270,8 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
         pad = target_.get('pad', None)
         dtype = target_.get('dtype', None)
         nodata = target_.get('nodata', None)
+
+        finalize = target_.get('finalize', True)
 
         verbose_ndsample = target_.get('verbose_ndsample', False)
 
@@ -1489,10 +1547,13 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                         part.print_graph()
 
                     part2 = part.optimize() if optimize else part
-                    if as_xarray:
-                        frame = part2.as_xarray().finalize(**finalizekw)
+                    if finalize:
+                        if as_xarray:
+                            frame = part2.as_xarray().finalize(**finalizekw)
+                        else:
+                            frame = part2.finalize(**finalizekw)
                     else:
-                        frame = part2.finalize(**finalizekw)
+                        frame = part2
                     jagged_parts.append(frame)
                     jagged_chans.append(part.channels)
                     jagged_warps.append(warp_grid_to_part)
@@ -1525,25 +1586,27 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
                     to_finalize = delayed_crop
 
                 # to_finalize._set_nested_params(**kwargs)
-                try:
-                    frame = to_finalize.finalize(**finalizekw)
-                except Exception:
-                    print('ERROR in finalize')
-                    to_finalize.print_graph()
-                    raise
+                if finalize:
+                    try:
+                        frame = to_finalize.finalize(**finalizekw)
+                    except Exception:
+                        print('ERROR in finalize')
+                        to_finalize.print_graph()
+                        raise
 
-                if dtype is not None:
-                    frame = frame.astype(dtype)
+                    if dtype is not None:
+                        frame = frame.astype(dtype)
+                else:
+                    frame = to_finalize
                 space_frames.append(frame)
 
                 # warp_sample_from_grid_alt = delayed_crop.get_transform_from(delayed_frame)
                 # print('warp_sample_from_grid_alt = {}'.format(ub.urepr(warp_sample_from_grid_alt, nl=1)))
                 # print('warp_sample_from_grid = {}'.format(ub.urepr(warp_sample_from_grid, nl=1)))
-
                 frame_sample_from_grid_warps.append(warp_sample_from_grid)
 
         # Concat aligned frames together (add nans for non-existing channels)
-        if frame_use_native_scale:
+        if frame_use_native_scale or not finalize:
             data_sliced = space_frames
         else:
             if as_xarray:
@@ -1815,7 +1878,7 @@ class CocoSampler(abstract_sampler.AbstractSampler, util_misc.HashIdentifiable,
             sseg_list = []
             kpts_list = []
             for ann in overlap_anns:
-                # TODO: it should probably be the regions's responsibilty to load
+                # TODO: it should probably be the regions's responsibility to load
                 # and return these kwimage data structures.
                 abs_points = None
                 abs_sseg = None

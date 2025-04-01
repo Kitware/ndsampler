@@ -3,7 +3,24 @@
 This changelog follows the specifications detailed in: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html), although we have not yet reached a `1.0.0` release.
 
-## Version 0.8.0 - Unreleased
+## Version 0.8.1 - Unreleased
+
+### Added
+* Added `finalize` argument to `CocoSampler.load_sample` which allows the
+  sampler to return the delayed image instead of the finalized one. 
+
+* The target dictionary for `load_sample` now respects `image_id`, `image_ids`,
+  and `video_id`.
+
+### Fix
+
+* When using the 3d `load_sample` backend with a single image, allow fallback
+  on image width/height 
+
+* Issue when using `visible_thresh`, and added corresponding test.
+
+
+## Version 0.8.0 - Released 2024-06-24
 
 ### Removed
 * Drop Python 3.6 and 3.7 support

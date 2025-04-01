@@ -105,7 +105,7 @@ def pyqtree_bug_test_cases():
     passed_cases = []
 
     # We will execute the MWE in a separate python process via the "-c"
-    # argument so we can programatically kill cases that hang
+    # argument so we can programmatically kill cases that hang
     test_case_lines = [
         'import pyqtree',
         'bbox, width, height = {!r}, {!r}, {!r}',
@@ -118,7 +118,7 @@ def pyqtree_bug_test_cases():
     for label, bbox in ub.ProgIter(cases, desc='checking case', verbose=3):
         pycmd = ';'.join(test_case_lines).format(bbox, width, height)
         command = 'python -c "{}"'.format(pycmd)
-        info = ub.cmd(command, detatch=True)
+        info = ub.cmd(command, detach=True)
         proc = info['proc']
         try:
             if proc.wait(timeout=0.2) != 0:

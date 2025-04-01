@@ -92,7 +92,7 @@ Usage
 The main pattern of usage is:
 
 1. Use kwcoco to load a json-based COCO dataset (or create a ``kwcoco.CocoDataset``
-   programatically).
+   programmatically).
 
 2. Pass that dataset to an ``ndsampler.CocoSampler`` object, and that
    effectively wraps the json structure that holds your images and annotations
@@ -135,7 +135,7 @@ This example shows how you can efficiently load subregions from images.
     >>> # Now pass the dataset to a sampler and tell it where it can store temporary files
     >>> workdir = ub.Path.appdir('ndsampler/demo').ensuredir()
     >>> sampler = ndsampler.CocoSampler(coco_dset, workdir=workdir)
-    >>> # Now you can load arbirary samples by specifing a target dictionary
+    >>> # Now you can load arbitrary samples by specifying a target dictionary
     >>> # with an image_id (gid) center location (cx, cy) and width, height.
     >>> target = {'gid': 0, 'cx': 200, 'cy': 200, 'width': 100, 'height': 100}
     >>> sample = sampler.load_sample(target)
@@ -157,9 +157,9 @@ A Note On COGs
 COGs (cloud optimized geotiffs) are the backbone efficient sampling in the
 ndsampler library.
 
-To preform deep learning efficiently you need to be able to effectively
+To perform deep learning efficiently you need to be able to effectively
 randomly sample cropped regions from images, so when ``ndsampler.Sampler``
-(more acurately the ``FramesSampler`` belonging to the base ``Sampler`` object)
+(more accurately the ``FramesSampler`` belonging to the base ``Sampler`` object)
 is in "cog" mode, it caches all images larger than 512x512 in cog format.
 
 I've noticed a significant speedups even for "small" 1024x1024 images.  I
@@ -212,23 +212,6 @@ Kitware also has a pypi index that hosts GDAL wheels for linux systems:
 .. code-block:: bash
 
     pip install --find-links https://girder.github.io/large_image_wheels GDAL
-
-
-TODO
-----
-
-- [ ] Currently only supports image-based detection tasks, but not much work is
-  needed to extend to video. The code was originally based on sampling code for
-  video, so ndimensions is builtin to most places in the code. However, there are
-  currently no test cases that demonstrate that this library does work with video.
-  So we should (a) port the video toydata code from irharn to test ndcases and (b)
-  fix the code to work for both still images and video where things break.
-
-- [ ] Currently we are good at loading many small objects in 2d images.
-  However, we are bad at loading images with one single large object that needs
-  to be downsampled (e.g. loading an entire 1024x1024 image and downsampling it
-  to 224x224). We should find a way to mitigate this using pyramid overviews in
-  the backend COG files.
 
 
 .. |Pypi| image:: https://img.shields.io/pypi/v/ndsampler.svg

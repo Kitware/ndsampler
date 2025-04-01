@@ -4,7 +4,7 @@ Tools for caching intermediate frame representations.
 # import lockfile
 # https://stackoverflow.com/questions/489861/locking-a-file-in-python
 from os.path import dirname
-import fasteners  # supercedes lockfile / oslo_concurrency?
+import fasteners  # supersedes lockfile / oslo_concurrency?
 import atomicwrites
 import ubelt as ub
 import numpy as np
@@ -81,7 +81,7 @@ def _cog_cache_write(gpath, cache_gpath, config=None):
         raw_data = kwimage.imread(gpath)
         # raw_data = kwimage.atleast_3channels(raw_data, copy=False)
     # TODO: THERE HAS TO BE A CORRECT WAY TO DO THIS.
-    # However, I'm not sure what it is. I extend my appologies to whoever is
+    # However, I'm not sure what it is. I extend my apologies to whoever is
     # maintaining this code. Note: mode MUST be 'w'
 
     with atomicwrites.atomic_write(cache_gpath + '.atomic', mode='w', overwrite=True) as file:
